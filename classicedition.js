@@ -38,12 +38,12 @@ function corrections() {
 	document.getElementById("cell1name").textContent = "Mediter-ranean Avenue";
 
 	// Add images to enlarges.
-	document.getElementById("enlarge5token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" style="position: relative; bottom: 20px;" />';
-	document.getElementById("enlarge15token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" style="position: relative; top: -20px;" />';
-	document.getElementById("enlarge25token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" style="position: relative; top: -20px;" />';
-	document.getElementById("enlarge35token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" style="position: relative; top: -20px;" />';
-	document.getElementById("enlarge12token").innerHTML = '<img src="images/electric_icon.png" height="60" width="48" alt="" style="position: relative; top: -20px;" />';
-	document.getElementById("enlarge28token").innerHTML = '<img src="images/water_icon.png" height="60" width="78" alt="" style="position: relative; top: -20px;" />';
+	document.getElementById("enlarge5token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" />';
+	document.getElementById("enlarge15token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" />';
+	document.getElementById("enlarge25token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" />';
+	document.getElementById("enlarge35token").innerHTML = '<img src="images/train_icon.png" height="60" width="65" alt="" />';
+	document.getElementById("enlarge12token").innerHTML = '<img src="images/electric_icon.png" height="60" width="48" alt="" />';
+	document.getElementById("enlarge28token").innerHTML = '<img src="images/water_icon.png" height="60" width="78" alt="" />';
 }
 
 function utiltext() {
@@ -94,10 +94,10 @@ function redefineGame() {
 	square[8] = new Square("Vermont Avenue", "$100", "#87CEEB", 100, 4, 6, 30, 90, 270, 400, 550);
 	square[9] = new Square("Connecticut Avenue", "$120", "#87CEEB", 120, 4, 8, 40, 100, 300, 450, 600);
 	square[10] = new Square("Just Visiting", "", "#FFFFFF");
-	square[11] = new Square("St. Charles Place", "$140", "#FF0080", 140, 5, 10, 50, 150, 450, 625, 750);
+	square[11] = new Square("St. Charles Place", "$140", "#D63384", 140, 5, 10, 50, 150, 450, 625, 750);
 	square[12] = new Square("Electric Company", "$150", "#FFFFFF", 150, 2);
-	square[13] = new Square("States Avenue", "$140", "#FF0080", 140, 5, 10, 50, 150, 450, 625, 750);
-	square[14] = new Square("Virginia Avenue", "$160", "#FF0080", 160, 5, 12, 60, 180, 500, 700, 900);
+	square[13] = new Square("States Avenue", "$140", "#D63384", 140, 5, 10, 50, 150, 450, 625, 750);
+	square[14] = new Square("Virginia Avenue", "$160", "#D63384", 160, 5, 12, 60, 180, 500, 700, 900);
 	square[15] = new Square("Pennsylvania Railroad", "$200", "#FFFFFF", 200, 1);
 	square[16] = new Square("St. James Place", "$180", "#FFA500", 180, 6, 14, 70, 200, 550, 750, 950);
 	square[17] = new Square("Community Chest", "FOLLOW INSTRUCTIONS ON TOP CARD", "#FFFFFF");

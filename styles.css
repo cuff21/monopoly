@@ -72,6 +72,13 @@ td {
 	margin: 15px;
 }
 
+.winner-popup-title {
+	padding: 18px 28px;
+	font-size: 28px;
+	font-weight: bold;
+	text-align: center;
+}
+
 #noF5 {
 	display: none;
 }
@@ -744,9 +751,155 @@ td {
 .board-center {
 	width: 675px;
 	border: none;
-	vertical-align: bottom;
+	vertical-align: middle;
 	background-repeat: no-repeat;
 	background-size: auto 40px;
+}
+
+#drawn-cards {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 18px;
+	width: 100%;
+	padding: 8px 14px;
+	box-sizing: border-box;
+	font-family: Calibri, Arial, sans-serif;
+}
+
+.drawn-card-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 250px;
+	position: relative;
+	--card-width: 112px;
+	--card-gap: 8px;
+	--card-height: 136px;
+}
+
+.drawn-card-stack,
+.drawn-card {
+	box-sizing: border-box;
+	width: 112px;
+	height: var(--card-height);
+	border: 2px solid #222;
+	border-radius: 5px;
+	box-shadow: 2px 2px 0 #222, 4px 4px 0 rgba(34, 34, 34, 0.35);
+}
+
+.drawn-card-stack {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	background: #f7f1df;
+}
+
+.drawn-card-flip {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	width: var(--card-width);
+	height: 136px;
+	box-sizing: border-box;
+	margin-top: calc(var(--card-height) / -2);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f7f1df;
+	border: 2px solid #222;
+	border-radius: 5px;
+	box-shadow: 2px 2px 0 #222;
+	z-index: 3;
+	pointer-events: none;
+	animation: card-slide-flip 250ms ease-in-out forwards;
+}
+
+.drawn-card-flip img {
+	max-width: 58px;
+	max-height: 68px;
+	animation: card-icon-disappear 250ms ease-in-out forwards;
+}
+
+@keyframes card-icon-disappear {
+	0%, 45% {
+		opacity: 1;
+	}
+	50%, 100% {
+		opacity: 0;
+	}
+}
+
+@keyframes card-slide-flip {
+	0% {
+		transform: perspective(500px) translateX(0) rotateY(0deg);
+	}
+	50% {
+		transform: perspective(500px) translateX(calc((var(--card-width) + var(--card-gap)) / 2)) rotateY(90deg);
+	}
+	100% {
+		transform: perspective(500px) translateX(calc(var(--card-width) + var(--card-gap))) rotateY(180deg);
+	}
+}
+
+.drawn-card-stack img {
+	position: relative;
+	z-index: 1;
+	max-width: 58px;
+	max-height: 68px;
+}
+
+.drawn-card {
+	padding: 7px;
+	background: #fffdf5;
+	box-shadow: 2px 2px 0 #222;
+	overflow: hidden;
+}
+
+.drawn-card-title {
+	padding-bottom: 5px;
+	border-bottom: 2px solid #222;
+	font-size: 11px;
+	font-weight: bold;
+	line-height: 1.1;
+	text-align: center;
+}
+
+.drawn-card-text {
+	margin-top: 5px;
+	font-size: 10px;
+	line-height: 1.15;
+	text-align: left;
+	white-space: pre-line;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+	#drawn-cards {
+		gap: 12px;
+		padding-left: 8px;
+		padding-right: 8px;
+	}
+
+	.drawn-card-group {
+		min-width: 0;
+		gap: 6px;
+		--card-width: 96px;
+		--card-gap: 6px;
+		--card-height: 130px;
+	}
+
+	.drawn-card-stack,
+	.drawn-card {
+		width: 96px;
+		height: 130px;
+	}
+
+	.drawn-card-text {
+		font-size: 10px;
+	}
 }
 
 .board-corner {
@@ -804,6 +957,19 @@ td {
 	background-color: white;
 	vertical-align: bottom;
 	height: 25px;
+	line-height: 13px;
+}
+
+.enlarge-icon .enlarge-color {
+	height: 15px;
+}
+
+.enlarge-icon .enlarge-price {
+	height: 40px;
+}
+
+.enlarge-icon .enlarge-token {
+	height: 60px;
 }
 
 .enlarge-token {
@@ -935,6 +1101,20 @@ td {
 	position: absolute;
 	top: 0px;
 	left: 0px;
+	box-sizing: border-box;
+	border: 1px solid black;
+}
+
+/* The real token stays in the layout (for its position/size) but is hidden; a .token-overlay clone
+   is what the player actually sees, so it can slide freely between renders. */
+.player-token {
+	visibility: hidden;
+}
+
+.token-overlay {
+	position: fixed;
+	z-index: 19;
+	pointer-events: none;
 }
 
 .cell-owner {
@@ -1146,5 +1326,31 @@ td {
 .free-parking-pot {
 	font-size: 12px;
 	font-weight: bold;
-	margin-top: 4px;
+	position: absolute;
+	top: 50px;
+	left: 0px;
+	width: 100%;
+	text-align: center;
+}
+
+.alert-badge {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	margin-right: 3px;
+	border: 1px solid #333;
+	vertical-align: middle;
+}
+
+.trade-summary {
+	border-collapse: collapse;
+	margin-top: 8px;
+	width: 100%;
+}
+
+.trade-summary th,
+.trade-summary td {
+	border: 1px solid #999;
+	padding: 4px;
+	vertical-align: top;
 }
