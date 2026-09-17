@@ -998,7 +998,7 @@ function Game() {
 			$("#rejecttradebutton").show();
 
 			addAlert(initiator.name + " initiated a trade with " + recipient.name + ".");
-			popup("<p>" + initiator.name + " has proposed a trade with you, " + recipient.name + ". You may accept, reject, or modify the offer.</p>");
+			popup("<p>" + initiator.name + " has proposed a trade with you, " + recipient.name + ". You may accept, reject, or modify the offer.</p>", 0);
 		} else {
 			var tradeResponse = recipient.AI.acceptTrade(tradeObj);
 
@@ -1140,7 +1140,7 @@ function Game() {
 
 		HTML += "</table>";
 
-		popup(HTML, game.eliminatePlayer);
+		popup(HTML, game.eliminatePlayer, 0);
 	};
 
 	this.resign = function() {
@@ -1205,7 +1205,7 @@ function Game() {
 			game.eliminatePlayer();
 		} else {
 			addAlert(pcredit.name + " paid $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties received from " + p.name + ".");
-			popup("<p>" + pcredit.name + ", you must pay $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties you received from " + p.name + ".</p>", function() {player[pcredit.index].pay(bankruptcyUnmortgageFee, 0); game.bankruptcyUnmortgage();});
+			popup("<p>" + pcredit.name + ", you must pay $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties you received from " + p.name + ".</p>", function() {player[pcredit.index].pay(bankruptcyUnmortgageFee, 0); game.bankruptcyUnmortgage();}, 0);
 		}
 	};
 
@@ -1342,40 +1342,63 @@ function addAlert(alertText) {
 	}
 }
 
-function popup(HTML, action, option) {
+function popup(HTML, action, option, timer) {
+	function clearTimer() {
+		if (popup.autoCloseTimer) {
+			clearInterval(popup.autoCloseTimer);
+			popup.autoCloseTimer = null;
+		}
+	}
+
+	function closePopup() {
+		clearTimer();
+		$(document).off("keydown.popup");
+		$("#popupwrap").hide();
+		$("#popupbackground").fadeOut(400);
+	}
+
+	clearTimer();
 	$(document).off("keydown.popup");
 	document.getElementById("popuptext").innerHTML = HTML;
 	//document.getElementById("popup").style.width = "300px";
 	//document.getElementById("popup").style.top = "0px";
 	//document.getElementById("popup").style.left = "0px";
 
-	if (!option && typeof action === "string") {
-		option = action;
+	var callback = null;
+	var mode = "";
+	var timeout;
+
+	for (var i = 1; i < arguments.length; i++) {
+		var arg = arguments[i];
+		if (typeof arg === "function") {
+			callback = arg;
+		} else if (typeof arg === "string") {
+			mode = arg.toLowerCase();
+		} else if (typeof arg === "number") {
+			timeout = arg;
+		} else if (typeof arg === "boolean") {
+			timeout = arg ? 3 : 0;
+		}
 	}
 
-	option = option ? option.toLowerCase() : "";
-
-	if (typeof action !== "function") {
-		action = null;
+	if (timeout === undefined || isNaN(timeout)) {
+		timeout = (typeof player !== "undefined" && player[turn] && !player[turn].human) ? 3 : 0;
 	}
 
 	// Yes/No
-	if (option === "yes/no") {
-		document.getElementById("popuptext").innerHTML += "<div><input type=\"button\" value=\"Yes\" id=\"popupyes\" /><input type=\"button\" value=\"No\" id=\"popupno\" /></div>";
+	if (mode === "yes/no") {
+		$("#popuptext").append("<div><input type=\"button\" value=\"Yes\" id=\"popupyes\" /><input type=\"button\" value=\"No\" id=\"popupno\" /></div>");
 
-		$("#popupyes, #popupno").on("click", function() {
-			$("#popupwrap").hide();
-			$("#popupbackground").fadeOut(400);
-		});
-
-		$("#popupyes").on("click", action);
+		$("#popupyes, #popupno").on("click", closePopup);
+		if (callback) {
+			$("#popupyes").on("click", callback);
+		}
 
 	// Ok
-	} else if (option !== "blank") {
+	} else if (mode !== "blank") {
 		$("#popuptext").append("<div><input type='button' value='OK' id='popupclose' autofocus='autofocus' /></div>");
-		var autoCloseTimer;
 
-		$(document).off("keydown.popup").on("keydown.popup", function(event) {
+		$(document).on("keydown.popup", function(event) {
 			if ((event.key === "Enter" || event.keyCode === 13) && document.getElementById("popupclose")) {
 				event.preventDefault();
 				$("#popupclose").click();
@@ -1383,35 +1406,38 @@ function popup(HTML, action, option) {
 		});
 
 		$("#popupclose").on("click", function() {
-			if (autoCloseTimer) {
-				clearInterval(autoCloseTimer);
+			closePopup();
+			if (callback) {
+				callback();
 			}
-			$(document).off("keydown.popup");
-			$("#popupwrap").hide();
-			$("#popupbackground").fadeOut(400);
-		}).on("click", action);
-        
-		if (typeof player !== "undefined" && player[turn] && !player[turn].human) {
-			var secondsRemaining = 3;
+		});
+
+		if (timeout > 0) {
+			var secondsRemaining = timeout;
 			$("#popupclose").val("OK (" + secondsRemaining + ")");
-			autoCloseTimer = setInterval(function() {
+			popup.autoCloseTimer = setInterval(function() {
 				secondsRemaining--;
 				if (!document.getElementById("popupclose")) {
-					clearInterval(autoCloseTimer);
+					clearTimer();
 				} else if (secondsRemaining <= 0) {
+					clearTimer();
 					$("#popupclose").click();
 				} else {
 					$("#popupclose").val("OK (" + secondsRemaining + ")");
 				}
 			}, 1000);
-        }
+		}
 
 	}
 
 	$("#popupbackground").fadeIn(400);
 	$("#popupwrap").show();
-	$("#popupclose").focus();
 
+	if (document.getElementById("popupclose")) {
+		$("#popupclose").focus();
+	} else if (document.getElementById("popupyes")) {
+		$("#popupyes").focus();
+	}
 }
 
 
