@@ -58,6 +58,8 @@ function Game() {
 
 			if (p.money < 0) {
 				popup("<p>" + p.name + " is bankrupt. All of its assets will be turned over to " + player[p.creditor].name + ".</p>", game.bankruptcy);
+			} else if (areDiceRolled && doublecount === 0) {
+				play();
 			} else {
 				roll();
 			}
@@ -92,8 +94,9 @@ function Game() {
 		if (highestbid > 0) {
 			p.pay(highestbid, 0);
 			sq.owner = highestbidder;
-			addAlert(p.name + " bought " + sq.name + " for $" + highestbid + ".");
+			addAlert(p.name + " bought " + sq.name + " for $" + highestbid + ".", highestbidder);
 			updateAuctionHistory(p.name + " won for $" + highestbid + ".");
+			updateOwned();
 		} else {
 			updateAuctionHistory("No player bought " + sq.name + ".");
 			addAlert(sq.name + " remains on the market because there were no buyers at the auction.");
@@ -871,19 +874,17 @@ function Game() {
 			return false;
 		}
 
-		if (showAlerts && !confirm(initiator.name + ", are you sure you want to make this exchange with " + recipient.name + "?")) {
-			return false;
-		}
+		var completeTrade = function() {
 
 		// Exchange properties
 		for (var i = 0; i < 40; i++) {
 
 			if (tradeObj.getProperty(i) === 1) {
 				square[i].owner = recipient.index;
-				addAlert(recipient.name + " received " + square[i].name + " from " + initiator.name + ".");
+				addAlert(recipient.name + " received " + square[i].name + " from " + initiator.name + ".", recipient.index, initiator.index);
 			} else if (tradeObj.getProperty(i) === -1) {
 				square[i].owner = initiator.index;
-				addAlert(initiator.name + " received " + square[i].name + " from " + recipient.name + ".");
+				addAlert(initiator.name + " received " + square[i].name + " from " + recipient.name + ".", initiator.index, recipient.index);
 			}
 
 		}
@@ -891,21 +892,21 @@ function Game() {
 		if (tradeObj.getCommunityChestJailCard() === 1) {
 			initiator.communityChestJailCard = false;
 			recipient.communityChestJailCard = true;
-			addAlert(recipient.name + ' received a "Get Out of Jail Free" card from ' + initiator.name + ".");
+			addAlert(recipient.name + ' received a "Get Out of Jail Free" card from ' + initiator.name + ".", recipient.index, initiator.index);
 		} else if (tradeObj.getCommunityChestJailCard() === -1) {
 			initiator.communityChestJailCard = true;
 			recipient.communityChestJailCard = false;
-			addAlert(initiator.name + ' received a "Get Out of Jail Free" card from ' + recipient.name + ".");
+			addAlert(initiator.name + ' received a "Get Out of Jail Free" card from ' + recipient.name + ".", initiator.index, recipient.index);
 		}
 
 		if (tradeObj.getChanceJailCard() === 1) {
 			initiator.chanceJailCard = false;
 			recipient.chanceJailCard = true;
-			addAlert(recipient.name + ' received a "Get Out of Jail Free" card from ' + initiator.name + ".");
+			addAlert(recipient.name + ' received a "Get Out of Jail Free" card from ' + initiator.name + ".", recipient.index, initiator.index);
 		} else if (tradeObj.getChanceJailCard() === -1) {
 			initiator.chanceJailCard = true;
 			recipient.chanceJailCard = false;
-			addAlert(initiator.name + ' received a "Get Out of Jail Free" card from ' + recipient.name + ".");
+			addAlert(initiator.name + ' received a "Get Out of Jail Free" card from ' + recipient.name + ".", initiator.index, recipient.index);
 		}
 
 		// Exchange money.
@@ -913,14 +914,14 @@ function Game() {
 			initiator.pay(money, recipient.index);
 			recipient.money += money;
 
-			addAlert(recipient.name + " received $" + money + " from " + initiator.name + ".");
+			addAlert(recipient.name + " received $" + money + " from " + initiator.name + ".", recipient.index, initiator.index);
 		} else if (money < 0) {
 			money = -money;
 
 			recipient.pay(money, initiator.index);
 			initiator.money += money;
 
-			addAlert(initiator.name + " received $" + money + " from " + recipient.name + ".");
+			addAlert(initiator.name + " received $" + money + " from " + recipient.name + ".", initiator.index, recipient.index);
 		}
 
 		updateOwned();
@@ -934,9 +935,16 @@ function Game() {
 			player[turn].AI.alertList = "";
 			game.next();
 		}
+		};
+
+		if (showAlerts) {
+			popup("<p>" + initiator.name + ", are you sure you want to make this exchange with " + recipient.name + "?</p>", completeTrade, "Yes/No");
+		} else {
+			completeTrade();
+		}
 	};
 
-	this.proposeTrade = function() {
+	this.proposeTrade = function(skipConfirmation) {
 		if (isNaN(document.getElementById("trade-leftp-money").value)) {
 			document.getElementById("trade-leftp-money").value = "This value must be a number.";
 			document.getElementById("trade-leftp-money").style.color = "red";
@@ -982,7 +990,10 @@ function Game() {
 			return false;
 		}
 
-		if (initiator.human && !confirm(initiator.name + ", are you sure you want to make this offer to " + recipient.name + "?")) {
+		if (initiator.human && !skipConfirmation) {
+			popup("<p>" + initiator.name + ", are you sure you want to make this offer to " + recipient.name + "?</p>", function() {
+				game.proposeTrade(true);
+			}, "Yes/No");
 			return false;
 		}
 
@@ -1003,20 +1014,28 @@ function Game() {
 			var tradeResponse = recipient.AI.acceptTrade(tradeObj);
 
 			if (tradeResponse === true) {
-				popup("<p>" + recipient.name + " has accepted your offer.</p>");
+				popup(initiator.human ? "<p>" + recipient.name + " has accepted your offer.</p>" : "<p>" + formatTradeResult(initiator.name + " traded with " + recipient.name, tradeObj) + "</p>");
 				this.acceptTrade(reversedTrade);
 			} else if (tradeResponse === false) {
-				popup("<p>" + recipient.name + " has declined your offer.</p>");
+				popup(initiator.human ? "<p>" + recipient.name + " has declined your offer.</p>" : "<p>" + formatTradeResult(initiator.name + " declined a trade with " + recipient.name, tradeObj) + "</p>");
 				this.cancelTrade();
 				return;
 			} else if (tradeResponse instanceof Trade) {
 				if (!initiator.human) {
-					addAlert(recipient.name + " proposed a counteroffer to " + initiator.name + ", which was declined.");
+					addAlert(recipient.name + " proposed a counteroffer to " + initiator.name + ", which was declined.", recipient.index, initiator.index);
 					popup("<p>" + recipient.name + " proposed a counteroffer, but " + initiator.name + " declined it.</p>");
 					game.next();
 				} else {
-					popup("<p>" + recipient.name + " has proposed a counteroffer.</p>");
-					this.trade(tradeResponse);
+					popup("<p>" + recipient.name + " has proposed a counteroffer.</p>", function() {
+						writeTrade(tradeResponse);
+						$("#board").hide();
+						$("#control").hide();
+						$("#trade").show();
+						$("#proposetradebutton").hide();
+						$("#canceltradebutton").show();
+						$("#accepttradebutton").show();
+						$("#rejecttradebutton").show();
+					});
 				}
 				//writeTrade(tradeResponse);
 
@@ -1059,15 +1078,11 @@ function Game() {
 		}
 
 		if (pcount === 1) {
+			var winnerName = player[1].name;
 			updateMoney();
-			$("#control").hide();
-			$("#board").hide();
-			$("#refresh").show();
-			
-			setTimeout(function() {
-				onloadBehavior();
-				setup();
-			}, 5000);
+			$("#board, #control, #moneybar").show();
+			$("#refresh").hide();
+			$("#nextbutton").val("Restart Game").prop("title", "Return to the settings screen and start another game.").off("click").on("click", restartGame);
 
 			// // Display land counts for survey purposes.
 			// var text;
@@ -1100,7 +1115,7 @@ function Game() {
                 localStorage.setItem('gameHistory', JSON.stringify(gameHistory));
             }
 
-			document.getElementById("refresh").innerHTML = ("<p>Congratulations, " + player[1].name + " has won the game.</p><div>The game will restart in 5 seconds.</div>");
+			popup("<div class='winner-popup-title'>" + winnerName + " Wins!!</div>", null, 5);
 		} else {
 			play();
 		}
@@ -1141,6 +1156,26 @@ function Game() {
 		HTML += "</table>";
 
 		popup(HTML, game.eliminatePlayer, 0);
+	};
+
+	this.botBankruptcyUnmortgage = function(bankruptPlayer, creditor) {
+		var liquidityFloor = creditor.AI && typeof creditor.AI.getLiquidityFloor === "function" ? creditor.AI.getLiquidityFloor() : Math.max(100, creditor.money * 0.25);
+		var isDefensive = creditor.AI && creditor.AI.profile && creditor.AI.profile.name === "Defensive";
+
+		for (var i = 0; i < 40; i++) {
+			var property = square[i];
+			if (property.owner !== bankruptPlayer.index || !property.mortgage) {
+				continue;
+			}
+
+			property.owner = creditor.index;
+			var unmortgagePrice = Math.round(property.price * 0.5);
+			if (!isDefensive && creditor.money - unmortgagePrice >= liquidityFloor) {
+				creditor.pay(unmortgagePrice, 0);
+				property.mortgage = false;
+				addAlert(creditor.name + " unmortgaged " + property.name + " for $" + unmortgagePrice + ".", creditor.index);
+			}
+		}
 	};
 
 	this.resign = function() {
@@ -1205,7 +1240,15 @@ function Game() {
 			game.eliminatePlayer();
 		} else {
 			addAlert(pcredit.name + " paid $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties received from " + p.name + ".");
-			popup("<p>" + pcredit.name + ", you must pay $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties you received from " + p.name + ".</p>", function() {player[pcredit.index].pay(bankruptcyUnmortgageFee, 0); game.bankruptcyUnmortgage();}, 0);
+			if (pcredit.human) {
+				popup("<p>" + pcredit.name + ", you must pay $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties you received from " + p.name + ".</p>", function() {player[pcredit.index].pay(bankruptcyUnmortgageFee, 0); game.bankruptcyUnmortgage();}, 0);
+			} else {
+				pcredit.pay(bankruptcyUnmortgageFee, 0);
+				game.botBankruptcyUnmortgage(p, pcredit);
+				updateMoney();
+				updateOwned();
+				game.eliminatePlayer();
+			}
 		}
 	};
 
@@ -1288,6 +1331,137 @@ var pendingAuction = -1;
 var freeParkingTaxes = true;
 var freeParkingPot = 0;
 var turn = 0, doublecount = 0;
+var lastGamePlayerCount = pcount;
+
+// Tracks each player's last rendered board position/jail state so updatePosition() can animate moves.
+var lastKnownPosition = [];
+var lastKnownJail = [];
+
+// Overlay tokens that visually slide around the board while the real (hidden) tokens keep the
+// existing instant-render logic; overlays just get repositioned to match the real tokens' rects.
+var playerOverlays = [];
+
+// Direction (1 = forward/clockwise, -1 = backward/counter-clockwise) for the next animated move,
+// consumed and reset to forward by updatePosition(). Only "Go Back Three Spaces" moves backward.
+var nextMoveDirection = 1;
+
+// The four corner cells; a move passes through whichever of these lie between its start and end.
+var boardCorners = [0, 10, 20, 30];
+
+function getCellRect(index) {
+	return document.getElementById("cell" + index).getBoundingClientRect();
+}
+
+// Returns the corner cells crossed when travelling from fromIndex to toIndex in the given
+// direction, in order, followed by toIndex - i.e. the full sequence of stops along the board's
+// square path. This lets a move that wraps most of the way around the board (e.g. a "advance to"
+// card) slide through every side it actually passes over, instead of cutting across the middle.
+function buildWaypointIndexes(fromIndex, toIndex, direction) {
+	var distance = direction === 1
+		? ((toIndex - fromIndex) % 40 + 40) % 40
+		: ((fromIndex - toIndex) % 40 + 40) % 40;
+
+	var waypoints = [];
+	for (var step = 1; step < distance; step++) {
+		var index = ((fromIndex + direction * step) % 40 + 40) % 40;
+		if (boardCorners.indexOf(index) !== -1) {
+			waypoints.push(index);
+		}
+	}
+
+	waypoints.push(toIndex);
+	return waypoints;
+}
+
+function getOrCreateOverlay(i) {
+	var overlay = playerOverlays[i];
+	if (!overlay) {
+		overlay = document.createElement("div");
+		overlay.className = "cell-position token-overlay";
+		document.body.appendChild(overlay);
+		playerOverlays[i] = overlay;
+	}
+	overlay.style.backgroundColor = player[i].color;
+	return overlay;
+}
+
+// The real token div is hidden (see .player-token in styles.css) but still rendered by the normal
+// instant-render logic, so its rect already accounts for any multi-token stacking within a cell.
+function getRealTokenRect(i) {
+	var el = document.getElementById("playertoken" + i);
+	return el ? el.getBoundingClientRect() : null;
+}
+
+// Instantly moves an overlay to match its real token, with no transition/animation.
+function snapOverlay(i) {
+	var rect = getRealTokenRect(i);
+	if (!rect) {
+		return;
+	}
+
+	var overlay = getOrCreateOverlay(i);
+	overlay.style.transition = "none";
+	overlay.style.left = rect.left + "px";
+	overlay.style.top = rect.top + "px";
+	void overlay.offsetHeight;
+}
+
+// Transitions an overlay's left/top style(s) to new values and resolves once done.
+function slideOverlay(overlay, changes, duration) {
+	return new Promise(function(resolve) {
+		overlay.style.transition = Object.keys(changes).map(function(prop) {
+			return prop + " " + duration + "ms linear";
+		}).join(", ");
+		void overlay.offsetHeight;
+
+		Object.keys(changes).forEach(function(prop) {
+			overlay.style[prop] = changes[prop];
+		});
+
+		setTimeout(resolve, duration);
+	});
+}
+
+// Slides a token's overlay along the board's square path from fromIndex to toIndex, stopping at
+// every corner crossed along the way so long moves travel all the way around instead of cutting
+// straight across the board.
+async function animateOverlayMove(i, fromIndex, toIndex, direction) {
+	var overlay = getOrCreateOverlay(i);
+	var waypoints = buildWaypointIndexes(fromIndex, toIndex, direction);
+	var currentRect = getCellRect(fromIndex);
+
+	for (var w = 0; w < waypoints.length; w++) {
+		var isLastWaypoint = w === waypoints.length - 1;
+		var nextRect = isLastWaypoint ? getRealTokenRect(i) : getCellRect(waypoints[w]);
+		if (!nextRect) {
+			continue;
+		}
+
+		var sameRow = Math.round(currentRect.top) === Math.round(nextRect.top);
+		var prop = sameRow ? "left" : "top";
+		var value = (sameRow ? nextRect.left : nextRect.top) + "px";
+
+		await slideOverlay(overlay, { [prop]: value }, 125);
+		currentRect = nextRect;
+	}
+
+	// Brief pause so the arrival is visible even during a quick string of doubles.
+	await sleep(100);
+}
+
+// Being sent to jail slides the token directly, in a straight line, instead of following the board path.
+async function animateOverlayToJail(i) {
+	var overlay = getOrCreateOverlay(i);
+	var target = getRealTokenRect(i);
+	if (!target) {
+		return;
+	}
+
+	await slideOverlay(overlay, { left: target.left + "px", top: target.top + "px" }, 250);
+
+	// Brief pause so the arrival is visible even during a quick string of doubles.
+	await sleep(100);
+}
 // Overwrite an array with numbers from one to the array's length in a random order.
 Array.prototype.randomize = function(length) {
 	length = (length || this.length);
@@ -1329,17 +1503,53 @@ Array.prototype.randomize = function(length) {
 	// }
 // }
 
-function addAlert(alertText) {
-	$alert = $("#alert");
+function playerBadge(playerIndex) {
+	if (!player[playerIndex]) {
+		return "";
+	}
+	return "<span class='alert-badge' style='background-color: " + player[playerIndex].color + ";' title='" + player[playerIndex].name + "'></span>";
+}
 
-	$(document.createElement("div")).text(alertText).appendTo($alert);
+function addAlert(alertText, playerIndex, secondPlayerIndex) {
+	$alert = $("#alert");
+	playerIndex = playerIndex || turn;
+	var alertElement = $(document.createElement("div"));
+	alertElement.append(playerBadge(playerIndex));
+	if (secondPlayerIndex) {
+		alertElement.append(playerBadge(secondPlayerIndex));
+	}
+	alertElement.append(document.createTextNode(alertText)).appendTo($alert);
 
 	// Animate scrolling down alert element.
 	$alert.stop().animate({"scrollTop": $alert.prop("scrollHeight")}, 1000);
 
 	if (!player[turn].human) {
-		player[turn].AI.alertList += "<div>" + alertText + "</div>";
+		player[turn].AI.alertList += "<div>" + playerBadge(playerIndex) + (secondPlayerIndex ? playerBadge(secondPlayerIndex) : "") + alertText + "</div>";
 	}
+}
+
+function formatTradeResult(label, tradeObj) {
+	var initiator = tradeObj.getInitiator();
+	var recipient = tradeObj.getRecipient();
+	var offered = [];
+	var requested = [];
+	var money = tradeObj.getMoney();
+
+	for (var i = 0; i < 40; i++) {
+		if (tradeObj.getProperty(i) === 1) {
+			offered.push(square[i].name);
+		} else if (tradeObj.getProperty(i) === -1) {
+			requested.push(square[i].name);
+		}
+	}
+	if (tradeObj.getCommunityChestJailCard() === 1 || tradeObj.getChanceJailCard() === 1) {
+		offered.push("Get Out of Jail Free card");
+	}
+	if (tradeObj.getCommunityChestJailCard() === -1 || tradeObj.getChanceJailCard() === -1) {
+		requested.push("Get Out of Jail Free card");
+	}
+
+	return label + ": <table class='trade-summary'><tr><th>" + initiator.name + " gives</th><th>" + recipient.name + " gives</th></tr><tr><td>" + (offered.join(", ") || "Nothing") + (money > 0 ? " and $" + money : "") + "</td><td>" + (requested.join(", ") || "Nothing") + (money < 0 ? " and $" + (-money) : "") + "</td></tr></table>";
 }
 
 function popup(HTML, action, option, timer) {
@@ -1441,7 +1651,22 @@ function popup(HTML, action, option, timer) {
 }
 
 
-function updatePosition() {
+async function updatePosition() {
+	var movers = [];
+
+	for (var i = 1; i <= pcount; i++) {
+		var p = player[i];
+		var previousPosition = lastKnownPosition[i];
+		var wasJailed = lastKnownJail[i];
+
+		if (previousPosition !== undefined && !wasJailed && p.jail) {
+			movers.push({ index: i, toJail: true });
+		} else if (previousPosition !== undefined && !wasJailed && !p.jail && previousPosition !== p.position) {
+			movers.push({ index: i, fromIndex: previousPosition, toIndex: p.position, direction: nextMoveDirection });
+			nextMoveDirection = 1;
+		}
+	}
+
 	// Reset borders
 	document.getElementById("jail").style.border = "1px solid black";
 	document.getElementById("jailpositionholder").innerHTML = "";
@@ -1462,7 +1687,7 @@ function updatePosition() {
 
 			if (player[y].position == x && !player[y].jail) {
 
-				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position' title='" + player[y].name + "' style='background-color: " + player[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + player[y].name + "' style='background-color: " + player[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
 				if (left == 36) {
 					left = 0;
 					top = 12;
@@ -1474,7 +1699,7 @@ function updatePosition() {
 		for (var y = 1; y < turn; y++) {
 
 			if (player[y].position == x && !player[y].jail) {
-				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position' title='" + player[y].name + "' style='background-color: " + player[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + player[y].name + "' style='background-color: " + player[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
 				if (left == 36) {
 					left = 0;
 					top = 12;
@@ -1488,7 +1713,7 @@ function updatePosition() {
 	top = 53;
 	for (var i = turn; i <= pcount; i++) {
 		if (player[i].jail) {
-			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position' title='" + player[i].name + "' style='background-color: " + player[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + i + "' title='" + player[i].name + "' style='background-color: " + player[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
 
 			if (left === 36) {
 				left = 0;
@@ -1501,7 +1726,7 @@ function updatePosition() {
 
 	for (var i = 1; i < turn; i++) {
 		if (player[i].jail) {
-			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position' title='" + player[i].name + "' style='background-color: " + player[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + i + "' title='" + player[i].name + "' style='background-color: " + player[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
 			if (left === 36) {
 				left = 0;
 				top = 41;
@@ -1516,6 +1741,28 @@ function updatePosition() {
 		document.getElementById("jail").style.border = "1px solid " + p.color;
 	} else {
 		document.getElementById("cell" + p.position).style.border = "1px solid " + p.color;
+	}
+
+	// Keep every overlay in sync with its (now hidden) real token, snapping non-movers instantly
+	// in case another player's move shifted their stacking offset within a shared cell.
+	var movingIndexes = movers.map(function(move) { return move.index; });
+	for (var i = 1; i <= pcount; i++) {
+		if (movingIndexes.indexOf(i) === -1) {
+			snapOverlay(i);
+		}
+	}
+
+	var animations = movers.map(function(move) {
+		return move.toJail ? animateOverlayToJail(move.index) : animateOverlayMove(move.index, move.fromIndex, move.toIndex, move.direction);
+	});
+
+	if (animations.length > 0) {
+		await Promise.all(animations);
+	}
+
+	for (var i = 1; i <= pcount; i++) {
+		lastKnownPosition[i] = player[i].position;
+		lastKnownJail[i] = player[i].jail;
 	}
 
 	// for (var i=1; i <= pcount; i++) {
@@ -1858,7 +2105,37 @@ function updateOption() {
 	}
 }
 
-function chanceCommunityChest() {
+function updateDrawnCard(cardType, cardIndex) {
+	var card = cardType === "chance" ? chanceCards[cardIndex] : communityChestCards[cardIndex];
+	var textElement = document.getElementById(cardType + "-card-text");
+	var groupElement = document.querySelector("#" + (cardType === "chance" ? "chance-display" : "community-chest-display"));
+	var animationComplete = Promise.resolve();
+	if (textElement && card) {
+		textElement.textContent = card.text;
+	}
+	if (groupElement) {
+		var movingCard = document.createElement("div");
+		var icon = document.createElement("img");
+		animationComplete = new Promise(function(resolve) {
+			movingCard.addEventListener("animationend", function(event) {
+				if (event.target !== movingCard) {
+					return;
+				}
+				movingCard.remove();
+				resolve();
+			});
+			setTimeout(resolve, 300);
+		});
+		movingCard.className = "drawn-card-flip";
+		icon.src = cardType === "chance" ? "images/chance_icon.png" : "images/community_chest_icon.png";
+		icon.alt = "";
+		movingCard.appendChild(icon);
+		groupElement.appendChild(movingCard);
+	}
+	return animationComplete;
+}
+
+async function chanceCommunityChest() {
 	var p = player[turn];
 
 	// Community Chest
@@ -1868,6 +2145,12 @@ function chanceCommunityChest() {
 		// Remove the get out of jail free card from the deck.
 		if (communityChestIndex === 0) {
 			communityChestCards.deck.splice(communityChestCards.index, 1);
+		}
+		var communityChestAnimation = updateDrawnCard("community-chest", communityChestIndex);
+		if (p.human) {
+			await communityChestAnimation;
+		} else {
+			await Promise.all([communityChestAnimation, sleep(500)]);
 		}
 
 		if (p.human) {
@@ -1891,6 +2174,12 @@ function chanceCommunityChest() {
 		// Remove the get out of jail free card from the deck.
 		if (chanceIndex === 0) {
 			chanceCards.deck.splice(chanceCards.index, 1);
+		}
+		var chanceAnimation = updateDrawnCard("chance", chanceIndex);
+		if (p.human) {
+			await chanceAnimation;
+		} else {
+			await Promise.all([chanceAnimation, sleep(500)]);
 		}
 
 		if (p.human) {
@@ -1932,7 +2221,7 @@ function chanceAction(chanceIndex) {
 		p.AI.alertList = "";
 		//game.next();
 	}
-    if([0, 1, 2, 3, 6, 8, 12].includes(chanceIndex)) {
+	if(!p.human && [0, 1, 2, 3, 6, 8, 12].includes(chanceIndex)) {
         game.next();
     }
 }
@@ -1952,7 +2241,7 @@ function communityChestAction(communityChestIndex) {
 		p.AI.alertList = "";
 		//game.next();
 	}
-    if(!([13, 15].includes(communityChestIndex))) {
+	if(!p.human && !([13, 15].includes(communityChestIndex))) {
         game.next();
     }
 }
@@ -2002,7 +2291,7 @@ function subtractamount(amount, cause) {
 	}
 }
 
-function gotojail() {
+async function gotojail() {
 	var p = player[turn];
 	addAlert(p.name + " was sent directly to jail.");
 	document.getElementById("landed").innerHTML = "You are in jail.";
@@ -2017,21 +2306,22 @@ function gotojail() {
 		document.getElementById("nextbutton").focus();
 	}
 
-	updatePosition();
+	await updatePosition();
 	updateOwned();
 
 	if (!p.human) {
-		popup(p.AI.alertList, game.next);
 		p.AI.alertList = "";
+		game.next();
 	}
 }
 
-function gobackthreespaces() {
+async function gobackthreespaces() {
 	var p = player[turn];
 
 	p.position -= 3;
+	nextMoveDirection = -1;
 
-	land();
+	await land();
 }
 
 function payeachplayer(amount, cause) {
@@ -2073,7 +2363,7 @@ function collectfromeachplayer(amount, cause) {
 	addAlert(p.name + " received $" + total + " from " + cause + ".");
 }
 
-function advance(destination, pass) {
+async function advance(destination, pass) {
 	var p = player[turn];
 
 	if (typeof pass === "number") {
@@ -2093,10 +2383,10 @@ function advance(destination, pass) {
 		addAlert(p.name + " collected a $200 salary for passing GO.");
 	}
 
-	land();
+	await land();
 }
 
-function advanceToNearestUtility() {
+async function advanceToNearestUtility() {
 	var p = player[turn];
 
 	if (p.position < 12) {
@@ -2109,13 +2399,13 @@ function advanceToNearestUtility() {
 		addAlert(p.name + " collected a $200 salary for passing GO.");
 	}
 
-	land(true);
+	await land(true);
 }
 
-function advanceToNearestRailroad() {
+async function advanceToNearestRailroad() {
 	var p = player[turn];
 
-	updatePosition();
+	await updatePosition();
 
 	if (p.position < 15) {
 		p.position = 15;
@@ -2127,7 +2417,7 @@ function advanceToNearestRailroad() {
 		addAlert(p.name + " collected a $200 salary for passing GO.");
 	}
 
-	land(true);
+	await land(true);
 }
 
 function streetrepairs(houseprice, hotelprice) {
@@ -2158,7 +2448,7 @@ function streetrepairs(houseprice, hotelprice) {
 
 }
 
-function payfifty() {
+async function payfifty() {
 	var p = player[turn];
 
 	document.getElementById("jail").style.border = '1px solid black';
@@ -2174,10 +2464,10 @@ function payfifty() {
 
 	addAlert(p.name + " paid the $50 fine to get out of jail.");
 	updateMoney();
-	updatePosition();
+	await updatePosition();
 }
 
-function useJailCard() {
+async function useJailCard() {
 	var p = player[turn];
 
 	document.getElementById("jail").style.border = '1px solid black';
@@ -2217,7 +2507,7 @@ function useJailCard() {
 
 	addAlert(p.name + " used a \"Get Out of Jail Free\" card.");
 	updateOwned();
-	updatePosition();
+	await updatePosition();
 }
 
 function buyHouse(index) {
@@ -2467,6 +2757,28 @@ function hidedeed() {
 	$("#deed").hide();
 }
 
+function getCurrentRent(property) {
+	var sq = square[property];
+	if (!sq || !sq.price || sq.mortgage) {
+		return null;
+	}
+
+	if (sq.groupNumber === 1) {
+		var railroads = [5, 15, 25, 35].filter(function(index) { return square[index].owner === sq.owner && sq.owner !== 0; }).length;
+		return railroads ? 25 * Math.pow(2, railroads - 1) : 25;
+	}
+	if (sq.groupNumber === 2) {
+		var utilities = [12, 28].filter(function(index) { return square[index].owner === sq.owner && sq.owner !== 0; }).length;
+		return utilities === 2 ? "10x dice" : "4x dice";
+	}
+
+	var ownsGroup = sq.owner !== 0 && sq.group.every(function(index) { return square[index].owner === sq.owner; });
+	if (sq.house > 0) {
+		return sq.house === 5 ? sq.rent5 : sq["rent" + sq.house];
+	}
+	return ownsGroup ? sq.baserent * 2 : sq.baserent;
+}
+
 function buy() {
 	var p = player[turn];
 	var property = square[p.position];
@@ -2538,7 +2850,7 @@ function unmortgage(index) {
 }
 
 
-function land(increasedRent) {
+async function land(increasedRent) {
 	increasedRent = !!increasedRent; // Cast increasedRent to a boolean value. It is used for the ADVANCE TO THE NEAREST RAILROAD/UTILITY Chance cards.
 
 	var p = player[turn];
@@ -2651,12 +2963,12 @@ function land(increasedRent) {
 	// Go to jail. Go directly to Jail. Do not pass GO. Do not collect $200.
 	if (p.position === 30) {
 		updateMoney();
-		updatePosition();
+		await updatePosition();
 
 		if (p.human) {
 			popup("<div>Go to jail. Go directly to Jail. Do not pass GO. Do not collect $200.</div>", gotojail);
 		} else {
-			gotojail();
+			await gotojail();
 		}
 
 		return;
@@ -2673,18 +2985,18 @@ function land(increasedRent) {
 	}
 
 	updateMoney();
-	updatePosition();
+	await updatePosition();
 	updateOwned();
 
 	if (!p.human) {
-		popup(p.AI.alertList, chanceCommunityChest);
 		p.AI.alertList = "";
+		await chanceCommunityChest();
 	} else {
-		chanceCommunityChest();
+		await chanceCommunityChest();
 	}
 }
 
-function roll() {
+async function roll() {
 	var p = player[turn];
 
 	$("#option").hide();
@@ -2727,7 +3039,7 @@ function roll() {
 			if (p.human) {
 				popup("You rolled doubles three times in a row. Go to jail.", gotojail);
 			} else {
-				gotojail();
+				await gotojail();
 			}
 
 			return;
@@ -2738,7 +3050,7 @@ function roll() {
 		doublecount = 0;
 	}
 
-	updatePosition();
+	await updatePosition();
 	updateMoney();
 	updateOwned();
 
@@ -2758,28 +3070,28 @@ function roll() {
 
 			addAlert(p.name + " rolled doubles to get out of jail.");
 
-			land();
+			await land();
 		} else {
 			if (p.jailroll === 3) {
 
 				if (p.human) {
-					popup("<p>You must pay the $50 fine.</p>", function() {
-						payfifty();
+					popup("<p>You must pay the $50 fine.</p>", async function() {
+						await payfifty();
 						player[turn].position=10 + die1 + die2;
-						land();
+						await land();
 					});
 				} else {
-					payfifty();
+					await payfifty();
 					p.position = 10 + die1 + die2;
-					land();
+					await land();
 				}
 			} else {
 				$("#landed").show();
 				document.getElementById("landed").innerHTML = "You are in jail.";
 
 				if (!p.human) {
-					popup(p.AI.alertList, game.next);
 					p.AI.alertList = "";
+					game.next();
 				}
 			}
 		}
@@ -2798,11 +3110,11 @@ function roll() {
 			addAlert(p.name + " collected a $200 salary for passing GO.");
 		}
 
-		land();
+		await land();
 	}
 }
 
-function play() {
+async function play() {
 	if (game.auction()) {
 		return;
 	}
@@ -2826,9 +3138,6 @@ function play() {
 	$("#board, #control, #moneybar, #viewstats, #buy").show();
 
 	doublecount = 0;
-	if (p.human) {
-		document.getElementById("nextbutton").focus();
-	}
 	document.getElementById("nextbutton").value = "Roll Dice";
 	document.getElementById("nextbutton").title = "Roll the dice and move your token accordingly.";
 
@@ -2856,15 +3165,15 @@ function play() {
 
 		if (!p.human && p.AI.postBail()) {
 			if (p.communityChestJailCard || p.chanceJailCard) {
-				useJailCard();
+				await useJailCard();
 			} else {
-				payfifty();
+				await payfifty();
 			}
 		}
 	}
 
 	updateMoney();
-	updatePosition();
+	await updatePosition();
 	updateOwned();
 
 	$(".money-bar-arrow").hide();
@@ -2878,6 +3187,7 @@ function play() {
 }
 
 function setup() {
+	lastGamePlayerCount = pcount;
 	auctionEnabled = document.getElementById("auctionenabled").checked;
 	freeParkingTaxes = document.getElementById("freeparkingtaxes").checked;
 	freeParkingPot = 0;
@@ -2941,6 +3251,40 @@ function setup() {
 	document.getElementById("stats").style.left = "0px";
 	console.log("Starting the game!");
 	play();
+}
+
+function restartGame() {
+	var settings = {
+		auctionEnabled: document.getElementById("auctionenabled").checked,
+		freeParkingTaxes: document.getElementById("freeparkingtaxes").checked,
+		players: []
+	};
+
+	for (var i = 1; i <= 8; i++) {
+		settings.players.push({
+			ai: document.getElementById("player" + i + "ai").value,
+			color: document.getElementById("player" + i + "color").value,
+			name: document.getElementById("player" + i + "name").value,
+			profile: document.getElementById("player" + i + "aiProfile").value
+		});
+	}
+
+	pcount = lastGamePlayerCount;
+	$("#popupwrap, #popupbackground").hide();
+	document.getElementById("player-inputs").innerHTML = "";
+	onloadBehavior();
+
+	document.getElementById("auctionenabled").checked = settings.auctionEnabled;
+	document.getElementById("freeparkingtaxes").checked = settings.freeParkingTaxes;
+	for (var i = 1; i <= 8; i++) {
+		document.getElementById("player" + i + "ai").value = settings.players[i - 1].ai;
+		document.getElementById("player" + i + "color").value = settings.players[i - 1].color;
+		document.getElementById("player" + i + "name").value = settings.players[i - 1].name;
+		document.getElementById("player" + i + "aiProfile").value = settings.players[i - 1].profile;
+	}
+	playernumber_onchange();
+	$("#board, #control, #moneybar, #refresh").hide();
+	$("#setup").show();
 }
 
 // function togglecheck(elementid) {
@@ -3232,7 +3576,7 @@ function onloadBehavior() {
 	createPlayerInputs();
 	playernumber_onchange();
 
-	$("#nextbutton").click(game.next);
+	$("#nextbutton").off("click").on("click", game.next);
 	$("#noscript").hide();
 	$("#setup, #noF5").show();
 
@@ -3272,16 +3616,16 @@ function onloadBehavior() {
 		currentCellPositionHolder.className = "cell-position-holder";
 		currentCellPositionHolder.enlargeId = "enlarge" + i;
 
-		currentCellName = currentCellAnchor.appendChild(document.createElement("div"));
-		currentCellName.id = "cell" + i + "name";
-		currentCellName.className = "cell-name";
-		currentCellName.textContent = s.name;
-
 		if (i === 20) {
 			var currentCellPot = currentCellAnchor.appendChild(document.createElement("div"));
 			currentCellPot.id = "freeparkingpot";
 			currentCellPot.className = "free-parking-pot";
 		}
+
+		currentCellName = currentCellAnchor.appendChild(document.createElement("div"));
+		currentCellName.id = "cell" + i + "name";
+		currentCellName.className = "cell-name";
+		currentCellName.textContent = s.name;
 
 		if (square[i].groupNumber) {
 			currentCellOwner = currentCellAnchor.appendChild(document.createElement("div"));
@@ -3292,6 +3636,10 @@ function onloadBehavior() {
 		document.getElementById("enlarge" + i + "color").style.backgroundColor = s.color;
 		document.getElementById("enlarge" + i + "name").textContent = s.name;
 		document.getElementById("enlarge" + i + "price").textContent = s.pricetext;
+
+		if (s.groupNumber === 1 || s.groupNumber === 2) {
+			document.getElementById("enlarge" + i).classList.add("enlarge-icon");
+		}
 	}
 	updateFreeParkingDisplay();
 
@@ -3318,6 +3666,14 @@ function onloadBehavior() {
 	var drag, dragX, dragY, dragObj, dragTop, dragLeft;
 
 	$(".cell-position-holder, #jail").on("mouseover", function(){
+		var property = parseInt(this.id.replace("cell", "").replace("positionholder", ""), 10);
+		var s = isNaN(property) ? null : square[property];
+		var rent = isNaN(property) ? null : getCurrentRent(property);
+		if (s && rent !== null) {
+			document.getElementById(this.enlargeId + "price").innerHTML = "Price: " + s.pricetext + "<br />Rent: $" + rent;
+		} else if (s) {
+			document.getElementById(this.enlargeId + "price").textContent = s.pricetext;
+		}
 		$("#" + this.enlargeId).show();
 
 	}).on("mouseout", function() {
