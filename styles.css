@@ -972,9 +972,23 @@ td {
 	height: 60px;
 }
 
+.enlarge-icon .enlarge-token img {
+	/* The token row sits flush against the popup's bottom border, so nudge the icon up to
+	   leave clearance instead of having it touch/overlap the border. */
+	position: relative;
+	top: -15px;
+}
+
 .enlarge-token {
 	height: 45px;
 	width: 150px;
+}
+
+.enlarge-token img {
+	/* Images are inline by default, which reserves descender space below them and pushes
+	   them lower than the fixed-height container, overhanging the popup's bottom border. */
+	display: block;
+	margin: 0 auto;
 }
 
 .moneybarcell {
