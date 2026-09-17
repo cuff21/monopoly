@@ -2,6 +2,7 @@ body {
 	background: #ddd;
 	margin: 0px;
 	min-width: 1075px;
+	font-family: Arial, sans-serif;
 }
 
 td {
@@ -14,6 +15,24 @@ td {
 #setup {
 	display: none;
 	margin: 15px;
+}
+
+.player-input {
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+.player-input input[type="text"] {
+	width: 95px;
+}
+
+.player-input select {
+	max-width: none;
+}
+
+.player-input input[type="button"] {
+	margin-left: 4px;
+	padding: 1px 5px;
 }
 
 #moneybar {
@@ -271,7 +290,8 @@ td {
 	border: 1px solid blue;
 	border-radius: 5px;
 	height: 30px;
-	width: 25%;
+	width: 130px;
+	min-width: 130px;
 	margin: 0px;
 	background-color: #305BC9;
 	/* background-image: -webkit-linear-gradient(bottom,#213EB2,#4787ED);
@@ -341,6 +361,126 @@ td {
 
 #popuptext {
 	overflow-x: auto;
+}
+
+.auction-title {
+	font-weight: bold;
+	font-size: 16px;
+	margin-bottom: 10px;
+}
+
+.auction-section {
+	margin-top: 8px;
+	border: 1px solid gray;
+	background-color: #fff;
+	padding: 5px;
+	text-align: left;
+}
+
+.auction-section-title {
+	font-weight: bold;
+	margin-bottom: 3px;
+}
+
+.auction-participant {
+	display: flex;
+	justify-content: space-between;
+	border-top: 1px solid #eee;
+	padding: 2px 0px;
+}
+
+.auction-player-name {
+	color: black;
+}
+
+.auction-player-swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	margin-right: 5px;
+	border: 1px solid #555;
+	vertical-align: middle;
+}
+
+#popup input,
+#popup button,
+#popup select {
+	font-family: Arial, sans-serif;
+}
+
+#auctionplayerstats {
+	display: none;
+	position: fixed;
+	min-width: 210px;
+	max-width: 280px;
+	max-height: 320px;
+	overflow-y: auto;
+	padding: 6px;
+	font-family: Arial, sans-serif;
+	border: 2px solid black;
+	border-radius: 5px;
+	background-color: white;
+	box-shadow: 2px 2px 5px #555;
+	z-index: 20;
+	text-align: left;
+	font-size: 12px;
+	color: black;
+	pointer-events: none;
+}
+
+#auctionplayerstats .statsplayername {
+	margin-bottom: 4px;
+	font-weight: bold;
+	text-align: center;
+}
+
+#auctionplayerstats .statsplayerprofile {
+	display: none;
+}
+
+#auctionplayerstats table {
+	width: 100%;
+	border-spacing: 1px;
+}
+
+.auction-status {
+	font-weight: bold;
+}
+
+.auction-status-bidding {
+	color: green;
+}
+
+.auction-status-passing {
+	color: #996600;
+}
+
+.auction-status-out {
+	color: #888;
+}
+
+#auctionhistory {
+	height: 105px;
+	border: 1px solid gray;
+	padding: 3px;
+	font-family: Consolas, "Courier New", monospace;
+	font-size: 12px;
+	background-color: #fff;
+	overflow-y: auto;
+}
+
+.auction-high-bid {
+	margin-top: 5px;
+	font-weight: bold;
+}
+
+.auction-turn {
+	margin: 10px 0px 5px;
+	font-weight: bold;
+}
+
+.auction-actions input {
+	margin: 2px;
 }
 
 /* #popupclose {
@@ -742,6 +882,14 @@ td {
 	font-size: 24px;
 }
 
+.statsplayerprofile {
+	font-size: 13px;
+	color: #555;
+	margin-top: 2px;
+	margin-bottom: 6px;
+	font-style: italic;
+}
+
 .statscell {
 	border: 2px solid black;
 	padding: 8px;
@@ -872,17 +1020,19 @@ td {
     border: 4px solid #000;
     border-radius: 50px;
     background-color: #ccc;
-    font-size: 16px;
-    width: 600px;
+	width: max-content;
+	max-width: calc(100vw - 60px);
     margin: 30px auto;
     padding: 30px;
-    font-size: 20px;
+	box-sizing: border-box;
+	overflow-x: auto;
+	font-size: 16px;
 }
 
 #setup select {
     height: 28px;
     border-radius: 10px;
-    font-size: 20px;
+	font-size: 16px;
     padding: 2px;
 }
 
@@ -891,7 +1041,7 @@ td {
 }
 
 #setup input {
-    font-size: 20px;
+	font-size: 16px;
     border-radius: 10px;
     border-style: inset;
     padding: 4px;
@@ -905,6 +1055,27 @@ td {
 
 #setup input[type="button"]:hover {
     background-color: #aaa;
+}
+
+#setup #startgamebutton {
+	color: white;
+	border-color: blue;
+	background-color: #305BC9;
+	background-image: url(images/menu_background.png);
+}
+
+#setup #startgamebutton:hover {
+	background-color: #2449a8;
+}
+
+#setup input.remove-player-button {
+	color: white;
+	border-color: #8b0000;
+	background-color: #c93030;
+}
+
+#setup input.remove-player-button:hover {
+	background-color: #a82020;
 }
 
 #cell20 {
@@ -965,4 +1136,15 @@ td {
 #textarea {
     width: 100%;
     height: 200px;
+}
+
+#setup .player-input {
+	width: max-content;
+	max-width: 100%;
+}
+
+.free-parking-pot {
+	font-size: 12px;
+	font-weight: bold;
+	margin-top: 4px;
 }

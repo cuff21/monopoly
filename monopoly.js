@@ -8,6 +8,28 @@ function Game() {
 	var highestbid;
 	var currentbidder = 1;
 	var auctionproperty;
+	var auctionHistory = [];
+
+	var updateAuctionHistory = function(entry) {
+		auctionHistory.push(entry);
+		var history = document.getElementById("auctionhistory");
+		history.innerHTML = auctionHistory.map(function(item) {
+			return "<div>" + item + "</div>";
+		}).join("");
+		history.scrollTop = history.scrollHeight;
+	};
+
+	var updateAuctionParticipants = function() {
+		document.getElementById("auctionparticipants").innerHTML = player.slice(1, pcount + 1).map(function(p) {
+			var status = p.auctionStatus || (p.bidding ? "Bidding" : "Out");
+			return "<div class='auction-participant' data-player-index='" + p.index + "'><span class='auction-player-name'><span class='auction-player-swatch' style='background-color: " + p.color + ";'></span>" + p.name + "</span><span class='auction-status auction-status-" + status.toLowerCase() + "'>" + status + "</span></div>";
+		}).join("");
+		$(".auction-participant").off("mouseenter mouseleave mousemove").on("mouseenter", function(event) {
+			showAuctionPlayerStats(parseInt(this.getAttribute("data-player-index"), 10), event);
+		}).on("mousemove", function(event) {
+			positionAuctionPlayerStats(event);
+		}).on("mouseleave", hideAuctionPlayerStats);
+	};
 
 	this.rollDice = function() {
 		die1 = Math.floor(Math.random() * 6) + 1;
@@ -20,8 +42,16 @@ function Game() {
 	};
 
 	this.next = async function() {
-		while(auctionQueue.length !== 0 || !$("#popupwrap").is(":hidden")){
+		while (!$("#popupwrap").is(":hidden")) {
 			await sleep(10);
+		}
+		var p = player[turn];
+		if (pendingAuction !== -1 && auctionEnabled) {
+			game.addPropertyToAuctionQueue(pendingAuction);
+			pendingAuction = -1;
+		}
+		if (game.auction()) {
+			return;
 		}
 		if (!p.human && p.money < 0) {
 			p.AI.payDebt();
@@ -63,17 +93,33 @@ function Game() {
 			p.pay(highestbid, 0);
 			sq.owner = highestbidder;
 			addAlert(p.name + " bought " + sq.name + " for $" + highestbid + ".");
+			updateAuctionHistory(p.name + " won for $" + highestbid + ".");
+		} else {
+			updateAuctionHistory("No player bought " + sq.name + ".");
+			addAlert(sq.name + " remains on the market because there were no buyers at the auction.");
 		}
+		$("#buypropertybutton").hide();
 
 		for (var i = 1; i <= pcount; i++) {
 			player[i].bidding = true;
+			player[i].auctionStatus = "Bidding";
 		}
 
 		$("#popupbackground").hide();
 		$("#popupwrap").hide();
 
 		if (!game.auction()) {
-			play();
+			if (player[turn].human) {
+				if (doublecount > 0) {
+					document.getElementById("nextbutton").value = "Roll again";
+					document.getElementById("nextbutton").title = "You threw doubles. Roll again.";
+				} else {
+					document.getElementById("nextbutton").value = "End turn";
+					document.getElementById("nextbutton").title = "End turn and advance to the next player.";
+				}
+			} else {
+				play();
+			}
 		}
 	};
 
@@ -97,18 +143,24 @@ function Game() {
 		auctionproperty = index;
 		highestbidder = 0;
 		highestbid = 0;
+		auctionHistory = [];
 		currentbidder = turn + 1;
 
 		if (currentbidder > pcount) {
 			currentbidder -= pcount;
 		}
 
-		popup("<div style='font-weight: bold; font-size: 16px; margin-bottom: 10px;'>Auction <span id='propertyname'></span></div><div>Highest Bid = $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div><div><span id='currentbidder'></span>, it is your turn to bid.</div<div><input id='bid' title='Enter an amount to bid on " + s.name + ".' style='width: 291px;' /></div><div><input type='button' value='Bid' onclick='game.auctionBid();' title='Place your bid.' /><input type='button' value='Pass' title='Skip bidding this time.' onclick='game.auctionPass();' /><input type='button' value='Exit Auction' title='Stop bidding on " + s.name + " altogether.' onclick='if (confirm(\"Are you sure you want to stop bidding on this property altogether?\")) game.auctionExit();' /></div>", "blank");
+		for (var i = 1; i <= pcount; i++) {
+			player[i].bidding = true;
+			player[i].auctionStatus = "Bidding";
+		}
+		popup("<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on " + s.name + ".' /></div><div class='auction-actions'><input type='button' value='Bid' onclick='game.auctionBid();' title='Place your bid.' /><input type='button' value='Pass' title='Skip bidding this time.' onclick='game.auctionPass();' /><input type='button' value='Exit Auction' title='Stop bidding on " + s.name + " altogether.' onclick='game.auctionExit();' /></div>", "blank");
 
 		document.getElementById("propertyname").innerHTML = "<a href='javascript:void(0);' onmouseover='showdeed(" + auctionproperty + ");' onmouseout='hidedeed();' class='statscellcolor'>" + s.name + "</a>";
 		document.getElementById("highestbid").innerHTML = "0";
 		document.getElementById("highestbidder").innerHTML = "N/A";
-		document.getElementById("currentbidder").innerHTML = player[currentbidder].name;
+		document.getElementById("currentbidder").innerHTML = "It is " + player[currentbidder].name + "'s turn to bid.";
+		updateAuctionParticipants();
 		document.getElementById("bid").onkeydown = function (e) {
 			var key = 0;
 			var isCtrl = false;
@@ -157,12 +209,18 @@ function Game() {
 
 		if (!player[currentbidder].human) {
 			currentbidder = turn; // auctionPass advances currentbidder.
-			this.auctionPass();
+			this.auctionPass(true);
 		}
 		return true;
 	};
 
-	this.auctionPass = function() {
+	this.auctionPass = function(isBid) {
+		if (!isBid && player[currentbidder].bidding) {
+			player[currentbidder].bidding = false;
+			player[currentbidder].auctionStatus = "Passing";
+			updateAuctionHistory(player[currentbidder].name + " passed.");
+			updateAuctionParticipants();
+		}
 		if (highestbidder === 0) {
 			highestbidder = currentbidder;
 		}
@@ -185,17 +243,20 @@ function Game() {
 
 					if (bid === -1 || highestbid >= p.money) {
 						p.bidding = false;
-
-						window.alert(p.name + " exited the auction.");
+						p.auctionStatus = "Out";
+						updateAuctionHistory(p.name + " exited.");
+						updateAuctionParticipants();
 						continue;
 
 					} else if (bid === 0) {
-						window.alert(p.name + " passed.");
+						p.bidding = false;
+						p.auctionStatus = "Passing";
+						updateAuctionHistory(p.name + " passed.");
+						updateAuctionParticipants();
 						continue;
 
 					} else if (bid > 0) {
 						this.auctionBid(bid);
-						window.alert(p.name + " bid $" + bid + ".");
 						continue;
 					}
 					return;
@@ -206,7 +267,7 @@ function Game() {
 
 		}
 
-		document.getElementById("currentbidder").innerHTML = player[currentbidder].name;
+		document.getElementById("currentbidder").innerHTML = "It is " + player[currentbidder].name + "'s turn to bid.";
 		document.getElementById("bid").value = "";
 		document.getElementById("bid").style.color = "black";
 	};
@@ -230,11 +291,12 @@ function Game() {
 				document.getElementById("highestbid").innerHTML = parseInt(bid, 10);
 				highestbidder = currentbidder;
 				document.getElementById("highestbidder").innerHTML = player[highestbidder].name;
+				updateAuctionHistory(player[currentbidder].name + " bid $" + highestbid + ".");
 
 				document.getElementById("bid").focus();
 
 				if (player[currentbidder].human) {
-					this.auctionPass();
+					this.auctionPass(true);
 				}
 			} else {
 				document.getElementById("bid").value = "Your bid must be greater than highest bid. ($" + highestbid + ")";
@@ -245,6 +307,9 @@ function Game() {
 
 	this.auctionExit = function() {
 		player[currentbidder].bidding = false;
+		player[currentbidder].auctionStatus = "Out";
+		updateAuctionHistory(player[currentbidder].name + " exited.");
+		updateAuctionParticipants();
 		this.auctionPass();
 	};
 
@@ -709,6 +774,12 @@ function Game() {
 	};
 
 	this.trade = function(tradeObj) {
+		if (tradeObj instanceof Trade && !tradeObj.getInitiator().human && !tradeObj.getRecipient().human) {
+			writeTrade(tradeObj);
+			this.proposeTrade();
+			return;
+		}
+
 		$("#board").hide();
 		$("#control").hide();
 		$("#trade").show();
@@ -939,8 +1010,14 @@ function Game() {
 				this.cancelTrade();
 				return;
 			} else if (tradeResponse instanceof Trade) {
-				popup("<p>" + recipient.name + " has proposed a counteroffer.</p>");
-				this.trade(tradeResponse);
+				if (!initiator.human) {
+					addAlert(recipient.name + " proposed a counteroffer to " + initiator.name + ", which was declined.");
+					popup("<p>" + recipient.name + " proposed a counteroffer, but " + initiator.name + " declined it.</p>");
+					game.next();
+				} else {
+					popup("<p>" + recipient.name + " has proposed a counteroffer.</p>");
+					this.trade(tradeResponse);
+				}
 				//writeTrade(tradeResponse);
 
 				//$("#proposetradebutton, #canceltradebutton").hide();
@@ -1205,7 +1282,11 @@ function Trade(initiator, recipient, money, property, communityChestJailCard, ch
 
 var player = [];
 var playersGame = [];
-var pcount;
+var pcount = 2;
+var auctionEnabled = true;
+var pendingAuction = -1;
+var freeParkingTaxes = true;
+var freeParkingPot = 0;
 var turn = 0, doublecount = 0;
 // Overwrite an array with numbers from one to the array's length in a random order.
 Array.prototype.randomize = function(length) {
@@ -1262,6 +1343,7 @@ function addAlert(alertText) {
 }
 
 function popup(HTML, action, option) {
+	$(document).off("keydown.popup");
 	document.getElementById("popuptext").innerHTML = HTML;
 	//document.getElementById("popup").style.width = "300px";
 	//document.getElementById("popup").style.top = "0px";
@@ -1290,27 +1372,45 @@ function popup(HTML, action, option) {
 
 	// Ok
 	} else if (option !== "blank") {
-		$("#popuptext").append("<div><input type='button' value='OK' id='popupclose' /></div>");
-		$("#popupclose").focus();
+		$("#popuptext").append("<div><input type='button' value='OK' id='popupclose' autofocus='autofocus' /></div>");
+		var autoCloseTimer;
+
+		$(document).off("keydown.popup").on("keydown.popup", function(event) {
+			if ((event.key === "Enter" || event.keyCode === 13) && document.getElementById("popupclose")) {
+				event.preventDefault();
+				$("#popupclose").click();
+			}
+		});
 
 		$("#popupclose").on("click", function() {
+			if (autoCloseTimer) {
+				clearInterval(autoCloseTimer);
+			}
+			$(document).off("keydown.popup");
 			$("#popupwrap").hide();
 			$("#popupbackground").fadeOut(400);
 		}).on("click", action);
         
-        if(action !== null) {
-            setTimeout(function() {
-                //console.log(action);
-                $("#popupclose").click();
-            }, 1000);
+		if (typeof player !== "undefined" && player[turn] && !player[turn].human) {
+			var secondsRemaining = 3;
+			$("#popupclose").val("OK (" + secondsRemaining + ")");
+			autoCloseTimer = setInterval(function() {
+				secondsRemaining--;
+				if (!document.getElementById("popupclose")) {
+					clearInterval(autoCloseTimer);
+				} else if (secondsRemaining <= 0) {
+					$("#popupclose").click();
+				} else {
+					$("#popupclose").val("OK (" + secondsRemaining + ")");
+				}
+			}, 1000);
         }
 
 	}
 
-	// Show using animation.
-	//$("#popupbackground").fadeIn(400, function() {
-	//	$("#popupwrap").show();
-	//});
+	$("#popupbackground").fadeIn(400);
+	$("#popupwrap").show();
+	$("#popupclose").focus();
 
 }
 
@@ -1411,7 +1511,6 @@ function updateMoney() {
 		document.getElementById("p" + i + "money").innerHTML = p_i.money;
 		document.getElementById("p" + i + "moneyname").innerHTML = p_i.name;
 	}
-	// show("moneybarrow9"); // Don't remove this line or make the first for-loop stop when i <= 8, because this affects how the table is displayed.
 
 	if (document.getElementById("landed").innerHTML === "") {
 		$("#landed").hide();
@@ -1623,8 +1722,8 @@ function updateOption() {
 	document.getElementById("mortgagebutton").disabled = false;
 
 	if (sq.mortgage) {
-		document.getElementById("mortgagebutton").value = "Unmortgage ($" + Math.round(sq.price * 0.6) + ")";
-		document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + Math.round(sq.price * 0.6) + ".";
+		document.getElementById("mortgagebutton").value = "Unmortgage ($" + Math.round(sq.price * 0.55) + ")";
+		document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + Math.round(sq.price * 0.55) + ".";
 		$("#buyhousebutton").hide();
 		$("#sellhousebutton").hide();
 
@@ -1656,14 +1755,6 @@ function updateOption() {
 
 			var maxhouse = 0;
 			var minhouse = 5;
-
-			for (var j = 0; j < max; j++) {
-
-				if (square[currentSquare.group[j]].house > 0) {
-					allGroupUninproved = false;
-					break;
-				}
-			}
 
 			var max = sq.group.length;
 			for (var i = 0; i < max; i++) {
@@ -1753,9 +1844,13 @@ function chanceCommunityChest() {
 			communityChestCards.deck.splice(communityChestCards.index, 1);
 		}
 
-		popup("<img src='images/community_chest_icon.png' style='height: 50px; width: 53px; float: left; margin: 8px 8px 8px 0px;' /><div style='font-weight: bold; font-size: 16px; '>Community Chest:</div><div style='text-align: justify;'>" + communityChestCards[communityChestIndex].text + "</div>", function() {
+		if (p.human) {
+			popup("<img src='images/community_chest_icon.png' style='height: 50px; width: 53px; float: left; margin: 8px 8px 0px 0px;' /><div style='font-weight: bold; font-size: 16px; '>Community Chest:</div><div style='text-align: justify;'>" + communityChestCards[communityChestIndex].text + "</div>", function() {
+				communityChestAction(communityChestIndex);
+			});
+		} else {
 			communityChestAction(communityChestIndex);
-		});
+		}
 
 		communityChestCards.index++;
 
@@ -1772,9 +1867,13 @@ function chanceCommunityChest() {
 			chanceCards.deck.splice(chanceCards.index, 1);
 		}
 
-		popup("<img src='images/chance_icon.png' style='height: 50px; width: 26px; float: left; margin: 8px 8px 8px 0px;' /><div style='font-weight: bold; font-size: 16px; '>Chance:</div><div style='text-align: justify;'>" + chanceCards[chanceIndex].text + "</div>", function() {
+		if (p.human) {
+			popup("<img src='images/chance_icon.png' style='height: 50px; width: 26px; float: left; margin: 8px 8px 0px 0px;' /><div style='font-weight: bold; font-size: 16px; '>Chance:</div><div style='text-align: justify;'>" + chanceCards[chanceIndex].text + "</div>", function() {
+				chanceAction(chanceIndex);
+			});
+		} else {
 			chanceAction(chanceIndex);
-		});
+		}
 
 		chanceCards.index++;
 
@@ -1840,12 +1939,41 @@ function addamount(amount, cause) {
 	addAlert(p.name + " received $" + amount + " from " + cause + ".");
 }
 
+function addTaxToFreeParking(amount) {
+	freeParkingPot += amount;
+	updateFreeParkingDisplay();
+	addAlert(player[turn].name + " added $" + amount + " to Free Parking.");
+}
+
+function updateFreeParkingDisplay() {
+	var potDisplay = document.getElementById("freeparkingpot");
+	if (!potDisplay) {
+		return;
+	}
+
+	potDisplay.textContent = freeParkingTaxes ? "Pot: $" + freeParkingPot : "";
+	potDisplay.style.display = freeParkingTaxes ? "block" : "none";
+}
+
+function collectFreeParking() {
+	var p = player[turn];
+	if (freeParkingPot > 0) {
+		p.money += freeParkingPot;
+		addAlert(p.name + " collected $" + freeParkingPot + " from Free Parking.");
+		freeParkingPot = 0;
+		updateFreeParkingDisplay();
+	}
+}
+
 function subtractamount(amount, cause) {
 	var p = player[turn];
 
 	p.pay(amount, 0);
-
-	addAlert(p.name + " lost $" + amount + " from " + cause + ".");
+	if (freeParkingTaxes) {
+		addTaxToFreeParking(amount);
+	} else {
+		addAlert(p.name + " lost $" + amount + " from " + cause + ".");
+	}
 }
 
 function gotojail() {
@@ -1993,8 +2121,9 @@ function streetrepairs(houseprice, hotelprice) {
 	if (cost > 0) {
 		p.pay(cost, 0);
 
-		// If function was called by Community Chest.
-		if (houseprice === 40) {
+		if (freeParkingTaxes) {
+			addTaxToFreeParking(cost);
+		} else if (houseprice === 40) {
 			addAlert(p.name + " lost $" + cost + " to Community Chest.");
 		} else {
 			addAlert(p.name + " lost $" + cost + " to Chance.");
@@ -2070,10 +2199,18 @@ function buyHouse(index) {
 	var p = player[sq.owner];
 	var houseSum = 0;
 	var hotelSum = 0;
-    
+	var group = sq.group || [];
+
     if(sq.mortgage || sq.hotel === 1) {
         return false;
     }
+
+	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
+		var groupSquare = square[group[groupIndex]];
+		if (groupSquare && groupSquare.house < sq.house) {
+			return false;
+		}
+	}
 
 	if (p.money - sq.houseprice < 0) {
 		if (sq.house == 4) {
@@ -2141,77 +2278,111 @@ function sellHouse(index) {
 	updateMoney();
 }
 
-function showStats() {
-	var HTML, sq, p;
-	var mortgagetext,
-	housetext;
-	var write;
-	HTML = "<table align='center'><tr>";
+function getPlayerPersonality(p) {
+	if (!p || p.human || !p.AI) {
+		return null;
+	}
+	if (p.AI.profile && p.AI.profile.name) {
+		return p.AI.profile.name;
+	}
+	if (p.AI.personality) {
+		return p.AI.personality;
+	}
+	if (typeof p.AI.profile === "string") {
+		return p.AI.profile;
+	}
+	return null;
+}
 
-	for (var x = 1; x <= pcount; x++) {
-		write = false;
-		p = player[x];
-		if (x == 5) {
-			HTML += "</tr><tr>";
+function getPlayerStatsHTML(playerIndex, showPersonality) {
+	var p = player[playerIndex];
+	var HTML = "<div class='statsplayername'>" + p.name + "</div>";
+	if (showPersonality) {
+		var personality = getPlayerPersonality(p);
+		if (personality) {
+			HTML += "<div class='statsplayerprofile' data-personality='" + personality + "' data-profile='" + personality + "'>Personality: " + personality + "</div>";
 		}
-		HTML += "<td class='statscell' id='statscell" + x + "' style='border: 2px solid " + p.color + "' ><div class='statsplayername'>" + p.name + "</div>";
+	}
+	var write = false;
 
-		for (var i = 0; i < 40; i++) {
-			sq = square[i];
+	for (var i = 0; i < 40; i++) {
+		var sq = square[i];
 
-			if (sq.owner == x) {
-				mortgagetext = "",
-				housetext = "";
+		if (sq.owner === playerIndex) {
+			var mortgagetext = sq.mortgage ? "title='Mortgaged' style='color: grey;'" : "";
+			var housetext = "";
 
-				if (sq.mortgage) {
-					mortgagetext = "title='Mortgaged' style='color: grey;'";
-				}
-
-				if (!write) {
-					write = true;
-					HTML += "<table>";
-				}
-
-				if (sq.house == 5) {
-					housetext += "<span style='float: right; font-weight: bold;'>1&nbsp;x&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' style='float: none;' /></span>";
-				} else if (sq.house > 0 && sq.house < 5) {
-					housetext += "<span style='float: right; font-weight: bold;'>" + sq.house + "&nbsp;x&nbsp;<img src='images/house.png' alt='' title='House' class='house' style='float: none;' /></span>";
-				}
-
-				HTML += "<tr><td class='statscellcolor' style='background: " + sq.color + ";";
-
-				if (sq.groupNumber == 1 || sq.groupNumber == 2) {
-					HTML += " border: 1px solid grey;";
-				}
-
-				HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + sq.name + housetext + "</td></tr>";
-			}
-		}
-
-		if (p.communityChestJailCard) {
 			if (!write) {
 				write = true;
 				HTML += "<table>";
 			}
-			HTML += "<tr><td class='statscellcolor'></td><td class='statscellname'>Get Out of Jail Free Card</td></tr>";
 
+			if (sq.house === 5) {
+				housetext = "<span style='float: right; font-weight: bold;'>1&nbsp;x&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' style='float: none;' /></span>";
+			} else if (sq.house > 0 && sq.house < 5) {
+				housetext = "<span style='float: right; font-weight: bold;'>" + sq.house + "&nbsp;x&nbsp;<img src='images/house.png' alt='' title='House' class='house' style='float: none;' /></span>";
+			}
+
+			HTML += "<tr><td class='statscellcolor' style='background: " + sq.color + ";";
+			if (sq.groupNumber === 1 || sq.groupNumber === 2) {
+				HTML += " border: 1px solid grey;";
+			}
+			HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + sq.name + housetext + "</td></tr>";
+		}
+	}
+
+	if (p.communityChestJailCard || p.chanceJailCard) {
+		if (!write) {
+			write = true;
+			HTML += "<table>";
+		}
+		if (p.communityChestJailCard) {
+			HTML += "<tr><td class='statscellcolor'></td><td class='statscellname'>Get Out of Jail Free Card</td></tr>";
 		}
 		if (p.chanceJailCard) {
-			if (!write) {
-				write = true;
-				HTML += "<table>";
-			}
 			HTML += "<tr><td class='statscellcolor'></td><td class='statscellname'>Get Out of Jail Free Card</td></tr>";
-
 		}
+	}
 
-		if (!write) {
-			HTML += p.name + " dosen't have any properties.";
-		} else {
-			HTML += "</table>";
+	return write ? HTML + "</table>" : HTML + p.name + " dosen't have any properties.";
+}
+
+function showAuctionPlayerStats(playerIndex, event) {
+	var tooltip = document.getElementById("auctionplayerstats");
+	if (!tooltip) {
+		tooltip = document.createElement("div");
+		tooltip.id = "auctionplayerstats";
+		document.body.appendChild(tooltip);
+	}
+	tooltip.innerHTML = getPlayerStatsHTML(playerIndex, false);
+	tooltip.style.borderColor = player[playerIndex].color;
+	tooltip.style.display = "block";
+	positionAuctionPlayerStats(event);
+}
+
+function positionAuctionPlayerStats(event) {
+	var tooltip = document.getElementById("auctionplayerstats");
+	if (tooltip && event) {
+		tooltip.style.left = (event.clientX + 12) + "px";
+		tooltip.style.top = (event.clientY + 12) + "px";
+	}
+}
+
+function hideAuctionPlayerStats() {
+	var tooltip = document.getElementById("auctionplayerstats");
+	if (tooltip) {
+		tooltip.style.display = "none";
+	}
+}
+
+function showStats() {
+	var HTML = "<table align='center'><tr>";
+
+	for (var x = 1; x <= pcount; x++) {
+		if (x === 5) {
+			HTML += "</tr><tr>";
 		}
-
-		HTML += "</td>";
+		HTML += "<td class='statscell' id='statscell" + x + "' style='border: 2px solid " + player[x].color + "' >" + getPlayerStatsHTML(x, true) + "</td>";
 	}
 	HTML += "</tr></table><div id='titledeed'></div>";
 
@@ -2279,6 +2450,9 @@ function buy() {
 		p.pay(cost, 0);
 
 		property.owner = turn;
+		pendingAuction = -1;
+		document.getElementById("nextbutton").value = "End turn";
+		document.getElementById("nextbutton").title = "End turn and advance to the next player.";
 		updateMoney();
 		addAlert(p.name + " bought " + property.name + " for " + property.pricetext + ".");
 
@@ -2300,7 +2474,7 @@ function mortgage(index) {
 	}
 
 	var mortgagePrice = Math.round(sq.price * 0.5);
-	var unmortgagePrice = Math.round(sq.price * 0.6);
+	var unmortgagePrice = Math.round(sq.price * 0.55);
 
 	sq.mortgage = true;
 	p.money += mortgagePrice;
@@ -2319,7 +2493,7 @@ function mortgage(index) {
 function unmortgage(index) {
 	var sq = square[index];
 	var p = player[sq.owner];
-	var unmortgagePrice = Math.round(sq.price * 0.6);
+	var unmortgagePrice = Math.round(sq.price * 0.55);
 	var mortgagePrice = Math.round(sq.price * 0.5);
 
 	if (unmortgagePrice > p.money || !sq.mortgage) {
@@ -2359,13 +2533,19 @@ function land(increasedRent) {
 
 			if (p.AI.buyProperty(p.position)) {
 				buy();
+			} else if (auctionEnabled) {
+				pendingAuction = p.position;
 			}
 		} else {
-			document.getElementById("landed").innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover='showdeed(" + p.position + ");' onmouseout='hidedeed();' class='statscellcolor'>" + s.name + "</a>.<input type='button' onclick='buy();' value='Buy ($" + s.price + ")' title='Buy " + s.name + " for " + s.pricetext + ".'/></div>";
+			document.getElementById("landed").innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover='showdeed(" + p.position + ");' onmouseout='hidedeed();' class='statscellcolor'>" + s.name + "</a>.<input type='button' id='buypropertybutton' onclick='buy();' value='Buy ($" + s.price + ")' title='Buy " + s.name + " for " + s.pricetext + ".'/></div>";
+			if (auctionEnabled) {
+				pendingAuction = p.position;
+				document.getElementById("nextbutton").value = "Auction property";
+				document.getElementById("nextbutton").title = "Send the declined property to auction and advance the turn.";
+			}
 		}
 
 
-		//game.addPropertyToAuctionQueue(p.position);
 	}
 
 	// Collect rent
@@ -2461,6 +2641,11 @@ function land(increasedRent) {
 		luxurytax();
 	}
 
+	// Free Parking
+	if (p.position === 20) {
+		collectFreeParking();
+	}
+
 	updateMoney();
 	updatePosition();
 	updateOwned();
@@ -2553,7 +2738,6 @@ function roll() {
 
 				if (p.human) {
 					popup("<p>You must pay the $50 fine.</p>", function() {
-						payFifty();
 						payfifty();
 						player[turn].position=10 + die1 + die2;
 						land();
@@ -2668,7 +2852,12 @@ function play() {
 }
 
 function setup() {
-	pcount = parseInt(document.getElementById("playernumber").value, 10);
+	auctionEnabled = document.getElementById("auctionenabled").checked;
+	freeParkingTaxes = document.getElementById("freeparkingtaxes").checked;
+	freeParkingPot = 0;
+	updateFreeParkingDisplay();
+	pendingAuction = -1;
+	ensureUniqueHumanNames();
     playersGame = [];
     
     const els = document.querySelectorAll('.mortgaged');
@@ -2699,6 +2888,16 @@ function setup() {
 			p.human = false;
 			p.AI = new AITest3(p, generateParameters());
             playersGame.push(player[playerArray[i - 1]]);
+		} else if (document.getElementById("player" + i + "ai").value === "4"){
+			p.human = false;
+			var profileSelection = document.getElementById("player" + i + "aiProfile");
+			var profileName = profileSelection ? profileSelection.value : "Random";
+			p.AI = new StrategicAI(p, profileName === "Random" ? StrategicAI.getRandomProfile() : { name: profileName });
+		}
+
+		if (!p.human) {
+			var colorName = p.color.charAt(0).toUpperCase() + p.color.slice(1);
+			p.name = colorName + " Bot";
 		}
 	}
 
@@ -2759,14 +2958,184 @@ function getCheckedProperty() {
 	// updateOption();
 // }
 
-function playernumber_onchange() {
-	pcount = parseInt(document.getElementById("playernumber").value, 10);
+function updateAIProfileVisibility() {
+	var aiSelects = document.querySelectorAll("[id$='ai']");
+	for (var i = 0; i < aiSelects.length; i++) {
+		var aiSelect = aiSelects[i];
+		var playerId = aiSelect.id.replace("ai", "");
+		var profileSelect = document.getElementById(playerId + "aiProfile");
+		var nameInput = document.getElementById(playerId + "name");
+		var isHuman = aiSelect.value === "0";
+		var wasHuman = aiSelect.dataset.previousValue === "0";
 
+		if (isHuman && !wasHuman) {
+			nameInput.value = getNextHumanName(parseInt(playerId.replace("player", ""), 10));
+		}
+		if (!isHuman) {
+			nameInput.value = "Bot";
+		}
+		nameInput.disabled = !isHuman;
+		nameInput.style.display = isHuman ? "inline-block" : "none";
+		profileSelect.style.display = aiSelect.value === "4" ? "inline-block" : "none";
+		aiSelect.dataset.previousValue = aiSelect.value;
+	}
+}
+
+function getNextHumanName(excludeIndex) {
+	var usedNames = {};
+	for (var i = 1; i <= pcount; i++) {
+		if (i === excludeIndex) continue;
+		var type = document.getElementById("player" + i + "ai");
+		var name = document.getElementById("player" + i + "name");
+		if (type && name && type.value === "0") usedNames[name.value.trim().toLowerCase()] = true;
+	}
+	if (!usedNames.human) return "Human";
+	var suffix = 2;
+	while (usedNames[("human " + suffix).toLowerCase()]) suffix++;
+	return "Human " + suffix;
+}
+
+function ensureUniqueHumanNames() {
+	var usedNames = {};
+	for (var i = 1; i <= pcount; i++) {
+		var type = document.getElementById("player" + i + "ai");
+		var name = document.getElementById("player" + i + "name");
+		if (!type || !name || type.value !== "0") continue;
+		var requestedName = name.value.trim() || "Human";
+		var uniqueName = requestedName;
+		var suffix = 2;
+		while (usedNames[uniqueName.toLowerCase()]) uniqueName = requestedName + " " + suffix++;
+		name.value = uniqueName;
+		usedNames[uniqueName.toLowerCase()] = true;
+	}
+}
+
+function createPlayerInputs() {
+	var colors = ["yellow", "blue", "red", "lime", "green", "aqua", "orange", "purple"];
+	var colorOptions = ["aqua", "black", "blue", "fuchsia", "gray", "green", "lime", "maroon", "navy", "olive", "orange", "purple", "red", "silver", "teal", "yellow"];
+	var profiles = ["Random", "Aggressive", "Balanced", "Defensive", "Opportunist"];
+	var container = document.getElementById("player-inputs");
+
+	for (var i = 1; i <= 8; i++) {
+		var row = document.createElement("div");
+		row.id = "player" + i + "input";
+		row.className = "player-input";
+
+		var label = document.createElement("span");
+		label.className = "player-label";
+		label.textContent = "Player " + i + ":";
+		row.appendChild(label);
+
+		var ai = document.createElement("select");
+		ai.id = "player" + i + "ai";
+		ai.title = "Choose whether this player is controlled by a human or by the computer.";
+		[["0", "Human"], ["3", "AI 3"], ["4", "Strategic AI"]].forEach(function(optionData) {
+			var option = new Option(optionData[1], optionData[0]);
+			if ((i === 1 && optionData[0] === "0") || (i > 1 && optionData[0] === "4")) {
+				option.selected = true;
+			}
+			ai.appendChild(option);
+		});
+		ai.addEventListener("change", updateAIProfileVisibility);
+		row.appendChild(ai);
+
+		var color = document.createElement("select");
+		color.id = "player" + i + "color";
+		color.title = "Player color";
+		colorOptions.forEach(function(colorName) {
+			var option = new Option(colorName.charAt(0).toUpperCase() + colorName.slice(1), colorName);
+			option.style.color = colorName;
+			if (colorName === colors[i - 1]) {
+				option.selected = true;
+			}
+			color.appendChild(option);
+		});
+		row.appendChild(color);
+
+		var name = document.createElement("input");
+		name.type = "text";
+		name.id = "player" + i + "name";
+		name.title = "Player name";
+		name.maxLength = 16;
+		name.value = i === 1 ? "Human" : "Bot";
+		name.disabled = i !== 1;
+		row.appendChild(name);
+
+		var profile = document.createElement("select");
+		profile.id = "player" + i + "aiProfile";
+		profile.title = "Choose the personality for the Strategic AI.";
+		profiles.forEach(function(profileName) {
+			var option = new Option(profileName, profileName);
+			if (profileName === "Random") {
+				option.selected = true;
+			}
+			profile.appendChild(option);
+		});
+		row.appendChild(profile);
+		container.appendChild(row);
+	}
+}
+
+function playernumber_onchange() {
 	$(".player-input").hide();
 
 	for (var i = 1; i <= pcount; i++) {
 		$("#player" + i + "input").show();
 	}
+
+	$(".remove-player-button").remove();
+	if (pcount > 2) {
+		for (var i = 1; i <= pcount; i++) {
+			$("#player" + i + "input").append("<input type='button' class='remove-player-button' value='Remove' onclick='removePlayer(" + i + ");' title='Remove this player.' />");
+		}
+	}
+
+	var addPlayerButton = document.getElementById("addplayerbutton");
+	if (addPlayerButton) {
+		addPlayerButton.style.display = pcount >= 8 ? "none" : "inline-block";
+	}
+
+	updateAIProfileVisibility();
+}
+
+function addPlayer() {
+	if (pcount >= 8) {
+		return;
+	}
+
+	pcount++;
+	var name = document.getElementById("player" + pcount + "name");
+	name.value = getNextHumanName(pcount);
+	name.disabled = false;
+	document.getElementById("player" + pcount + "ai").value = "0";
+	document.getElementById("player" + pcount + "aiProfile").value = "Random";
+	playernumber_onchange();
+}
+
+function removePlayer(index) {
+	if (pcount <= 2 || index < 1 || index > pcount) {
+		return;
+	}
+
+	if (index !== pcount) {
+		var removedName = document.getElementById("player" + index + "name");
+		var lastName = document.getElementById("player" + pcount + "name");
+		var removedColor = document.getElementById("player" + index + "color");
+		var lastColor = document.getElementById("player" + pcount + "color");
+		var removedAI = document.getElementById("player" + index + "ai");
+		var lastAI = document.getElementById("player" + pcount + "ai");
+		var removedProfile = document.getElementById("player" + index + "aiProfile");
+		var lastProfile = document.getElementById("player" + pcount + "aiProfile");
+
+		removedName.value = lastName.value;
+		removedName.disabled = lastName.disabled;
+		removedColor.value = lastColor.value;
+		removedAI.value = lastAI.value;
+		removedProfile.value = lastProfile.value;
+	}
+
+	pcount--;
+	playernumber_onchange();
 }
 
 function menuitem_onmouseover(element) {
@@ -2834,7 +3203,7 @@ function onloadBehavior() {
 	chanceCards.deck.sort(function() {return Math.random() - 0.5;});
 	communityChestCards.deck.sort(function() {return Math.random() - 0.5;});
 
-	$("#playernumber").on("change", playernumber_onchange);
+	createPlayerInputs();
 	playernumber_onchange();
 
 	$("#nextbutton").click(game.next);
@@ -2882,6 +3251,12 @@ function onloadBehavior() {
 		currentCellName.className = "cell-name";
 		currentCellName.textContent = s.name;
 
+		if (i === 20) {
+			var currentCellPot = currentCellAnchor.appendChild(document.createElement("div"));
+			currentCellPot.id = "freeparkingpot";
+			currentCellPot.className = "free-parking-pot";
+		}
+
 		if (square[i].groupNumber) {
 			currentCellOwner = currentCellAnchor.appendChild(document.createElement("div"));
 			currentCellOwner.id = "cell" + i + "owner";
@@ -2892,6 +3267,7 @@ function onloadBehavior() {
 		document.getElementById("enlarge" + i + "name").textContent = s.name;
 		document.getElementById("enlarge" + i + "price").textContent = s.pricetext;
 	}
+	updateFreeParkingDisplay();
 
 
 	// Add images to enlarges.
@@ -3011,11 +3387,11 @@ function onloadBehavior() {
 		var s = square[checkedProperty];
 
 		if (s.mortgage) {
-			if (player[s.owner].money < Math.round(s.price * 0.6)) {
-				popup("<p>You need $" + (Math.round(s.price * 0.6) - player[s.owner].money) + " more to unmortgage " + s.name + ".</p>");
+			if (player[s.owner].money < Math.round(s.price * 0.55)) {
+				popup("<p>You need $" + (Math.round(s.price * 0.55) - player[s.owner].money) + " more to unmortgage " + s.name + ".</p>");
 
 			} else {
-				popup("<p>" + player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.6) + "?</p>", function() {
+				popup("<p>" + player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.55) + "?</p>", function() {
 					unmortgage(checkedProperty);
 				}, "Yes/No");
 			}

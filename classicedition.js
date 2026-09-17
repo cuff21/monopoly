@@ -55,14 +55,22 @@ function transtext() {
 }
 
 function luxurytax() {
-	addAlert(player[turn].name + " paid $100 for landing on Luxury Tax.");
+	if (freeParkingTaxes) {
+		addTaxToFreeParking(100);
+	} else {
+		addAlert(player[turn].name + " paid $100 for landing on Luxury Tax.");
+	}
 	player[turn].pay(100, 0);
 
 	$("#landed").show().text("You landed on Luxury Tax. Pay $100.");
 }
 
 function citytax() {
-	addAlert(player[turn].name + " paid $200 for landing on City Tax.");
+	if (freeParkingTaxes) {
+		addTaxToFreeParking(200);
+	} else {
+		addAlert(player[turn].name + " paid $200 for landing on City Tax.");
+	}
 	player[turn].pay(200, 0);
 
 	$("#landed").show().text("You landed on City Tax. Pay $200.");
