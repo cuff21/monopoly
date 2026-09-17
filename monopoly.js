@@ -1411,7 +1411,6 @@ function updateMoney() {
 		document.getElementById("p" + i + "money").innerHTML = p_i.money;
 		document.getElementById("p" + i + "moneyname").innerHTML = p_i.name;
 	}
-	// show("moneybarrow9"); // Don't remove this line or make the first for-loop stop when i <= 8, because this affects how the table is displayed.
 
 	if (document.getElementById("landed").innerHTML === "") {
 		$("#landed").hide();
@@ -1623,8 +1622,8 @@ function updateOption() {
 	document.getElementById("mortgagebutton").disabled = false;
 
 	if (sq.mortgage) {
-		document.getElementById("mortgagebutton").value = "Unmortgage ($" + Math.round(sq.price * 0.6) + ")";
-		document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + Math.round(sq.price * 0.6) + ".";
+		document.getElementById("mortgagebutton").value = "Unmortgage ($" + Math.round(sq.price * 0.55) + ")";
+		document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + Math.round(sq.price * 0.55) + ".";
 		$("#buyhousebutton").hide();
 		$("#sellhousebutton").hide();
 
@@ -2300,7 +2299,7 @@ function mortgage(index) {
 	}
 
 	var mortgagePrice = Math.round(sq.price * 0.5);
-	var unmortgagePrice = Math.round(sq.price * 0.6);
+	var unmortgagePrice = Math.round(sq.price * 0.55);
 
 	sq.mortgage = true;
 	p.money += mortgagePrice;
@@ -2319,7 +2318,7 @@ function mortgage(index) {
 function unmortgage(index) {
 	var sq = square[index];
 	var p = player[sq.owner];
-	var unmortgagePrice = Math.round(sq.price * 0.6);
+	var unmortgagePrice = Math.round(sq.price * 0.55);
 	var mortgagePrice = Math.round(sq.price * 0.5);
 
 	if (unmortgagePrice > p.money || !sq.mortgage) {
@@ -2553,7 +2552,6 @@ function roll() {
 
 				if (p.human) {
 					popup("<p>You must pay the $50 fine.</p>", function() {
-						payFifty();
 						payfifty();
 						player[turn].position=10 + die1 + die2;
 						land();
@@ -3011,11 +3009,11 @@ function onloadBehavior() {
 		var s = square[checkedProperty];
 
 		if (s.mortgage) {
-			if (player[s.owner].money < Math.round(s.price * 0.6)) {
-				popup("<p>You need $" + (Math.round(s.price * 0.6) - player[s.owner].money) + " more to unmortgage " + s.name + ".</p>");
+			if (player[s.owner].money < Math.round(s.price * 0.55)) {
+				popup("<p>You need $" + (Math.round(s.price * 0.55) - player[s.owner].money) + " more to unmortgage " + s.name + ".</p>");
 
 			} else {
-				popup("<p>" + player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.6) + "?</p>", function() {
+				popup("<p>" + player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.55) + "?</p>", function() {
 					unmortgage(checkedProperty);
 				}, "Yes/No");
 			}
