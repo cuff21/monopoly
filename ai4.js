@@ -271,7 +271,7 @@
         }
         this.constructor.count++;
 
-        p.name = "Strategic AI Player " + this.constructor.count + " (" + this.profile.name + ")";
+        p.name = "Strategic AI Player " + this.constructor.count;
         this.personality = this.profile.name;
 
         this.recordTrade = function(opponent, direction, value) {

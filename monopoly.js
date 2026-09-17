@@ -2278,9 +2278,31 @@ function sellHouse(index) {
 	updateMoney();
 }
 
-function getPlayerStatsHTML(playerIndex) {
+function getPlayerPersonality(p) {
+	if (!p || p.human || !p.AI) {
+		return null;
+	}
+	if (p.AI.profile && p.AI.profile.name) {
+		return p.AI.profile.name;
+	}
+	if (p.AI.personality) {
+		return p.AI.personality;
+	}
+	if (typeof p.AI.profile === "string") {
+		return p.AI.profile;
+	}
+	return null;
+}
+
+function getPlayerStatsHTML(playerIndex, showPersonality) {
 	var p = player[playerIndex];
 	var HTML = "<div class='statsplayername'>" + p.name + "</div>";
+	if (showPersonality) {
+		var personality = getPlayerPersonality(p);
+		if (personality) {
+			HTML += "<div class='statsplayerprofile' data-personality='" + personality + "' data-profile='" + personality + "'>Personality: " + personality + "</div>";
+		}
+	}
 	var write = false;
 
 	for (var i = 0; i < 40; i++) {
@@ -2332,7 +2354,7 @@ function showAuctionPlayerStats(playerIndex, event) {
 		tooltip.id = "auctionplayerstats";
 		document.body.appendChild(tooltip);
 	}
-	tooltip.innerHTML = getPlayerStatsHTML(playerIndex);
+	tooltip.innerHTML = getPlayerStatsHTML(playerIndex, false);
 	tooltip.style.borderColor = player[playerIndex].color;
 	tooltip.style.display = "block";
 	positionAuctionPlayerStats(event);
@@ -2360,7 +2382,7 @@ function showStats() {
 		if (x === 5) {
 			HTML += "</tr><tr>";
 		}
-		HTML += "<td class='statscell' id='statscell" + x + "' style='border: 2px solid " + player[x].color + "' >" + getPlayerStatsHTML(x) + "</td>";
+		HTML += "<td class='statscell' id='statscell" + x + "' style='border: 2px solid " + player[x].color + "' >" + getPlayerStatsHTML(x, true) + "</td>";
 	}
 	HTML += "</tr></table><div id='titledeed'></div>";
 
@@ -2875,8 +2897,7 @@ function setup() {
 
 		if (!p.human) {
 			var colorName = p.color.charAt(0).toUpperCase() + p.color.slice(1);
-			var botPersonality = document.getElementById("player" + i + "ai").value === "4" ? profileName : "AI 3";
-			p.name = "Bot " + colorName + " (" + botPersonality + ")";
+			p.name = colorName + " Bot";
 		}
 	}
 
