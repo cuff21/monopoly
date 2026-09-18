@@ -28,6 +28,7 @@
 			var winnerName = player[1].name;
 			updateMoney();
 			$("#board, #control, #moneybar").show();
+			setTokenOverlaysVisible(true);
 			$("#refresh").hide();
 			$("#nextbutton").val("Restart Game").prop("title", "Return to the settings screen and start another game.").off("click").on("click", restartGame);
 

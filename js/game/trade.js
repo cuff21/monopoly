@@ -464,6 +464,7 @@
 		}
 
 		$("#board").hide();
+		setTokenOverlaysVisible(false);
 		$("#control").hide();
 		$("#trade").show();
 		$("#proposetradebutton").show();
@@ -488,6 +489,7 @@
 
 	Game.prototype.cancelTrade = function() {
 		$("#board").show();
+		setTokenOverlaysVisible(true);
 		$("#control").show();
 		$("#trade").hide();
 
@@ -608,6 +610,7 @@
 		updateMoney();
 
 		$("#board").show();
+		setTokenOverlaysVisible(true);
 		$("#control").show();
 		$("#trade").hide();
 
@@ -709,6 +712,7 @@
 					popup("<p>" + recipient.name + " has proposed a counteroffer.</p>", function() {
 						writeTrade(tradeResponse);
 						$("#board").hide();
+						setTokenOverlaysVisible(false);
 						$("#control").hide();
 						$("#trade").show();
 						$("#proposetradebutton").hide();

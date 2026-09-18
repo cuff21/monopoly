@@ -26,6 +26,7 @@ Array.prototype.randomize = function(length) {
 function onloadBehavior() {
 	game = new Game();
 	redefineGame();
+	resetTokenOverlays();
 
 	for (var i = 0; i <= 8; i++) {
 		player[i] = new Player("", "");

@@ -1126,8 +1126,8 @@ td {
 }
 
 .token-overlay {
-	position: fixed;
-	z-index: 19;
+	position: absolute;
+	z-index: 5;
 	pointer-events: none;
 }
 

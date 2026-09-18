@@ -52,6 +52,7 @@ function setup() {
 	}
 
 	$("#board, #moneybar").show();
+	setTokenOverlaysVisible(true);
 	$("#setup").hide();
 	$("#refresh").hide();
 
@@ -98,6 +99,7 @@ function restartGame() {
 	}
 	playernumber_onchange();
 	$("#board, #control, #moneybar, #refresh").hide();
+	setTokenOverlaysVisible(false);
 	$("#setup").show();
 }
 

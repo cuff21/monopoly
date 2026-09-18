@@ -152,11 +152,39 @@ function getOrCreateOverlay(i) {
 	return overlay;
 }
 
+// Overlays live in document.body (not #board) so their fixed positioning isn't affected by the
+// board's layout, but that also means hiding #board doesn't hide them - callers that hide/show the
+// board must pair it with this.
+function setTokenOverlaysVisible(visible) {
+	for (var i = 0; i < playerOverlays.length; i++) {
+		if (playerOverlays[i]) {
+			playerOverlays[i].style.display = visible ? "" : "none";
+		}
+	}
+}
+
+// Removes all overlay tokens from the DOM, e.g. when starting a new game so a previous game's
+// tokens don't linger on the setup screen.
+function resetTokenOverlays() {
+	for (var i = 0; i < playerOverlays.length; i++) {
+		if (playerOverlays[i] && playerOverlays[i].parentNode) {
+			playerOverlays[i].parentNode.removeChild(playerOverlays[i]);
+		}
+	}
+	playerOverlays.length = 0;
+}
+
 // The real token div is hidden (see .player-token in styles.css) but still rendered by the normal
 // instant-render logic, so its rect already accounts for any multi-token stacking within a cell.
 function getRealTokenRect(i) {
 	var el = document.getElementById("playertoken" + i);
 	return el ? el.getBoundingClientRect() : null;
+}
+
+// getBoundingClientRect() is viewport-relative, but overlays are positioned absolutely in the
+// document (so they scroll with the page), so every rect needs the current scroll offset added.
+function toPagePosition(rect) {
+	return { left: rect.left + window.scrollX, top: rect.top + window.scrollY };
 }
 
 // Instantly moves an overlay to match its real token, with no transition/animation. Falls back to
@@ -169,9 +197,10 @@ function snapOverlay(i) {
 	}
 
 	var overlay = getOrCreateOverlay(i);
+	var pos = toPagePosition(rect);
 	overlay.style.transition = "none";
-	overlay.style.left = rect.left + "px";
-	overlay.style.top = rect.top + "px";
+	overlay.style.left = pos.left + "px";
+	overlay.style.top = pos.top + "px";
 	void overlay.offsetHeight;
 }
 
@@ -210,9 +239,10 @@ async function animateOverlayMove(i, fromIndex, toIndex, direction) {
 
 	// Snap to the true departure point first; the overlay may not have been positioned yet
 	// (e.g. its very first animated move), which previously left it stranded off in a corner.
+	var currentPos = toPagePosition(currentRect);
 	overlay.style.transition = "none";
-	overlay.style.left = currentRect.left + "px";
-	overlay.style.top = currentRect.top + "px";
+	overlay.style.left = currentPos.left + "px";
+	overlay.style.top = currentPos.top + "px";
 	void overlay.offsetHeight;
 
 	for (var w = 0; w < waypoints.length; w++) {
@@ -227,7 +257,8 @@ async function animateOverlayMove(i, fromIndex, toIndex, direction) {
 
 		var sameRow = Math.round(currentRect.top) === Math.round(waypointCellRect.top);
 		var prop = sameRow ? "left" : "top";
-		var value = (sameRow ? nextRect.left : nextRect.top) + "px";
+		var nextPos = toPagePosition(nextRect);
+		var value = (sameRow ? nextPos.left : nextPos.top) + "px";
 
 		await slideOverlay(overlay, { [prop]: value }, 125);
 		currentRect = waypointCellRect;
@@ -241,8 +272,9 @@ async function animateOverlayMove(i, fromIndex, toIndex, direction) {
 async function animateOverlayToJail(i) {
 	var overlay = getOrCreateOverlay(i);
 	var target = getRealTokenRect(i) || document.getElementById("jail").getBoundingClientRect();
+	var pos = toPagePosition(target);
 
-	await slideOverlay(overlay, { left: target.left + "px", top: target.top + "px" }, 250);
+	await slideOverlay(overlay, { left: pos.left + "px", top: pos.top + "px" }, 250);
 
 	// Brief pause so the arrival is visible even during a quick string of doubles.
 	await sleep(100);

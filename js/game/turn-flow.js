@@ -645,6 +645,7 @@ async function play() {
 
 	$("#landed, #option, #manage").hide();
 	$("#board, #control, #moneybar, #viewstats, #buy").show();
+	setTokenOverlaysVisible(true);
 
 	doublecount = 0;
 	document.getElementById("nextbutton").value = "Roll Dice";
