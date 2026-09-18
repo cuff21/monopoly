@@ -5,15 +5,41 @@
 	<meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
 
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
-	<script type="text/javascript" src="classicedition.js"></script>
-	<!-- Comment out the previous line and uncomment the next one to enable the New York City Edition -->
-	<!-- <script type="text/javascript" src="newyorkcityedition.js"></script> -->
-    <script type="text/javascript" src="parametergen.js"></script>
-	<script type="text/javascript" src="ai.js"></script>
-	<script type="text/javascript" src="ai2.js"></script>
-	<script type="text/javascript" src="ai3.js"></script>
-	<script type="text/javascript" src="ai4.js"></script>
-	<script type="text/javascript" src="monopoly.js"></script>
+
+	<!-- Core data model -->
+	<script type="text/javascript" src="js/core/board.js"></script>
+	<script type="text/javascript" src="js/core/state.js"></script>
+	<script type="text/javascript" src="js/core/rent.js"></script>
+
+	<!-- Editions register themselves with js/editions/edition-registry.js; comment out the
+	     previous edition's script and uncomment another one to switch editions. -->
+	<script type="text/javascript" src="js/editions/edition-registry.js"></script>
+	<script type="text/javascript" src="js/editions/classic.js"></script>
+	<!-- <script type="text/javascript" src="js/editions/newyorkcity.js"></script> -->
+
+	<!-- AI players -->
+	<script type="text/javascript" src="js/ai/parameter-generator.js"></script>
+	<script type="text/javascript" src="js/ai/ai-basic-1.js"></script>
+	<script type="text/javascript" src="js/ai/ai-basic-2.js"></script>
+	<script type="text/javascript" src="js/ai/ai-genetic.js"></script>
+	<script type="text/javascript" src="js/ai/ai-strategic.js"></script>
+
+	<!-- Game logic -->
+	<script type="text/javascript" src="js/game/game-core.js"></script>
+	<script type="text/javascript" src="js/game/auction.js"></script>
+	<script type="text/javascript" src="js/game/trade.js"></script>
+	<script type="text/javascript" src="js/game/bankruptcy.js"></script>
+	<script type="text/javascript" src="js/game/turn-flow.js"></script>
+	<script type="text/javascript" src="js/game/property-actions.js"></script>
+
+	<!-- UI rendering -->
+	<script type="text/javascript" src="js/ui/render-board.js"></script>
+	<script type="text/javascript" src="js/ui/render-panels.js"></script>
+	<script type="text/javascript" src="js/ui/popup.js"></script>
+	<script type="text/javascript" src="js/ui/setup-screen.js"></script>
+
+	<!-- Bootstrapping -->
+	<script type="text/javascript" src="js/main.js"></script>
 	<link rel="stylesheet" type="text/css" href="styles.css" />
 </head>
 

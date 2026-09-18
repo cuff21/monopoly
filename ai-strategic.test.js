@@ -12,7 +12,7 @@ if (!globalThis.square) {
   ];
 }
 
-const { StrategicAI, PROFILE_LIBRARY } = require('./ai4.js');
+const { StrategicAI, PROFILE_LIBRARY } = require('./js/ai/ai-strategic.js');
 
 const player = { index: 1, money: 2000, name: 'Tester', human: false };
 const ai = new StrategicAI(player);

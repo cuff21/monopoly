@@ -713,7 +713,6 @@
         };
 
         this.payDebt = function() {
-            var houseCandidates = [];
             var mortgageCandidates = [];
 
             for (var i = 0; i < 40; i++) {
@@ -721,21 +720,38 @@
                 if (s.owner !== p.index) {
                     continue;
                 }
-                if (s.house > 0 || s.hotel === 1) {
-                    var saleValue = s.hotel === 1 ? s.houseprice * 0.5 : s.houseprice * 0.5;
-                    var rentLoss = expectedRentValue(i, p.index) / Math.max(1, saleValue);
-                    houseCandidates.push({ index: i, cost: saleValue, rentLoss: rentLoss });
-                } else if (!s.mortgage) {
+                if (s.house === 0 && s.hotel !== 1 && !s.mortgage) {
                     mortgageCandidates.push({ index: i, value: propertyAssetValue(i, p.index) });
                 }
             }
 
-            houseCandidates.sort(function(left, right) {
-                return left.rentLoss - right.rentLoss;
-            });
-            for (var house = 0; house < houseCandidates.length && p.money < 0; house++) {
-                if (typeof sellHouse === 'function') {
-                    sellHouse(houseCandidates[house].index);
+            // Houses must be sold evenly across a color-group, so re-scan for the
+            // cheapest-to-lose eligible property (one with the most houses in its
+            // group) after every sale, since selling can change which are eligible.
+            var sold = true;
+            while (p.money < 0 && sold) {
+                sold = false;
+                var houseCandidates = [];
+
+                for (var j = 0; j < 40; j++) {
+                    var candidate = square[j];
+                    if (candidate.owner === p.index && (candidate.house > 0 || candidate.hotel === 1) && canSellHouse(j)) {
+                        var saleValue = candidate.houseprice * 0.5;
+                        var rentLoss = expectedRentValue(j, p.index) / Math.max(1, saleValue);
+                        houseCandidates.push({ index: j, rentLoss: rentLoss });
+                    }
+                }
+
+                if (houseCandidates.length === 0) {
+                    break;
+                }
+
+                houseCandidates.sort(function(left, right) {
+                    return left.rentLoss - right.rentLoss;
+                });
+
+                if (typeof sellHouse === 'function' && sellHouse(houseCandidates[0].index)) {
+                    sold = true;
                 }
             }
 
