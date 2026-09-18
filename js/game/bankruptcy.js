@@ -3,11 +3,23 @@
 	Game.prototype.eliminatePlayer = function() {
 		var p = player[turn];
 
+		// Remove the bankrupt player's on-board token now, before indices shift below - otherwise
+		// it gets recolored and animated into whichever remaining player takes over its slot.
+		if (playerOverlays[p.index] && playerOverlays[p.index].parentNode) {
+			playerOverlays[p.index].parentNode.removeChild(playerOverlays[p.index]);
+		}
+
 		for (var i = p.index; i < pcount; i++) {
 			player[i] = player[i + 1];
 			player[i].index = i;
-
+			playerOverlays[i] = playerOverlays[i + 1];
+			lastKnownPosition[i] = lastKnownPosition[i + 1];
+			lastKnownJail[i] = lastKnownJail[i + 1];
 		}
+
+		playerOverlays.length = pcount;
+		lastKnownPosition.length = pcount;
+		lastKnownJail.length = pcount;
 
 		for (var i = 0; i < 40; i++) {
 			if (square[i].owner >= p.index) {
@@ -85,7 +97,7 @@
 				}
 
 				// Player already paid interest, so they can unmortgage for the mortgage price.
-				HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname'><a href='javascript:void(0);' title='Unmortgage " + sq.name + " for $" + price + ".' onclick='if (" + price + " <= player[" + p.creditor + "].money) {player[" + p.creditor + "].pay(" + price + ", 0); square[" + i + "].mortgage = false; addAlert(\"" + player[p.creditor].name + " unmortgaged " + sq.name + " for $" + price + ".\");} this.parentElement.parentElement.style.display = \"none\";'>Unmortgage " + sq.name + " ($" + price + ")</a></td></tr>";
+				HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname'><a href='javascript:void(0);' title='Unmortgage " + sq.name + " for $" + price + ".' onclick='game.confirmBankruptcyUnmortgage(" + i + "); this.parentElement.parentElement.style.display = \"none\";'>Unmortgage " + sq.name + " ($" + price + ")</a></td></tr>";
 
 				sq.owner = p.creditor;
 
@@ -95,6 +107,25 @@
 		HTML += "</table>";
 
 		popup(HTML, game.eliminatePlayer, 0);
+	};
+
+	// Handles a single unmortgage click from the bankruptcyUnmortgage() popup, keeping the board's
+	// mortgaged styling and money/owned panels in sync (the property was already transferred).
+	Game.prototype.confirmBankruptcyUnmortgage = function(index) {
+		var sq = square[index];
+		var creditor = player[sq.owner];
+		var price = Math.round(sq.price * 0.5);
+
+		if (price > creditor.money) {
+			return;
+		}
+
+		creditor.pay(price, 0);
+		sq.mortgage = false;
+		addAlert(creditor.name + " unmortgaged " + sq.name + " for $" + price + ".");
+		updateOwned();
+		updateMoney();
+		document.querySelector('#cell' + index).classList.remove('mortgaged');
 	};
 
 	Game.prototype.botBankruptcyUnmortgage = function(bankruptPlayer, creditor) {
@@ -113,6 +144,7 @@
 				creditor.pay(unmortgagePrice, 0);
 				property.mortgage = false;
 				addAlert(creditor.name + " unmortgaged " + property.name + " for $" + unmortgagePrice + ".", creditor.index);
+				document.querySelector('#cell' + i).classList.remove('mortgaged');
 			}
 		}
 	};
@@ -153,6 +185,7 @@
 					}
 					sq.hotel = 0;
 					sq.house = 0;
+					document.getElementById("cell" + i + "owner").innerHTML = "";
 				}
 
 				if (p.creditor === 0) {

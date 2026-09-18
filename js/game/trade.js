@@ -705,9 +705,23 @@
 				return;
 			} else if (tradeResponse instanceof Trade) {
 				if (!initiator.human) {
-					addAlert(recipient.name + " proposed a counteroffer to " + initiator.name + ", which was declined.", recipient.index, initiator.index);
-					popup("<p>" + recipient.name + " proposed a counteroffer, but " + initiator.name + " declined it.</p>");
-					game.next();
+					var reversedCounterProperty = [];
+					for (var counterIndex = 0; counterIndex < 40; counterIndex++) {
+						reversedCounterProperty[counterIndex] = -tradeResponse.getProperty(counterIndex);
+					}
+
+					// Let the original initiator's AI evaluate the counteroffer instead of auto-declining it.
+					var reversedCounter = new Trade(recipient, initiator, -tradeResponse.getMoney(), reversedCounterProperty, -tradeResponse.getCommunityChestJailCard(), -tradeResponse.getChanceJailCard());
+					var counterResponse = initiator.AI.acceptTrade(reversedCounter);
+
+					if (counterResponse === true) {
+						popup("<p>" + formatTradeResult(recipient.name + " countered and traded with " + initiator.name, tradeResponse) + "</p>");
+						this.acceptTrade(tradeResponse);
+					} else {
+						addAlert(recipient.name + " proposed a counteroffer to " + initiator.name + ", which was declined.", recipient.index, initiator.index);
+						popup("<p>" + recipient.name + " proposed a counteroffer, but " + initiator.name + " declined it.</p>");
+						game.next();
+					}
 				} else {
 					popup("<p>" + recipient.name + " has proposed a counteroffer.</p>", function() {
 						writeTrade(tradeResponse);

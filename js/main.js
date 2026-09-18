@@ -291,7 +291,7 @@ function onloadBehavior() {
 
 	});
 
-	$("#buyhousebutton").on("click", function() {
+	$("#buyhousebutton").off("click").on("click", function() {
 		var checkedProperty = getCheckedProperty();
 		var s = square[checkedProperty];
 		var p = player[s.owner];

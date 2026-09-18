@@ -416,7 +416,8 @@
             }
 
             var counterMoney = money + Math.ceil((threshold - tradeValue) * 0.6);
-            var maximumCounterMoney = Math.max(0, initiator.money - this.getLiquidityFloor());
+            // Bound by a generic buffer on the initiator's cash, not this AI's own floor or the initiator's internals.
+            var maximumCounterMoney = Math.max(0, initiator.money - Math.max(120, initiator.money * 0.1));
             counterMoney = clamp(counterMoney, money, maximumCounterMoney);
             if (tradeValue >= counterThreshold && counterMoney > money && initiator.money >= counterMoney && typeof Trade !== 'undefined') {
                 this.recordTrade(initiator, 'countered', tradeValue);
