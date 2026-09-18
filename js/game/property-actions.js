@@ -133,9 +133,30 @@ function buyHouse(index) {
 	}
 }
 
+// Houses/hotels must be sold evenly across a color-group, same as buying.
+function canSellHouse(index) {
+	var sq = square[index];
+	if (sq.house === 0 && sq.hotel === 0) {
+		return false;
+	}
+
+	var group = sq.group || [];
+	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
+		var groupSquare = square[group[groupIndex]];
+		if (groupSquare && groupSquare.house > sq.house) {
+			return false;
+		}
+	}
+	return true;
+}
+
 function sellHouse(index) {
 	sq = square[index];
 	p = player[sq.owner];
+
+	if (!canSellHouse(index)) {
+		return false;
+	}
 
 	if (sq.hotel === 1) {
 		sq.hotel = 0;
@@ -152,4 +173,5 @@ function sellHouse(index) {
 	}
 	updateOwned();
 	updateMoney();
+	return true;
 }

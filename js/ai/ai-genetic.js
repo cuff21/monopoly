@@ -335,21 +335,27 @@ function AITest3(p, params) {
 	// Return: void: don't return anything, just call the functions mortgage()/sellhouse()
 	this.payDebt = function() {
 		console.log("payDebt");
-        for (var i = 39; i >= 0; i--) {
-			s = square[i];
+        // Houses must be sold evenly across a color-group, so re-scan for an
+        // eligible property (one with the most houses in its group) each time.
+        var sold = true;
+        while (p.money < 0 && sold) {
+            sold = false;
+            for (var i = 39; i >= 0; i--) {
+                s = square[i];
 
-			if (s.owner === p.index && !s.mortgage && s.house > 0) {
-                for(let j = s.house; j > 0; j--) {
+                if (s.owner === p.index && !s.mortgage && s.house > 0 && canSellHouse(i)) {
                     sellHouse(i);
                     console.log("Selling house on " + s.name);
-                    
-                    if (p.money >= 0) {
-                        return;
-                    }
+                    sold = true;
+                    break;
                 }
-			}
-		}
-        
+            }
+        }
+
+        if (p.money >= 0) {
+            return;
+        }
+
 		for (var i = 39; i >= 0; i--) {
 			s = square[i];
 
