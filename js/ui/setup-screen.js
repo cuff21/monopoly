@@ -87,6 +87,7 @@ function restartGame() {
 	pcount = lastGamePlayerCount;
 	$("#popupwrap, #popupbackground").hide();
 	document.getElementById("player-inputs").innerHTML = "";
+	$("#alert").empty();
 	onloadBehavior();
 
 	document.getElementById("auctionenabled").checked = settings.auctionEnabled;
