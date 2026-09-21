@@ -270,7 +270,7 @@ function onloadBehavior() {
 		drag = true;
 	};
 
-	$("#mortgagebutton").click(function() {
+	$("#mortgagebutton").off("click").on("click", function() {
 		var checkedProperty = getCheckedProperty();
 		var s = square[checkedProperty];
 
@@ -328,7 +328,7 @@ function onloadBehavior() {
 
 	});
 
-	$("#sellhousebutton").click(function() { sellHouse(getCheckedProperty()); });
+	$("#sellhousebutton").off("click").on("click", function() { sellHouse(getCheckedProperty()); });
 
 	$("#viewstats").on("click", showStats);
 	$("#statsclose, #statsbackground").on("click", function() {
