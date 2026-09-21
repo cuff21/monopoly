@@ -265,7 +265,7 @@ async function animateOverlayMove(i, fromIndex, toIndex, direction) {
 	}
 
 	// Brief pause so the arrival is visible even during a quick string of doubles.
-	await sleep(100);
+	await sleep(250);
 }
 
 // Being sent to jail slides the token directly, in a straight line, instead of following the board path.
@@ -277,5 +277,5 @@ async function animateOverlayToJail(i) {
 	await slideOverlay(overlay, { left: pos.left + "px", top: pos.top + "px" }, 250);
 
 	// Brief pause so the arrival is visible even during a quick string of doubles.
-	await sleep(100);
+	await sleep(250);
 }
