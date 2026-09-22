@@ -97,7 +97,8 @@
 				}
 
 				// Player already paid interest, so they can unmortgage for the mortgage price.
-				HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname'><a href='javascript:void(0);' title='Unmortgage " + sq.name + " for $" + price + ".' onclick='game.confirmBankruptcyUnmortgage(" + i + "); this.parentElement.parentElement.style.display = \"none\";'>Unmortgage " + sq.name + " ($" + price + ")</a></td></tr>";
+				// Only hide the row if the unmortgage actually succeeded (i.e. they could afford it).
+				HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname'><a href='javascript:void(0);' title='Unmortgage " + sq.name + " for $" + price + ".' onclick='if (game.confirmBankruptcyUnmortgage(" + i + ")) { this.parentElement.parentElement.style.display = \"none\"; }'>Unmortgage " + sq.name + " ($" + price + ")</a></td></tr>";
 
 				sq.owner = p.creditor;
 
@@ -117,7 +118,8 @@
 		var price = Math.round(sq.price * 0.5);
 
 		if (price > creditor.money) {
-			return;
+			addAlert(creditor.name + " does not have enough money to unmortgage " + sq.name + ".");
+			return false;
 		}
 
 		creditor.pay(price, 0);
@@ -126,6 +128,7 @@
 		updateOwned();
 		updateMoney();
 		document.querySelector('#cell' + index).classList.remove('mortgaged');
+		return true;
 	};
 
 	Game.prototype.botBankruptcyUnmortgage = function(bankruptPlayer, creditor) {
