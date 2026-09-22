@@ -32,6 +32,14 @@ function mortgage(index) {
 		return false;
 	}
 
+	var group = sq.group || [];
+	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
+		var groupSquare = square[group[groupIndex]];
+		if (groupSquare && (groupSquare.house > 0 || groupSquare.hotel > 0)) {
+			return false;
+		}
+	}
+
 	var mortgagePrice = Math.round(sq.price * 0.5);
 	var unmortgagePrice = Math.round(sq.price * 0.55);
 
@@ -83,7 +91,7 @@ function buyHouse(index) {
 
 	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
 		var groupSquare = square[group[groupIndex]];
-		if (groupSquare && groupSquare.house < sq.house) {
+		if (groupSquare && (groupSquare.house < sq.house || groupSquare.mortgage)) {
 			return false;
 		}
 	}

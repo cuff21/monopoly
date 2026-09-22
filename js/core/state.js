@@ -41,6 +41,7 @@ function Player(name, color) {
 // chanceJailCard: integer, 1 means offered, -1 means requested, 0 means neither
 function Trade(initiator, recipient, money, property, communityChestJailCard, chanceJailCard) {
 	// For each property and get out of jail free cards, 1 means offered, -1 means requested, 0 means neither.
+	money = Math.round(money);
 
 	this.getInitiator = function() {
 		return initiator;
