@@ -7,6 +7,7 @@
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 
 	<!-- Core data model -->
+	<script type="text/javascript" src="js/core/storage.js"></script>
 	<script type="text/javascript" src="js/core/board.js"></script>
 	<script type="text/javascript" src="js/core/state.js"></script>
 	<script type="text/javascript" src="js/core/rent.js"></script>
@@ -23,6 +24,19 @@
 	<script type="text/javascript" src="js/ai/ai-basic-2.js"></script>
 	<script type="text/javascript" src="js/ai/ai-genetic.js"></script>
 	<script type="text/javascript" src="js/ai/ai-strategic.js"></script>
+
+	<!-- Gen5 AI: split into dependency-ordered modules sharing the window.AIGen5 namespace -->
+	<script type="text/javascript" src="js/ai/ai-gen5/probability.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/game-analytics.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/valuation.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/liquidity.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/building.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/debt-manager.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/trade-memory.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/trade-evaluation.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/auction.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/parameter-generator.js"></script>
+	<script type="text/javascript" src="js/ai/ai-gen5/index.js"></script>
 
 	<!-- Game logic -->
 	<script type="text/javascript" src="js/game/game-core.js"></script>

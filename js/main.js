@@ -295,8 +295,6 @@ function onloadBehavior() {
 		var checkedProperty = getCheckedProperty();
 		var s = square[checkedProperty];
 		var p = player[s.owner];
-		var houseSum = 0;
-		var hotelSum = 0;
 
 		if (p.money < s.houseprice) {
 			if (s.house === 4) {
@@ -308,18 +306,12 @@ function onloadBehavior() {
 			}
 		}
 
-		for (var i = 0; i < 40; i++) {
-			if (square[i].hotel === 1) {
-				hotelSum++;
-			} else {
-				houseSum += square[i].house;
-			}
-		}
+		var supply = getHouseHotelSupply();
 
-		if (s.house < 4 && houseSum >= 32) {
+		if (s.house < 4 && supply.housesAvailable <= 0) {
 			popup("<p>All 32 houses are owned. You must wait until one becomes available.</p>");
 			return;
-		} else if (s.house === 4 && hotelSum >= 12) {
+		} else if (s.house === 4 && supply.hotelsAvailable <= 0) {
 			popup("<p>All 12 hotels are owned. You must wait until one becomes available.</p>");
 			return;
 		}
@@ -327,6 +319,7 @@ function onloadBehavior() {
 		buyHouse(checkedProperty);
 
 	});
+
 
 	$("#sellhousebutton").off("click").on("click", function() { sellHouse(getCheckedProperty()); });
 

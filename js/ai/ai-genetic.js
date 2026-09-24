@@ -1,6 +1,8 @@
 // The purpose of this AI is not to be a relistic opponant, but to give an example of a vaild AI player.
 function AITest3(p, params) {
     this.params = params;
+    // Discriminates this AI's entries within the shared localStorage gameHistory pool.
+    this.aiType = 'genetic3';
 	// When purchasing, what is the least amount of money the user should keep?
 	this.purchaseThreshold = params.purchaseThreshold;
 	// When buying at home, what is the least amount of money the user should keep?

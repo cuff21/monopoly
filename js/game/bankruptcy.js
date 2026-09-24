@@ -44,27 +44,22 @@
 			$("#refresh").hide();
 			$("#nextbutton").val("Restart Game").prop("title", "Return to the settings screen and start another game.").off("click").on("click", restartGame);
 
+			// Record the game results for AI player genetic evolution.
 			const gameResults = [];
 			console.log(playersGame);
 			for(let p of playersGame) {
 				if(p.AI.params) {
 					const pl = {
 						params: p.AI.params,
+						// Legacy entries with no aiType predate this tag and are all genetic3.
+						type: p.AI.aiType || 'genetic3',
 						result: (p === player[1]) ? "win" : "lose"
 					};
 					gameResults.push(pl);
 				}
 			}
 			console.log(gameResults);
-			if(localStorage.getItem('gameHistory')) {
-				let gameHistory = JSON.parse(localStorage.getItem('gameHistory'));
-				gameHistory.push(gameResults);
-				localStorage.setItem('gameHistory', JSON.stringify(gameHistory));
-			} else {
-				let gameHistory = [];
-				gameHistory.push(gameResults);
-				localStorage.setItem('gameHistory', JSON.stringify(gameHistory));
-			}
+			GameStorage.appendResults(gameResults);
 
 			popup("<div class='winner-popup-title'>" + winnerName + " Wins!!</div>", null, 5);
 		} else {

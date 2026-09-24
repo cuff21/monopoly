@@ -78,11 +78,25 @@ function unmortgage(index) {
 	return true;
 }
 
+// Shared house/hotel bank (32 houses, 12 hotels total) that buyHouse enforces for every caller, human or bot.
+function getHouseHotelSupply() {
+	var housesInPlay = 0;
+	var hotelsInPlay = 0;
+
+	for (var i = 0; i < 40; i++) {
+		if (square[i].hotel === 1) {
+			hotelsInPlay++;
+		} else {
+			housesInPlay += square[i].house;
+		}
+	}
+
+	return { housesAvailable: 32 - housesInPlay, hotelsAvailable: 12 - hotelsInPlay };
+}
+
 function buyHouse(index) {
 	var sq = square[index];
 	var p = player[sq.owner];
-	var houseSum = 0;
-	var hotelSum = 0;
 	var group = sq.group || [];
 
     if(sq.mortgage || sq.hotel === 1) {
@@ -97,39 +111,29 @@ function buyHouse(index) {
 	}
 
 	if (p.money - sq.houseprice < 0) {
-		if (sq.house == 4) {
-			return false;
-		} else {
-			return false;
-		}
+		return false;
 
 	} else {
-		for (var i = 0; i < 40; i++) {
-			if (square[i].hotel === 1) {
-				hotelSum++;
-			} else {
-				houseSum += square[i].house;
-			}
-		}
+		var supply = getHouseHotelSupply();
 
 		if (sq.house < 4) {
-			if (houseSum >= 32) {
+			if (supply.housesAvailable <= 0) {
 				return false;
 
 			} else {
 				sq.house++;
-				console.log(p.name + " placed a house on " + sq.name + ".");
+				addAlert(p.name + " bought a house on " + sq.name + ".");
 				document.getElementById("cell" + index + "owner").innerHTML += '<div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
 			}
 
 		} else {
-			if (hotelSum >= 12) {
-				return;
+			if (supply.hotelsAvailable <= 0) {
+				return false;
 
 			} else {
 				sq.house = 5;
 				sq.hotel = 1;
-				console.log(p.name + " placed a hotel on " + sq.name + ".");
+					addAlert(p.name + " bought a hotel on " + sq.name + ".");
 				document.getElementById("cell" + index + "owner").innerHTML = '<div class="cell-position cell-hotel" title="house" style="display: inline-block;background-color: red; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
 			}
 		}
@@ -138,6 +142,8 @@ function buyHouse(index) {
 
 		updateOwned();
 		updateMoney();
+
+		return true;
 	}
 }
 

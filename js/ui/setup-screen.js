@@ -1,5 +1,11 @@
 // Player setup screen: building player config rows and starting/restarting a game.
 
+// Common interface for AI types that support named profiles: each entry exposes PROFILE_LIBRARY and getRandomProfile().
+var PROFILED_AI_TYPES = {
+	"4": StrategicAI,
+	"5": Gen5AI
+};
+
 function setup() {
 	lastGamePlayerCount = pcount;
 	auctionEnabled = document.getElementById("auctionenabled").checked;
@@ -38,11 +44,12 @@ function setup() {
 			p.human = false;
 			p.AI = new AITest3(p, generateParameters());
             playersGame.push(player[playerArray[i - 1]]);
-		} else if (document.getElementById("player" + i + "ai").value === "4"){
+		} else if (PROFILED_AI_TYPES[document.getElementById("player" + i + "ai").value]) {
 			p.human = false;
+			var AIType = PROFILED_AI_TYPES[document.getElementById("player" + i + "ai").value];
 			var profileSelection = document.getElementById("player" + i + "aiProfile");
 			var profileName = profileSelection ? profileSelection.value : "Random";
-			p.AI = new StrategicAI(p, profileName === "Random" ? StrategicAI.getRandomProfile() : { name: profileName });
+			p.AI = new AIType(p, profileName === "Random" ? AIType.getRandomProfile() : { name: profileName });
 		}
 
 		if (!p.human) {
@@ -96,12 +103,26 @@ function restartGame() {
 		document.getElementById("player" + i + "ai").value = settings.players[i - 1].ai;
 		document.getElementById("player" + i + "color").value = settings.players[i - 1].color;
 		document.getElementById("player" + i + "name").value = settings.players[i - 1].name;
+		updateAIProfileVisibility();
 		document.getElementById("player" + i + "aiProfile").value = settings.players[i - 1].profile;
 	}
 	playernumber_onchange();
 	$("#board, #control, #moneybar, #refresh").hide();
 	setTokenOverlaysVisible(false);
 	$("#setup").show();
+}
+
+function populateProfileOptions(profileSelect, AIType) {
+	var previousValue = profileSelect.value;
+	profileSelect.innerHTML = "";
+	var profileNames = ["Random"].concat(AIType.PROFILE_LIBRARY.map(function(profile) { return profile.name; }));
+	profileNames.forEach(function(profileName) {
+		var option = new Option(profileName, profileName);
+		if (profileName === previousValue || (previousValue === "" && profileName === "Random")) {
+			option.selected = true;
+		}
+		profileSelect.appendChild(option);
+	});
 }
 
 function updateAIProfileVisibility() {
@@ -113,6 +134,7 @@ function updateAIProfileVisibility() {
 		var nameInput = document.getElementById(playerId + "name");
 		var isHuman = aiSelect.value === "0";
 		var wasHuman = aiSelect.dataset.previousValue === "0";
+		var AIType = PROFILED_AI_TYPES[aiSelect.value];
 
 		if (isHuman && !wasHuman) {
 			nameInput.value = getNextHumanName(parseInt(playerId.replace("player", ""), 10));
@@ -122,7 +144,10 @@ function updateAIProfileVisibility() {
 		}
 		nameInput.disabled = !isHuman;
 		nameInput.style.display = isHuman ? "inline-block" : "none";
-		profileSelect.style.display = aiSelect.value === "4" ? "inline-block" : "none";
+		if (AIType) {
+			populateProfileOptions(profileSelect, AIType);
+		}
+		profileSelect.style.display = AIType ? "inline-block" : "none";
 		aiSelect.dataset.previousValue = aiSelect.value;
 	}
 }
@@ -159,7 +184,6 @@ function ensureUniqueHumanNames() {
 function createPlayerInputs() {
 	var colors = ["yellow", "blue", "red", "lime", "green", "aqua", "orange", "purple"];
 	var colorOptions = ["aqua", "black", "blue", "fuchsia", "gray", "green", "lime", "maroon", "navy", "olive", "orange", "purple", "red", "silver", "teal", "yellow"];
-	var profiles = ["Random", "Aggressive", "Balanced", "Defensive", "Opportunist"];
 	var container = document.getElementById("player-inputs");
 
 	for (var i = 1; i <= 8; i++) {
@@ -175,9 +199,9 @@ function createPlayerInputs() {
 		var ai = document.createElement("select");
 		ai.id = "player" + i + "ai";
 		ai.title = "Choose whether this player is controlled by a human or by the computer.";
-		[["0", "Human"], ["3", "AI 3"], ["4", "Strategic AI"]].forEach(function(optionData) {
+		[["0", "Human"], ["3", "AI 3"], ["4", "Strategic AI"], ["5", "Gen5 AI"]].forEach(function(optionData) {
 			var option = new Option(optionData[1], optionData[0]);
-			if ((i === 1 && optionData[0] === "0") || (i > 1 && optionData[0] === "4")) {
+			if ((i === 1 && optionData[0] === "0") || (i > 1 && optionData[0] === "5")) {
 				option.selected = true;
 			}
 			ai.appendChild(option);
@@ -209,14 +233,7 @@ function createPlayerInputs() {
 
 		var profile = document.createElement("select");
 		profile.id = "player" + i + "aiProfile";
-		profile.title = "Choose the personality for the Strategic AI.";
-		profiles.forEach(function(profileName) {
-			var option = new Option(profileName, profileName);
-			if (profileName === "Random") {
-				option.selected = true;
-			}
-			profile.appendChild(option);
-		});
+		profile.title = "Choose the AI's personality profile.";
 		row.appendChild(profile);
 		container.appendChild(row);
 	}
@@ -251,9 +268,9 @@ function addPlayer() {
 
 	pcount++;
 	var name = document.getElementById("player" + pcount + "name");
-	name.value = getNextHumanName(pcount);
-	name.disabled = false;
-	document.getElementById("player" + pcount + "ai").value = "0";
+	name.value = "Bot";
+	name.disabled = true;
+	document.getElementById("player" + pcount + "ai").value = "5";
 	document.getElementById("player" + pcount + "aiProfile").value = "Random";
 	playernumber_onchange();
 }

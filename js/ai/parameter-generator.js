@@ -1,9 +1,12 @@
 function importData() {
-    localStorage.setItem('gameHistory', document.querySelector('#textarea').value);
+    const value = document.querySelector('#textarea').value;
+    if (!GameStorage.importHistory(value)) {
+        alert('Import failed: game history must be valid JSON containing an array.');
+    }
 }
 
 function exportData() {
-    document.querySelector('#textarea').value = localStorage.getItem('gameHistory');
+    document.querySelector('#textarea').value = GameStorage.exportHistory();
 }
 
 function generateParameters() {
@@ -22,8 +25,7 @@ function generateParameters() {
         firstBuildingOdds: normal(35, 10),
         lastBuildingOdds: normal(80, 10)
     };
-    const str = localStorage.getItem('gameHistory');
-    const gameHistory = str ? JSON.parse(str) : [];
+    const gameHistory = GameStorage.getHistory();
     // 20% chance of making player from initial parameters
     if(Math.random() < 0.8 && gameHistory.length > 1) {
         let newParamsMeans = {};
@@ -35,11 +37,16 @@ function generateParameters() {
         
         let winningPlayers = [];
         for(const game of gameHistory) {
+            if (!Array.isArray(game)) continue;
             for(const player of game) {
-                if(player.result === 'win') {
+                // Only draw from this AI type's own history so gen5's separate param schema can't pollute these means.
+                if(player && player.params && player.result === 'win' && (player.type || 'genetic3') === 'genetic3') {
                     winningPlayers.push(player.params);
                 }
             }
+        }
+        if (winningPlayers.length === 0) {
+            return params;
         }
         for(const player of winningPlayers) {
             for(const param in player) {
@@ -85,4 +92,13 @@ function normal(m, sd) {
     while(v === 0) v = Math.random();
     const val = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
     return val * st_d + mean;
+}
+
+// Expose globals explicitly for tests/tooling.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { generateParameters: generateParameters, normal: normal, importData: importData, exportData: exportData };
+}
+if (typeof globalThis !== 'undefined') {
+    globalThis.generateParameters = generateParameters;
+    globalThis.normal = normal;
 }

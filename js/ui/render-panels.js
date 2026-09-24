@@ -245,19 +245,10 @@ function updateOption() {
 		$("#mortgagebutton").hide();
 
 
-		var housesum = 32;
-		var hotelsum = 12;
-
-		for (var i = 0; i < 40; i++) {
-			s = square[i];
-			if (s.hotel == 1)
-				hotelsum--;
-			else
-				housesum -= s.house;
-		}
+		var supply = getHouseHotelSupply();
 
 		$("#buildings").show();
-		document.getElementById("buildings").innerHTML = "<img src='images/house.png' alt='' title='House' class='house' />:&nbsp;" + housesum + "&nbsp;&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' />:&nbsp;" + hotelsum;
+		document.getElementById("buildings").innerHTML = "<img src='images/house.png' alt='' title='House' class='house' />:&nbsp;" + supply.housesAvailable + "&nbsp;&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' />:&nbsp;" + supply.hotelsAvailable;
 
 		return;
 	}

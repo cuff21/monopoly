@@ -797,6 +797,8 @@
         };
     }
 
+    StrategicAI.PROFILE_LIBRARY = PROFILE_LIBRARY;
+
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { StrategicAI: StrategicAI, PROFILE_LIBRARY: PROFILE_LIBRARY };
     }
