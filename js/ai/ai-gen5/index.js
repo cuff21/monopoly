@@ -98,14 +98,33 @@
         };
     }
 
+    function isDefensiveProfile(profile) {
+        if (!profile) {
+            return false;
+        }
+        if (profile.isDefensive) {
+            return true;
+        }
+        if (profile.name && profile.name.toLowerCase() === 'sentinel') {
+            return true;
+        }
+        var risk = profile.riskTolerance !== undefined ? profile.riskTolerance : 0.5;
+        var floor = profile.liquidityFloor !== undefined ? profile.liquidityFloor : 0.12;
+        var block = profile.monopolyBlockWeight !== undefined ? profile.monopolyBlockWeight : 1.0;
+        return risk <= 0.45 || (floor >= 0.18 && block >= 1.25);
+    }
+
+    AIGen5.isDefensiveProfile = isDefensiveProfile;
+
     Gen5AI.getRandomProfile = function() {
         return Object.assign({}, PROFILE_LIBRARY[Math.floor(Math.random() * PROFILE_LIBRARY.length)]);
     };
 
+    Gen5AI.isDefensiveProfile = isDefensiveProfile;
     Gen5AI.PROFILE_LIBRARY = PROFILE_LIBRARY;
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { Gen5AI: Gen5AI, PROFILE_LIBRARY: PROFILE_LIBRARY };
+        module.exports = { Gen5AI: Gen5AI, PROFILE_LIBRARY: PROFILE_LIBRARY, isDefensiveProfile: isDefensiveProfile };
     }
 
     global.Gen5AI = Gen5AI;

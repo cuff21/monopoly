@@ -27,8 +27,9 @@
         if (typeof globalThis.player === 'undefined') {
             return [];
         }
+        var playerLimit = globalThis.pcount && globalThis.pcount > 0 ? Math.min(globalThis.player.length, globalThis.pcount + 1) : globalThis.player.length;
         var active = [];
-        for (var i = 1; i < globalThis.player.length; i++) {
+        for (var i = 1; i < playerLimit; i++) {
             if (isPlayerActive(globalThis.player[i])) {
                 active.push(globalThis.player[i]);
             }

@@ -705,18 +705,39 @@
 				return;
 			} else if (tradeResponse instanceof Trade) {
 				if (!initiator.human) {
-					var reversedCounterProperty = [];
-					for (var counterIndex = 0; counterIndex < 40; counterIndex++) {
-						reversedCounterProperty[counterIndex] = -tradeResponse.getProperty(counterIndex);
+					var currentTradeProposal = tradeResponse;
+					var currentInitiator = recipient;
+					var currentRecipient = initiator;
+					var acceptedFinalTrade = null;
+					var maxRounds = 5;
+
+					for (var round = 0; round < maxRounds; round++) {
+						var reversedCounterProperty = [];
+						for (var counterIndex = 0; counterIndex < 40; counterIndex++) {
+							reversedCounterProperty[counterIndex] = -currentTradeProposal.getProperty(counterIndex);
+						}
+
+						var reversedCounter = new Trade(currentInitiator, currentRecipient, -currentTradeProposal.getMoney(), reversedCounterProperty, -currentTradeProposal.getCommunityChestJailCard(), -currentTradeProposal.getChanceJailCard());
+						var counterResponse = currentRecipient.AI.acceptTrade(reversedCounter);
+
+						if (counterResponse === true) {
+							acceptedFinalTrade = currentTradeProposal;
+							break;
+						} else if (counterResponse instanceof Trade) {
+							// Opponent countered back: swap roles and continue the negotiation
+							currentTradeProposal = counterResponse;
+							var tempPlayer = currentInitiator;
+							currentInitiator = currentRecipient;
+							currentRecipient = tempPlayer;
+						} else {
+							// counterResponse === false: declined
+							break;
+						}
 					}
 
-					// Let the original initiator's AI evaluate the counteroffer instead of auto-declining it.
-					var reversedCounter = new Trade(recipient, initiator, -tradeResponse.getMoney(), reversedCounterProperty, -tradeResponse.getCommunityChestJailCard(), -tradeResponse.getChanceJailCard());
-					var counterResponse = initiator.AI.acceptTrade(reversedCounter);
-
-					if (counterResponse === true) {
-						popup("<p>" + formatTradeResult(recipient.name + " countered and traded with " + initiator.name, tradeResponse) + "</p>");
-						this.acceptTrade(tradeResponse);
+					if (acceptedFinalTrade) {
+						popup("<p>" + formatTradeResult(acceptedFinalTrade.getInitiator().name + " countered and traded with " + acceptedFinalTrade.getRecipient().name, acceptedFinalTrade) + "</p>");
+						this.acceptTrade(acceptedFinalTrade);
 					} else {
 						addAlert(recipient.name + " proposed a counteroffer to " + initiator.name + ", which was declined.", recipient.index, initiator.index);
 						popup("<p>" + recipient.name + " proposed a counteroffer, but " + initiator.name + " declined it.</p>");
