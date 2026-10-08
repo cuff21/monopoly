@@ -100,8 +100,11 @@
 			writeTrade(this, tradeObj);
 			this.proposeTrade();
 		} else {
-			var initiator = player[turn];
-			var recipient = turn === 1 ? player[2] : player[1];
+			var gameState = this.state;
+			var initiator = gameState.player[gameState.turn];
+			var recipient = gameState.player[gameState.turn] === gameState.player[1]
+				? gameState.player[2]
+				: gameState.player[1];
 
 			resetTrade(this, initiator, recipient, true);
 		}
@@ -111,8 +114,9 @@
 	Game.prototype.cancelTrade = function() {
 		if (this.ui) this.ui.setTradePanelVisible(false);
 
-		if (!player[turn].human) {
-			player[turn].AI.alertList = "";
+		var player = this.state.player[this.state.turn];
+		if (!player.human) {
+			player.AI.alertList = "";
 			this.next();
 		}
 
@@ -172,17 +176,18 @@
 		}
 
 		var gameInstance = this;
+		var gameState = this.state;
 		var completeTrade = function() {
 
 		// Exchange properties
 		for (var i = 0; i < 40; i++) {
 
 			if (tradeObj.getProperty(i) === 1) {
-				square[i].owner = recipient.index;
-				if (gameInstance.ui) gameInstance.ui.alert(recipient.name + " received " + square[i].name + " from " + initiator.name + ".", recipient.index, initiator.index);
+				gameState.square[i].owner = recipient.index;
+				if (gameInstance.ui) gameInstance.ui.alert(recipient.name + " received " + gameState.square[i].name + " from " + initiator.name + ".", recipient.index, initiator.index);
 			} else if (tradeObj.getProperty(i) === -1) {
-				square[i].owner = initiator.index;
-				if (gameInstance.ui) gameInstance.ui.alert(initiator.name + " received " + square[i].name + " from " + recipient.name + ".", initiator.index, recipient.index);
+				gameState.square[i].owner = initiator.index;
+				if (gameInstance.ui) gameInstance.ui.alert(initiator.name + " received " + gameState.square[i].name + " from " + recipient.name + ".", initiator.index, recipient.index);
 			}
 
 		}
@@ -228,8 +233,9 @@
 			gameInstance.ui.setTradePanelVisible(false);
 		}
 
-		if (!player[turn].human) {
-			player[turn].AI.alertList = "";
+		var currentPlayer = gameState.player[gameState.turn];
+		if (!currentPlayer.human) {
+			currentPlayer.AI.alertList = "";
 			gameInstance.next();
 		}
 		};

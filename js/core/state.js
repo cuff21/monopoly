@@ -1,8 +1,9 @@
 // Player/Trade data types and accessors for the active Game state.
 
-function Player(name, color) {
+function Player(name, color, game) {
 	this.name = name;
 	this.color = color;
+	this.game = game || null;
 	this.position = 0;
 	this.money = 1500;
 	this.creditor = -1;
@@ -18,8 +19,8 @@ function Player(name, color) {
 		if (amount <= this.money) {
 			this.money -= amount;
 
-			if (typeof game !== 'undefined' && game && game.ui && typeof game.ui.updateMoney === 'function') {
-				game.ui.updateMoney();
+			if (this.game && this.game.ui && typeof this.game.ui.updateMoney === 'function') {
+				this.game.ui.updateMoney();
 			}
 
 			return true;
@@ -27,8 +28,8 @@ function Player(name, color) {
 			this.money -= amount;
 			this.creditor = creditor;
 
-			if (typeof game !== 'undefined' && game && game.ui && typeof game.ui.updateMoney === 'function') {
-				game.ui.updateMoney();
+			if (this.game && this.game.ui && typeof this.game.ui.updateMoney === 'function') {
+				this.game.ui.updateMoney();
 			}
 
 			return false;
@@ -78,51 +79,14 @@ var GameStateContext = _global.GameStateContext;
 if (!GameStateContext && typeof module !== 'undefined' && module.exports) {
 	GameStateContext = require('./game-state-context');
 }
-if (GameStateContext) {
-	GameStateContext.install(_global, {
-		game: _global.game,
-		square: _global.square || [],
-		communityChestCards: _global.communityChestCards || [],
-		chanceCards: _global.chanceCards || [],
-		player: _global.player || [],
-		playersGame: _global.playersGame || [],
-		pcount: typeof _global.pcount !== 'undefined' ? _global.pcount : 2,
-		auctionEnabled: typeof _global.auctionEnabled !== 'undefined' ? _global.auctionEnabled : true,
-		pendingAuction: typeof _global.pendingAuction !== 'undefined' ? _global.pendingAuction : -1,
-		freeParkingTaxes: typeof _global.freeParkingTaxes !== 'undefined' ? _global.freeParkingTaxes : true,
-		freeParkingPot: typeof _global.freeParkingPot !== 'undefined' ? _global.freeParkingPot : 0,
-		turn: typeof _global.turn !== 'undefined' ? _global.turn : 0,
-		doublecount: typeof _global.doublecount !== 'undefined' ? _global.doublecount : 0,
-		lastGamePlayerCount: typeof _global.lastGamePlayerCount !== 'undefined' ? _global.lastGamePlayerCount : 2,
-		lastKnownPosition: _global.lastKnownPosition || [],
-		lastKnownJail: _global.lastKnownJail || [],
-		playerOverlays: _global.playerOverlays || [],
-		nextMoveDirection: typeof _global.nextMoveDirection !== 'undefined' ? _global.nextMoveDirection : 1,
-		boardCorners: _global.boardCorners || [0, 10, 20, 30]
-	});
-}
-
-// Rebuilds `square`, `communityChestCards`, and `chanceCards` from the currently active edition.
-function redefineGame() {
-	var edition = _global.Monopoly && _global.Monopoly.Editions ? _global.Monopoly.Editions.getActive() : null;
-
-	if (edition) {
-		var groups = edition.buildGroups();
-		_global.square = edition.buildSquares(groups);
-		_global.communityChestCards = edition.buildCommunityChestCards();
-		_global.chanceCards = edition.buildChanceCards();
-	}
-}
 
 _global.Player = Player;
 _global.Trade = Trade;
-_global.redefineGame = redefineGame;
 
 if (typeof module !== 'undefined' && module.exports) {
 	module.exports = {
 		Player: Player,
 		Trade: Trade,
-		redefineGame: redefineGame,
 		GameStateContext: GameStateContext
 	};
 }

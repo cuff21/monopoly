@@ -1,13 +1,14 @@
-// The Game singleton's dice/turn-advance nucleus. Auction, trade, and bankruptcy behavior are
+// The Game instance's dice/turn-advance nucleus. Auction, trade, and bankruptcy behavior are
 // mixed in as Game.prototype methods by auction.js, trade.js, and bankruptcy.js (loaded after this
-// file); property-actions.js and turn-flow.js are free functions Game methods call into.
-function Game(ui) {
+// file); property-actions.js and the Game-scoped turn flow supply the remaining methods.
+function Game(ui, state) {
 	var self = this;
 	var die1;
 	var die2;
 	var areDiceRolled = false;
 
 	this.ui = ui || ((typeof UIBridge !== 'undefined') ? UIBridge.createDefaultUI() : null);
+	if (this.ui) this.ui.game = this;
 	this.auctionState = {
 		queue: [],
 		highestBidder: 0,
@@ -18,11 +19,9 @@ function Game(ui) {
 	};
 	this.tradeState = { initiator: null, recipient: null };
 
-	var _g = typeof window !== 'undefined' ? window : globalThis;
-	this.state = typeof GameStateContext !== 'undefined' && GameStateContext
-		? GameStateContext.getCurrentState()
-		: null;
-	_g.game = this;
+	this.state = state || (typeof GameStateContext !== 'undefined' && GameStateContext
+		? GameStateContext.createState()
+		: {});
 
 	this.rollDice = function() {
 		die1 = Math.floor(Math.random() * 6) + 1;
@@ -35,6 +34,7 @@ function Game(ui) {
 	};
 
 	this.next = async function() {
+		var state = self.state;
 		if (self.isOver) {
 			if (typeof self.onGameCompleted === 'function') {
 				self.onGameCompleted();
@@ -44,10 +44,10 @@ function Game(ui) {
 		if (self.ui && typeof self.ui.waitForPopupClose === 'function') {
 			await self.ui.waitForPopupClose();
 		}
-		var p = player[turn];
-		if (pendingAuction !== -1 && auctionEnabled) {
-			self.addPropertyToAuctionQueue(pendingAuction);
-			pendingAuction = -1;
+		var p = state.player[state.turn];
+		if (state.pendingAuction !== -1 && state.auctionEnabled) {
+			self.addPropertyToAuctionQueue(state.pendingAuction);
+			state.pendingAuction = -1;
 		}
 		if (self.auction()) {
 			return;
@@ -59,19 +59,19 @@ function Game(ui) {
 				if (self.ui && self.ui.isHeadless) {
 					self.bankruptcy();
 				} else if (self.ui && typeof self.ui.showMessage === 'function') {
-					self.ui.showMessage(p.name + " is bankrupt. All of its assets will be turned over to " + player[p.creditor].name + ".", self.bankruptcy);
+					self.ui.showMessage(p.name + " is bankrupt. All of its assets will be turned over to " + state.player[p.creditor].name + ".", self.bankruptcy.bind(self));
 				} else {
 					self.bankruptcy();
 				}
-			} else if (areDiceRolled && doublecount === 0) {
-				play();
+			} else if (areDiceRolled && state.doublecount === 0) {
+				if (typeof self.play === 'function') self.play();
 			} else {
-				roll();
+				if (typeof self.roll === 'function') self.roll();
 			}
-		} else if (areDiceRolled && doublecount === 0) {
-			play();
+		} else if (areDiceRolled && state.doublecount === 0) {
+			if (typeof self.play === 'function') self.play();
 		} else {
-			roll();
+			if (typeof self.roll === 'function') self.roll();
 		}
 	};
 

@@ -1,5 +1,9 @@
 // The purpose of this AI is not to be a relistic opponant, but to give an example of a vaild AI player.
 function AITest3(p, params) {
+	var game = p && p.game;
+	var state = game && game.state || {};
+	var square = state.square || [];
+	var player = state.player || [];
     this.params = params;
     // Discriminates this AI's entries within the shared localStorage gameHistory pool.
     this.aiType = 'genetic3';
@@ -151,7 +155,7 @@ function AITest3(p, params) {
 
 				if (s.hotel === 0 && p.money > leastHouseProperty.houseprice + this.housePurchaseThreshold) {
 					console.log("Bought house!");
-					buyHouse(leastHouseProperty.index);
+					if (game && typeof game.buyHouse === 'function') game.buyHouse(leastHouseProperty.index);
 				}
 
 
@@ -163,7 +167,7 @@ function AITest3(p, params) {
 			s = square[i];
 
 			if (s.owner === p.index && s.mortgage && p.money > s.price) {
-				unmortgage(i);
+				if (game && typeof game.unmortgage === 'function') game.unmortgage(i);
 			}
 		}
 
@@ -274,7 +278,8 @@ function AITest3(p, params) {
 						proposedTrade = new Trade(p, player[square[indexOfValueToTrade].owner], differenceInMoneyCosts, property, 0, 0);
 						this.amountOfRejections++;
 
-						game.trade(proposedTrade);
+						if (game && typeof game.trade === 'function') game.trade(proposedTrade);
+						else return false;
 						return true;
 					} else if (this.amountOfRejections >= this.maxAmountOfRejections) {
 						console.log("Too many rejections...");
@@ -295,25 +300,27 @@ function AITest3(p, params) {
 			offeredUtility = 28;
 		}
 
-		if (utilityForRailroadFlag && game.getDie(1) !== game.getDie(2) && requestedRailroad && offeredUtility) {
+		if (utilityForRailroadFlag && game && game.getDie(1) !== game.getDie(2) && requestedRailroad && offeredUtility) {
 			utilityForRailroadFlag = false;
 			property[requestedRailroad] = -1;
 			property[offeredUtility] = 1;
 
 			proposedTrade = new Trade(p, player[square[requestedRailroad].owner], 0, property, 0, 0)
 			console.log("Trying to buy railroads!");
-			game.trade(proposedTrade);
+			if (typeof game.trade === 'function') game.trade(proposedTrade);
+			else return false;
 			return true;
 		}
 
-		if (utilityForRailroadFlag && game.getDie(1) !== game.getDie(2) && requestedRailroad && offeredUtility) {
+		if (utilityForRailroadFlag && game && game.getDie(1) !== game.getDie(2) && requestedRailroad && offeredUtility) {
 			utilityForRailroadFlag = false;
 			property[requestedRailroad] = -1;
 			property[offeredUtility] = 1;
 
 			proposedTrade = new Trade(p, player[square[requestedRailroad].owner], 0, property, 0, 0)
 			console.log("Trying to buy railroads!");
-			game.trade(proposedTrade);
+			if (typeof game.trade === 'function') game.trade(proposedTrade);
+			else return false;
 			return true;
 		}
 
@@ -345,8 +352,8 @@ function AITest3(p, params) {
             for (var i = 39; i >= 0; i--) {
                 s = square[i];
 
-                if (s.owner === p.index && !s.mortgage && s.house > 0 && canSellHouse(i)) {
-                    sellHouse(i);
+				if (s.owner === p.index && !s.mortgage && s.house > 0 && game && game.canSellHouse(i)) {
+					game.sellHouse(i);
                     console.log("Selling house on " + s.name);
                     sold = true;
                     break;
@@ -362,7 +369,7 @@ function AITest3(p, params) {
 			s = square[i];
 
 			if (s.owner === p.index && !s.mortgage && s.house === 0) {
-				mortgage(i);
+				if (game && typeof game.mortgage === 'function') game.mortgage(i);
 				console.log("Mortgaging property " + s.name);
 			}
 

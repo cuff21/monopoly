@@ -4,13 +4,13 @@
 
     function bid(p, profile, params, property, currentBid) {
         params = params || {};
-        var square = globalThis.square;
+        var square = AIGen5.getSquares(p);
         var s = square[property];
         if (!s || s.owner !== 0) {
             return -1;
         }
 
-        var value = AIGen5.Valuation.evaluateProperty(property, p.index, p.money, profile, 0);
+        var value = AIGen5.Valuation.evaluateProperty(property, p.index, p.money, profile, 0, p);
         var reserve = AIGen5.Liquidity ? AIGen5.Liquidity.computeReserve(p, profile) : 120;
         var minimumBid = currentBid + 1;
 
@@ -33,7 +33,7 @@
             }
             for (var ownerKey in ownedByOthers) {
                 if (ownedByOthers[ownerKey] === s.group.length - 1) {
-                    var opponent = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(Number(ownerKey)) : null;
+                    var opponent = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(Number(ownerKey), p) : null;
                     var rank = opponent && AIGen5.Analytics ? AIGen5.Analytics.strengthRank(opponent) : 'Contender';
                     if (rank === 'Leader') {
                         blockPremium = Math.max(blockPremium, params.auctionBlockPremium || 1.3);

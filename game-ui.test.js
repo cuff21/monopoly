@@ -4,8 +4,9 @@ const getCurrentRent = require('./js/core/rent');
 const GameStateContext = require('./js/core/game-state-context');
 const UIBridge = require('./js/core/ui-bridge');
 const { BrowserUI } = require('./js/ui/browser-ui');
+const RenderBoard = require('./js/ui/render-board');
 const { Game } = require('./js/game/game-core');
-const TurnFlow = require('./js/game/turn-flow');
+const TurnFlow = require('./js/game/turn-flow-explicit');
 const TradeView = require('./js/ui/trade-view');
 const RenderPanels = require('./js/ui/render-panels');
 const PopupView = require('./js/ui/popup');
@@ -33,24 +34,27 @@ function restoreGlobals(saved) {
 
 async function runTests() {
 	console.log('Testing game and UI contracts...');
-	const savedPaymentGlobals = saveGlobals(['document', 'updateMoney']);
-	const paymentRendererCalls = [];
-	global.document = undefined;
-	global.updateMoney = () => paymentRendererCalls.push('updateMoney');
-	try {
-		const paymentState = GameStateContext.createState({ game: null });
-		await GameStateContext.run(paymentState, function() {
-			const payer = new global.Player('Payer', 'red');
-			assert.strictEqual(payer.pay(200, 2), true);
-			assert.strictEqual(payer.money, 1300);
-			assert.strictEqual(payer.pay(1400, 2), false);
-			assert.strictEqual(payer.money, -100);
-			assert.strictEqual(payer.creditor, 2);
-			assert.deepStrictEqual(paymentRendererCalls, []);
-		});
-	} finally {
-		restoreGlobals(savedPaymentGlobals);
-	}
+	const gameBeforeConstruction = global.game;
+	const firstGameState = { player: [], turn: 0 };
+	const secondGameState = { player: [], turn: 0 };
+	const firstGame = new Game(null, firstGameState);
+	const secondGame = new Game(null, secondGameState);
+	assert.strictEqual(firstGame.state, firstGameState, 'a Game should own the supplied state');
+	assert.strictEqual(secondGame.state, secondGameState, 'a second Game should retain its own state');
+	assert.notStrictEqual(firstGame.state, secondGame.state, 'Games must not share mutable state');
+	assert.strictEqual(global.game, gameBeforeConstruction, 'constructing a Game must not publish or replace a global singleton');
+	assert.strictEqual(firstGame.ui.game, firstGame, 'the first UI remains attached to its owning Game');
+	assert.strictEqual(secondGame.ui.game, secondGame, 'the second UI remains attached to its owning Game');
+	assert.strictEqual(GameStateContext.run, undefined, 'state context must not provide ambient execution');
+	assert.strictEqual(GameStateContext.install, undefined, 'state context must not install global accessors');
+	console.log('✔ Game instances retain explicitly supplied state.');
+
+	const payer = new global.Player('Payer', 'red');
+	assert.strictEqual(payer.pay(200, 2), true);
+	assert.strictEqual(payer.money, 1300);
+	assert.strictEqual(payer.pay(1400, 2), false);
+	assert.strictEqual(payer.money, -100);
+	assert.strictEqual(payer.creditor, 2);
 	console.log('✔ Player payments update state without global rendering.');
 
 	const cardUiCalls = [];
@@ -58,27 +62,60 @@ async function runTests() {
 	global.updateOwned = () => { throw new Error('card actions must not call the global renderer'); };
 	try {
 		const cardState = GameStateContext.createState({
-			game: { ui: {
-				updateOwned() { cardUiCalls.push('owned'); },
-				updateMoney() { cardUiCalls.push('money'); }
-			} },
 			player: [null, { human: true, communityChestJailCard: false, chanceJailCard: false }],
 			turn: 1,
-			communityChestCards: [{ action(player) { player.communityChestJailCard = true; } }],
-			chanceCards: [{ action(player) { player.chanceJailCard = true; } }]
+			communityChestCards: [{ action(game, player) { player.communityChestJailCard = true; } }],
+			chanceCards: [{ action(game, player) { player.chanceJailCard = true; } }]
 		});
-		await GameStateContext.run(cardState, function() {
-			TurnFlow.communityChestAction(0);
-			TurnFlow.chanceAction(0);
-			assert.strictEqual(global.player[1].communityChestJailCard, true);
-			assert.strictEqual(global.player[1].chanceJailCard, true);
-			assert.deepStrictEqual(cardUiCalls, ['owned', 'money', 'owned', 'money']);
-		});
+		const cardGame = new Game({
+				updateOwned() { cardUiCalls.push('owned'); },
+				updateMoney() { cardUiCalls.push('money'); }
+		}, cardState);
+		TurnFlow.communityChestAction(cardGame, 0);
+		TurnFlow.chanceAction(cardGame, 0);
+		assert.strictEqual(cardGame.state.player[1].communityChestJailCard, true);
+		assert.strictEqual(cardGame.state.player[1].chanceJailCard, true);
+		assert.deepStrictEqual(cardUiCalls, ['owned', 'money', 'owned', 'money']);
 	} finally {
 		if (originalGlobalUpdateOwned === undefined) delete global.updateOwned;
 		else global.updateOwned = originalGlobalUpdateOwned;
 	}
 	console.log('✔ Card effects update ownership through the active GameUI.');
+
+	const cardLandingCalls = [[], []];
+	function createCardLandingGame(index, award) {
+		const cardPlayer = { name: 'Card player ' + index, human: true, position: 7, money: 1000, pay(amount) { this.money -= amount; } };
+		const deck = [{ action(game) { game.state.player[1].money += award; } }];
+		deck.deck = [0];
+		deck.index = 0;
+		const ui = {
+			isHeadless: true,
+			displayLanded() {}, alert(text) { cardLandingCalls[index].push(text); },
+			updateMoney() {}, updateOwned() {}, updatePosition() { return Promise.resolve(); }
+		};
+		const game = new Game(ui, GameStateContext.createState({
+			player: [null, cardPlayer], pcount: 1, turn: 1,
+			square: Array.from({ length: 40 }, (_, squareIndex) => ({
+				name: 'Square ' + squareIndex, owner: 0, price: 0, groupNumber: 0, landcount: 0
+			})),
+			chanceCards: deck,
+			communityChestCards: [],
+			auctionEnabled: false
+		}));
+		game.getDie = () => 1;
+		return game;
+	}
+	const firstCardGame = createCardLandingGame(0, 10);
+	const secondCardGame = createCardLandingGame(1, 50);
+	await Promise.all([firstCardGame.land(), secondCardGame.land()]);
+	assert.strictEqual(firstCardGame.state.player[1].money, 1010);
+	assert.strictEqual(secondCardGame.state.player[1].money, 1050);
+	assert.strictEqual(firstCardGame.state.chanceCards.index, 0);
+	assert.strictEqual(secondCardGame.state.chanceCards.index, 0);
+	assert.ok(cardLandingCalls[0][0].includes('Card player 0'));
+	assert.ok(cardLandingCalls[1][0].includes('Card player 1'));
+	console.log('✔ Overlapping card landings retain per-Game decks, effects, and UI routing.');
+
 	assert.strictEqual(UIHtml.escapeHTML(`&<>"'`), '&amp;&lt;&gt;&quot;&#39;');
 	assert.throws(function() {
 		global.Monopoly.Editions.register('Invalid Edition', {});
@@ -174,6 +211,13 @@ async function runTests() {
 			editionSquares[utilityGroup[1]].owner = 2;
 			assert.deepStrictEqual(getCurrentRent(utility), { type: 'diceMultiplier', multiplier: 4 });
 			assert.strictEqual(EditionRenderer.formatRentText(editionSquares[utility], getCurrentRent(utility)), '4x dice');
+			if (editionName === 'Classic') {
+				assert.deepStrictEqual([editionSquares[1].price, editionSquares[1].baserent, editionSquares[1].rent1, editionSquares[1].rent5, editionSquares[1].houseprice], [60, 2, 10, 250, 50]);
+				assert.deepStrictEqual(transitGroup.map(index => editionSquares[index].price), [200, 200, 200, 200]);
+			} else {
+				assert.deepStrictEqual([editionSquares[21].price, editionSquares[21].baserent, editionSquares[21].rent1, editionSquares[21].rent5, editionSquares[21].houseprice], [220, 18, 90, 1050, 150]);
+				assert.deepStrictEqual(utilityGroup.map(index => editionSquares[index].price), [150, 150]);
+			}
 		});
 
 		global.square = Array.from({ length: 8 }, () => ({ owner: 0 }));
@@ -205,6 +249,97 @@ async function runTests() {
 		else global.square = previousSquares;
 	}
 	console.log('✔ Rent calculations are edition-owned and independent of board positions and tooltip labels.');
+
+	async function runMovementFixture(startPosition, movement, boardSize) {
+		const traveler = new global.Player('Traveler', 'red');
+		traveler.position = startPosition;
+		const squares = Array.from({ length: boardSize || 40 }, (_, index) => ({
+			name: 'Square ' + index, owner: 0, price: 0, landcount: 0, groupNumber: 0
+		}));
+		const ui = {
+			alert() {}, displayLanded() {}, updateMoney() {}, updateOwned() {},
+			updatePosition() { return Promise.resolve(); }
+		};
+		const state = GameStateContext.createState({
+			player: [null, traveler], pcount: 1, turn: 1, square: squares,
+			auctionEnabled: false, pendingAuction: -1
+		});
+		const game = new Game(ui, state);
+		game.getDie = () => 1;
+		await movement(game);
+		return { traveler, state, game };
+	}
+
+	const forwardStartCrossing = await runMovementFixture(35, game => game.advance(5));
+	assert.strictEqual(forwardStartCrossing.traveler.money, 1700, 'forward Start crossing pays salary once');
+	const backwardMovement = await runMovementFixture(1, game => game.goBackThreeSpaces());
+	assert.strictEqual(backwardMovement.traveler.position, 38, 'backward movement wraps around the board');
+	assert.strictEqual(backwardMovement.traveler.money, 1500, 'backward movement does not pay Start salary');
+	const variableBoardMovement = await runMovementFixture(1, game => game.goBackThreeSpaces(), 52);
+	assert.strictEqual(variableBoardMovement.traveler.position, 50, 'backward movement uses the current board length');
+	const landingOnStart = await runMovementFixture(35, game => game.advance(0));
+	assert.strictEqual(landingOnStart.traveler.money, 1700, 'landing on Start pays salary once');
+	console.log('✔ Deterministic movement fixtures cover Start crossing, landing, and backward wrapping.');
+
+	const bank = { name: 'Bank', index: 0, money: 0 };
+	const bankruptPlayer = { name: 'Bankrupt', index: 1, money: -100, creditor: 2, chanceJailCard: false, communityChestJailCard: false };
+	const creditor = { name: 'Creditor', index: 2, money: 500, human: true };
+	const bankruptcySquares = Array.from({ length: 40 }, () => ({ owner: 0, mortgage: false, house: 0, hotel: 0 }));
+	bankruptcySquares[1] = { owner: 1, mortgage: false, house: 0, hotel: 0, name: 'Fixture property' };
+	const bankruptcyGame = new Game({
+		alert() {}, removePlayerToken() {}, onPlayerCountChanged() {}, updateMoney() {}, updateOwned() {}, onGameOver() {}
+	}, {
+		player: [bank, bankruptPlayer, creditor], square: bankruptcySquares, pcount: 2, turn: 1,
+		playerOverlays: [], lastKnownPosition: [], lastKnownJail: [], playersGame: []
+	});
+	bankruptcyGame.bankruptcy();
+	assert.strictEqual(bankruptcyGame.state.pcount, 1, 'bankruptcy removes the active player');
+	assert.strictEqual(bankruptcyGame.state.player[1], creditor, 'creditor becomes the remaining active seat');
+	assert.strictEqual(creditor.index, 1, 'remaining players receive compact roster indexes');
+	assert.strictEqual(bankruptcyGame.state.square[1].owner, 1, 'creditor property survives seat compaction');
+	assert.strictEqual(creditor.money, 400, 'negative cash transfers to the player creditor');
+	console.log('✔ Deterministic bankruptcy fixture preserves creditor ownership through elimination.');
+
+	function assertCardDestination(editionName, deckName, cardIndex, expectedCalls) {
+		const edition = global.Monopoly.Editions.get(editionName);
+		const cardPlayer = new global.Player('Card traveler', 'red');
+		cardPlayer.human = true;
+		const state = GameStateContext.createState({
+			player: [null, cardPlayer], pcount: 1, turn: 1,
+			square: edition.buildSquares(edition.buildGroups()),
+			communityChestCards: edition.buildCommunityChestCards(),
+			chanceCards: edition.buildChanceCards()
+		});
+		const game = new Game({ updateOwned() {}, updateMoney() {} }, state);
+		const actualCalls = [];
+		['advance', 'advanceToNearestRailroad', 'advanceToNearestUtility', 'goBackThreeSpaces', 'goToJail'].forEach(method => {
+			game[method] = function() { actualCalls.push([method].concat(Array.from(arguments))); };
+		});
+		TurnFlow[deckName === 'chance' ? 'chanceAction' : 'communityChestAction'](game, cardIndex);
+		assert.deepStrictEqual(actualCalls, expectedCalls, editionName + ' ' + deckName + ' card ' + cardIndex + ' destination');
+	}
+
+	assertCardDestination('Classic', 'chance', 9, [['advance', 5]]);
+	assertCardDestination('Classic', 'chance', 10, [['advance', 39]]);
+	assertCardDestination('Classic', 'chance', 11, [['advance', 24]]);
+	assertCardDestination('Classic', 'chance', 14, [['advance', 11]]);
+	assertCardDestination('Classic', 'chance', 4, [['goBackThreeSpaces']]);
+	assertCardDestination('Classic', 'chance', 5, [['advanceToNearestUtility']]);
+	assertCardDestination('Classic', 'chance', 7, [['advanceToNearestRailroad']]);
+	assertCardDestination('Classic', 'chance', 15, [['goToJail']]);
+	assertCardDestination('Classic', 'community-chest', 13, [['advance', 0]]);
+	assertCardDestination('NYC', 'chance', 8, [['advance', 0, 32]]);
+	assertCardDestination('NYC', 'chance', 9, [['advance', 31]]);
+	assertCardDestination('NYC', 'chance', 10, [['advance', 39]]);
+	assertCardDestination('NYC', 'chance', 11, [['advance', 13]]);
+	assertCardDestination('NYC', 'chance', 14, [['advance', 9]]);
+	assertCardDestination('NYC', 'chance', 4, [['goBackThreeSpaces']]);
+	assertCardDestination('NYC', 'chance', 13, [['advanceToNearestRailroad']]);
+	assertCardDestination('NYC', 'chance', 5, [['advanceToNearestUtility']]);
+	assertCardDestination('NYC', 'chance', 15, [['goToJail']]);
+	assertCardDestination('NYC', 'community-chest', 13, [['advance', 0]]);
+	console.log('✔ Deterministic Classic/NYC fixtures cover built-in card destinations and exact property economics.');
+
 	const previousEdition = global.Monopoly.Editions.getActiveName();
 	const originalRandom = Math.random;
 	const passiveBrains = Array.from({ length: 4 }, () => {
@@ -309,7 +444,6 @@ async function runTests() {
 			squares[1].price = options.propertyValue;
 		}
 		const state = GameStateContext.createState({
-			game: { ui, getDie() { return 1; } },
 			player: [null, payer],
 			pcount: 1,
 			turn: 1,
@@ -319,7 +453,9 @@ async function runTests() {
 			auctionEnabled: false,
 			pendingAuction: -1
 		});
-		await GameStateContext.run(state, () => TurnFlow.land(false));
+		const game = new Game(ui, state);
+		game.getDie = () => 1;
+		await game.land(false);
 		return { payer, state, events, taxChoice };
 	}
 
@@ -369,6 +505,7 @@ async function runTests() {
 	global.popup = (...args) => { rendererCalls.push(['popup', ...args]); return Promise.resolve('popup'); };
 	try {
 		const ui = new BrowserUI();
+		const popupOwner = { state: { player: [null, { human: true }], turn: 1 } };
 		ui.alert('test alert', 2, 3);
 		ui.updateMoney();
 		const positionResult = ui.updatePosition();
@@ -376,13 +513,15 @@ async function runTests() {
 		ui.updateDice(4, 5);
 		ui.updateFreeParking();
 		const cardResult = ui.updateDrawnCard('chance', 6);
+		ui.game = popupOwner;
 		const popupResult = ui.popup('<p>test</p>', null, 'blank');
 		ui.onGameOver('Winner');
 		assert.deepStrictEqual(rendererCalls.slice(0, 7), [
 			['alert', 'test alert', 2, 3], ['money'], ['position'], ['owned'],
 			['dice', 4, 5], ['freeParking'], ['card', 'chance', 6]
 		]);
-		assert.deepStrictEqual(rendererCalls[7], ['popup', '<p>test</p>', null, 'blank', undefined]);
+		assert.deepStrictEqual(rendererCalls[7], ['popup', '<p>test</p>', null, 'blank', undefined, popupOwner]);
+		assert.strictEqual(rendererCalls[8][5], popupOwner, 'winner popup should retain its owning Game');
 		assert.strictEqual(await positionResult, 'position');
 		assert.strictEqual(await cardResult, 'card');
 		assert.strictEqual(await popupResult, 'popup');
@@ -390,6 +529,37 @@ async function runTests() {
 		restoreGlobals(savedRenderers);
 	}
 	console.log('✔ Browser adapter dispatch verified.');
+
+	const savedPopupGame = saveGlobals(['game', 'player', 'turn', 'document', '$', 'setInterval', 'clearInterval']);
+	try {
+		global.game = { ui: { isHeadless: false } };
+		let popupActionRan = false;
+		PopupView.popup('headless owner', () => { popupActionRan = true; }, undefined, undefined, {
+			ui: { isHeadless: true }, state: { player: [], turn: 0 }
+		});
+		assert.strictEqual(popupActionRan, true, 'popup behavior should use its explicit owning Game, not the global Game');
+
+		let scheduledInterval = null;
+		global.player = [null, { human: true }];
+		global.turn = 1;
+		global.document = {
+			getElementById(id) { return id === 'popuptext' || id === 'popupclose' ? {} : null; }
+		};
+		global.$ = () => ({
+			off() { return this; }, append() { return this; }, on() { return this; },
+			val() { return this; }, focus() { return this; }, fadeIn() { return this; }, show() { return this; }
+		});
+		global.setInterval = (callback, delay) => { scheduledInterval = delay; return 1; };
+		global.clearInterval = () => {};
+		PopupView.popup('AI owner', null, undefined, undefined, {
+			ui: { isHeadless: false }, state: { player: [null, { human: false }], turn: 1 }
+		});
+		assert.strictEqual(scheduledInterval, 1000, 'auto-close should follow the explicit Game current player');
+		PopupView.popup.autoCloseTimer = null;
+	} finally {
+		restoreGlobals(savedPopupGame);
+	}
+	console.log('✔ Popup behavior uses the owning Game.');
 
 	class FakeElement {
 		constructor(tagName) {
@@ -509,11 +679,23 @@ async function runTests() {
 	}
 	console.log('✔ Legacy panel, stats, trade, and money labels use safe text/HTML encoding.');
 
-	const savedBrowserGlobals = saveGlobals(['document', 'game', 'player', 'pcount', 'popup']);
+	const savedBrowserGlobals = saveGlobals(['document', 'player', 'pcount', 'popup', 'game', 'addAlert', 'showAuctionPlayerStats']);
+	const auctionHoverHandlers = {};
+	const auctionParticipant = {
+		addEventListener(event, handler) { auctionHoverHandlers[event] = handler; },
+		getAttribute() { return '1'; }
+	};
 	const auctionElements = {
-		propertyname: { innerHTML: '' }, auctionparticipants: { innerHTML: '', querySelectorAll: () => [] },
+		propertyname: { innerHTML: '' }, auctionparticipants: { innerHTML: '', querySelectorAll: () => [auctionParticipant] },
 		pname: { textContent: '' }, highestbid: { textContent: '' }, highestbidder: { textContent: '' },
-		currentbidder: { textContent: '' }, bid: { value: '125', style: {}, focus() { this.focused = true; } }
+		currentbidder: { textContent: '' }, bid: { value: '125', style: {}, focus() { this.focused = true; } },
+		'auction-bid-button': { addEventListener(event, handler) { this.handler = handler; } },
+		'auction-pass-button': { addEventListener(event, handler) { this.handler = handler; } },
+		'auction-exit-button': { addEventListener(event, handler) { this.handler = handler; } },
+		buypropertybutton: { addEventListener(event, handler) { this.handler = handler; } },
+		'pay-fine-button': { addEventListener(event, handler) { this.handler = handler; } },
+		gojfbutton: { addEventListener(event, handler) { this.handler = handler; } },
+		landed: { innerHTML: '', style: {} }
 	};
 	const mortgageRow = { style: {} };
 	const mortgageButton = { handler: null, getAttribute: () => '3', addEventListener(event, handler) { this.handler = handler; } };
@@ -526,15 +708,35 @@ global.document = {
 		querySelectorAll: selector => selector === '[data-unmortgage-index]' ? [mortgageButton] : [],
 		querySelector: selector => selector === "[data-unmortgage-row='3']" ? mortgageRow : null
 	};
-	global.player = [null, { index: 1, name: 'Bidder <img src=x onerror=alert(1)>', color: '#fff', bidding: true }];
+	global.player = [null, { index: 1, name: 'Ambient player', color: '#000', bidding: true }];
 	global.pcount = 1;
 	let auctionSubmitCount = 0;
-	global.game = { auctionBid: () => auctionSubmitCount++ };
+	const ownerActions = [];
 	const uiPopupCalls = [];
+	let forwardedAlertGame = null;
 	global.popup = (...args) => uiPopupCalls.push(args);
+	global.addAlert = (text, playerIndex, secondPlayerIndex, gameInstance) => { forwardedAlertGame = gameInstance; };
+	let hoveredGame = null;
+	global.showAuctionPlayerStats = (playerIndex, event, gameInstance) => { hoveredGame = gameInstance; };
+	global.game = { auctionBid() { throw new Error('UI action escaped to global game'); } };
 	try {
 		const ui = new BrowserUI();
+		ui.game = {
+			state: {
+				player: [null, { index: 1, name: 'Bidder <img src=x onerror=alert(1)>', color: '#fff', bidding: true }],
+				pcount: 1, playerOverlays: []
+			},
+			auctionBid: () => { auctionSubmitCount++; },
+			auctionPass: () => ownerActions.push('pass'),
+			auctionExit: () => ownerActions.push('exit'),
+			buy: () => ownerActions.push('buy'),
+			payFifty: () => ownerActions.push('bail'),
+			useJailCard: () => ownerActions.push('jail-card')
+		};
+		ui.alert('Owned-game alert');
+		assert.strictEqual(forwardedAlertGame, ui.game, 'alerts must carry their owning Game into the renderer');
 		ui.initializeAuction(5, { name: 'Reading Railroad' }, { name: 'Bidder' });
+		ui.openAuction(5, { name: 'Reading Railroad' }, { name: 'Bidder' });
 		assert.ok(auctionElements.propertyname.innerHTML.includes('Reading Railroad'));
 		assert.strictEqual(auctionElements.currentbidder.textContent, "It is Bidder's turn to bid.");
 		assert.strictEqual(auctionElements.highestbid.textContent, '0');
@@ -542,6 +744,11 @@ global.document = {
 		assert.strictEqual(ui.readAuctionBid(), 125);
 		auctionElements.bid.onkeydown({ keyCode: 13 });
 		assert.strictEqual(auctionSubmitCount, 1);
+		auctionElements['auction-bid-button'].handler();
+		auctionElements['auction-pass-button'].handler();
+		auctionElements['auction-exit-button'].handler();
+		assert.strictEqual(auctionSubmitCount, 2);
+		assert.deepStrictEqual(ownerActions, ['pass', 'exit']);
 		ui.updateAuctionTurn('Next bidder', true);
 		assert.strictEqual(auctionElements.bid.value, '');
 		ui.setAuctionBidError('Invalid bid');
@@ -550,11 +757,19 @@ global.document = {
 		assert.strictEqual(auctionElements.highestbidder.textContent, 'Next bidder');
 		ui.focusAuctionBid();
 		assert.strictEqual(auctionElements.bid.focused, true);
-		ui.openAuction(5, { name: 'Reading Railroad' }, { name: 'Bidder' });
 		assert.ok(uiPopupCalls[0][0].includes("id='auctionparticipants'"));
 		ui.onAuctionParticipants();
 		assert.ok(auctionElements.auctionparticipants.innerHTML.includes('Bidder &lt;img src=x onerror=alert(1)&gt;'));
+		assert.ok(!auctionElements.auctionparticipants.innerHTML.includes('Ambient player'));
 		assert.ok(!auctionElements.auctionparticipants.innerHTML.includes('<img'));
+		auctionHoverHandlers.mouseenter.call(auctionParticipant, {});
+		assert.strictEqual(hoveredGame, ui.game, 'auction hover stats must use the owning Game');
+		ui.displayPropertyPurchase(5, { name: 'Railroad', price: 200, pricetext: '$200' });
+		auctionElements.buypropertybutton.handler();
+		ui.displayJailOptions(true, false);
+		auctionElements['pay-fine-button'].handler();
+		auctionElements.gojfbutton.handler();
+		assert.deepStrictEqual(ownerActions, ['pass', 'exit', 'buy', 'bail', 'jail-card']);
 		ui.updateTurnDisplay({ name: 'Turn <img src=x onerror=alert(1)>' });
 		assert.strictEqual(auctionElements.pname.textContent, 'Turn <img src=x onerror=alert(1)>');
 		ui.onGameOver('Winner <svg onload=alert(1)>');
@@ -594,22 +809,57 @@ global.document = {
 	}
 	console.log('✔ Browser presentation and auction UI verified.');
 
-	const gameStateNames = ['game', 'player', 'turn', 'pendingAuction', 'auctionEnabled', 'roll'];
-	const savedGameState = saveGlobals(gameStateNames);
-	const gameCalls = [];
-	global.player = [null, { human: true, money: 1500 }];
-	global.turn = 1;
-	global.pendingAuction = -1;
-	global.auctionEnabled = true;
-	global.roll = () => gameCalls.push('roll');
+	const savedPositionGlobals = saveGlobals(['document', 'window', 'player', 'pcount', 'turn', 'lastKnownPosition', 'lastKnownJail', 'nextMoveDirection', 'playerOverlays']);
 	try {
-		const game = new Game({ isHeadless: false, waitForPopupClose: async () => gameCalls.push('wait'), popup: () => gameCalls.push('popup') });
-		game.auction = () => { gameCalls.push('auction'); return false; };
-		await game.next();
-		assert.deepStrictEqual(gameCalls, ['wait', 'auction', 'roll']);
+		const positionElements = {
+			jail: { style: {} },
+			jailpositionholder: { innerHTML: '' },
+			playertoken1: { getBoundingClientRect() { return { left: 10, top: 20 }; } }
+		};
+		for (let index = 0; index < 40; index++) {
+			positionElements['cell' + index] = { style: {} };
+			positionElements['cell' + index + 'positionholder'] = { innerHTML: '' };
+		}
+		global.document = {
+			getElementById: id => positionElements[id] || null,
+			createElement: () => ({ style: {} }),
+			body: { appendChild() {} }
+		};
+		global.window = { scrollX: 0, scrollY: 0 };
+		global.player = [null, { name: 'Ambient', color: 'black', position: 22, jail: false }];
+		global.pcount = 1;
+		global.turn = 1;
+		global.lastKnownPosition = [null, 31];
+		global.lastKnownJail = [null, false];
+		global.nextMoveDirection = 1;
+		global.playerOverlays = [];
+		const ownedOverlay = { style: {} };
+		const positionPlayer = { name: 'Owned', color: 'red', position: 7, jail: false };
+		const positionState = GameStateContext.createState({
+			player: [null, positionPlayer], pcount: 1, turn: 1,
+			lastKnownPosition: [], lastKnownJail: [], playerOverlays: [null, ownedOverlay]
+		});
+		await RenderBoard.updatePosition({ state: positionState, ui: { isHeadless: false } });
+		assert.strictEqual(positionState.lastKnownPosition[1], 7);
+		assert.strictEqual(positionState.lastKnownJail[1], false);
+		assert.strictEqual(ownedOverlay.style.backgroundColor, 'red');
+		assert.strictEqual(global.lastKnownPosition[1], 31, 'position rendering must not mutate another Game\'s global snapshot');
+		assert.ok(positionElements['cell7positionholder'].innerHTML.includes('Owned'));
 	} finally {
-		restoreGlobals(savedGameState);
+		restoreGlobals(savedPositionGlobals);
 	}
+	console.log('✔ Browser position rendering uses the owning Game state.');
+
+	const gameCalls = [];
+	const nextState = GameStateContext.createState({
+		player: [null, { human: true, money: 1500, pay() {} }],
+		turn: 1, pcount: 1, pendingAuction: -1, auctionEnabled: true
+	});
+	const game = new Game({ isHeadless: false, waitForPopupClose: async () => gameCalls.push('wait'), popup: () => gameCalls.push('popup') }, nextState);
+	game.auction = () => { gameCalls.push('auction'); return false; };
+	game.roll = () => { gameCalls.push('roll'); };
+	await game.next();
+	assert.deepStrictEqual(gameCalls, ['wait', 'auction', 'roll']);
 	console.log('✔ Turn flow awaits the UI contract.');
 
 	const savedAuctionGlobals = saveGlobals(['game', 'player', 'square', 'turn', 'pcount', 'play']);
@@ -625,11 +875,14 @@ global.document = {
 		global.pcount = 3;
 		global.play = () => {};
 		const headlessUI = { isHeadless: true, onAuctionHistory() {}, onAuctionParticipants() {}, closeAuction() {}, alert() {}, updateOwned() {}, updateAuctionBid() {}, focusAuctionBid() {} };
-		const game = new Game(headlessUI);
+		const game = new Game(headlessUI, GameStateContext.createState({
+			player: global.player, square: global.square, pcount: 3, turn: 1
+		}));
+		game.play = () => {};
 		game.addPropertyToAuctionQueue(1);
 		assert.strictEqual(game.auction(), true);
 		assert.deepStrictEqual(bidCalls, [1, 2, 3]);
-		global.turn = 0;
+		game.state.turn = 0;
 		game.addPropertyToAuctionQueue(1);
 		assert.strictEqual(game.auction(), true);
 		assert.deepStrictEqual(bidCalls, [1, 2, 3, 1, 2, 3]);
@@ -642,11 +895,14 @@ global.document = {
 		}))];
 		global.square = Array.from({ length: 40 }, () => ({ price: 0, owner: 0 }));
 		global.square[1] = { price: 100, owner: 0, name: 'Test property' };
-		const boundedAuction = new Game(headlessUI);
+		const boundedAuction = new Game(headlessUI, GameStateContext.createState({
+			player: global.player, square: global.square, pcount: 3, turn: 1
+		}));
+		boundedAuction.play = () => {};
 		boundedAuction.addPropertyToAuctionQueue(1);
 		assert.strictEqual(boundedAuction.auction(), true);
 		assert.strictEqual(pathologicalBidCount, 200, 'a pathological auction should stop after the configured bid cap');
-		assert.notStrictEqual(global.square[1].owner, 0, 'the capped auction should finalize instead of blocking the game');
+		assert.notStrictEqual(boundedAuction.state.square[1].owner, 0, 'the capped auction should finalize instead of blocking the game');
 
 		const interactiveCalls = [];
 		global.player = [{ index: 0, name: 'the bank', human: false }, ...Array.from({ length: 3 }, (_, index) => ({
@@ -664,7 +920,10 @@ global.document = {
 			isHeadless: false, openAuction() {}, onAuctionHistory() {}, onAuctionParticipants() {}, updateMoney() {},
 			updateAuctionTurn() {}, closeAuction() {}, alert() {}, updateOwned() {}
 		};
-		const interactiveGame = new Game(interactiveUI);
+		const interactiveGame = new Game(interactiveUI, GameStateContext.createState({
+			player: global.player, square: global.square, pcount: 3, turn: 1
+		}));
+		interactiveGame.play = () => {};
 		interactiveGame.addPropertyToAuctionQueue(1);
 		assert.strictEqual(interactiveGame.auction(), true);
 		assert.deepStrictEqual(interactiveCalls, [1, 2, 3]);
@@ -679,7 +938,6 @@ global.document = {
 	['updateButtonState', 'updateMoney', 'alert', 'updateOwned', 'hideLanded', 'showMessage', 'popup', 'updateMortgageButton', 'onMortgageChanged', 'onHouseChanged'].forEach(method => {
 		actionUI[method] = (...args) => actionCalls.push([method, ...args]);
 	});
-	global.game = { ui: actionUI };
 	global.player = [null, new global.Player('Test player', 'red')];
 	global.player[1].index = 1;
 	global.square = Array.from({ length: 40 }, () => ({ house: 0, hotel: 0 }));
@@ -690,15 +948,21 @@ global.document = {
 	global.turn = 1;
 	global.pendingAuction = -1;
 	try {
-		global.buy();
-		assert.strictEqual(global.square[1].owner, 1);
-		assert.strictEqual(global.mortgage(1), true);
-		assert.strictEqual(global.unmortgage(1), true);
-		assert.strictEqual(global.buyHouse(1), true);
-		assert.strictEqual(global.sellHouse(1), true);
+		const actionGame = new Game(actionUI, {
+			player: global.player,
+			square: global.square,
+			turn: global.turn,
+			pendingAuction: global.pendingAuction
+		});
+		actionGame.buy();
+		assert.strictEqual(actionGame.state.square[1].owner, 1);
+		assert.strictEqual(actionGame.mortgage(1), true);
+		assert.strictEqual(actionGame.unmortgage(1), true);
+		assert.strictEqual(actionGame.buyHouse(1), true);
+		assert.strictEqual(actionGame.sellHouse(1), true);
 		global.player[1].position = 2;
 		global.player[1].money = 10;
-		global.buy();
+		actionGame.buy();
 		for (const method of ['alert', 'updateMortgageButton', 'onMortgageChanged', 'onHouseChanged', 'hideLanded', 'showMessage']) {
 			assert.ok(actionCalls.some(call => call[0] === method), method + ' should dispatch through GameUI');
 		}

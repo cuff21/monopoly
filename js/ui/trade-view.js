@@ -9,7 +9,10 @@
 		global.$('#accepttradebutton, #rejecttradebutton').toggle(!!responding);
 	}
 
-	function resetTrade(state, initiator, recipient, allowRecipientToBeChanged) {
+	function resetTrade(state, initiator, recipient, allowRecipientToBeChanged, gameState) {
+		var squares = gameState ? gameState.square : global.square;
+		var players = gameState ? gameState.player : global.player;
+		var playerCount = gameState ? gameState.pcount : global.pcount;
 		state.initiator = initiator;
 		state.recipient = recipient;
 
@@ -53,10 +56,10 @@
 		}
 
 		for (var i = 0; i < 40; i++) {
-			var property = global.square[i];
+			var property = squares[i];
 			if (!property || !property.groupNumber || property.owner === 0) continue;
 			var group = property.group || [];
-			if (property.house > 0 || group.some(function(index) { return global.square[index].house > 0; })) continue;
+			if (property.house > 0 || group.some(function(index) { return squares[index].house > 0; })) continue;
 			if (property.owner === initiator.index) addRow(leftTable, i, property, 'tradeleftcheckbox' + i);
 			else if (property.owner === recipient.index) addRow(rightTable, i, property, 'traderightcheckbox' + i);
 		}
@@ -96,19 +99,19 @@
 		document.getElementById('trade-leftp-name').textContent = initiator.name;
 		var rightName = document.getElementById('trade-rightp-name');
 		rightName.textContent = '';
-		if (allowRecipientToBeChanged && global.pcount > 2) {
+		if (allowRecipientToBeChanged && playerCount > 2) {
 			var select = document.createElement('select');
-			for (var playerIndex = 1; playerIndex <= global.pcount; playerIndex++) {
+			for (var playerIndex = 1; playerIndex <= playerCount; playerIndex++) {
 				if (playerIndex === initiator.index) continue;
 				var option = document.createElement('option');
 				option.value = playerIndex;
-				option.textContent = global.player[playerIndex].name;
-				option.style.color = global.player[playerIndex].color;
+				option.textContent = players[playerIndex].name;
+				option.style.color = players[playerIndex].color;
 				option.selected = playerIndex === recipient.index;
 				select.appendChild(option);
 			}
 			select.title = 'Select a player to trade with.';
-			select.onchange = function() { resetTrade(state, initiator, global.player[parseInt(this.value, 10)], true); };
+			select.onchange = function() { resetTrade(state, initiator, players[parseInt(this.value, 10)], true, gameState); };
 			rightName.appendChild(select);
 		} else {
 			rightName.textContent = recipient.name;
@@ -138,8 +141,8 @@
 			cardValue('tradeleftcheckbox41', 'traderightcheckbox41'));
 	}
 
-	function writeTrade(state, trade) {
-		resetTrade(state, trade.getInitiator(), trade.getRecipient(), false);
+	function writeTrade(state, trade, gameState) {
+		resetTrade(state, trade.getInitiator(), trade.getRecipient(), false, gameState);
 		for (var i = 0; i < 40; i++) {
 			var left = document.getElementById('tradeleftcheckbox' + i);
 			var right = document.getElementById('traderightcheckbox' + i);
@@ -171,12 +174,13 @@
 		input.style.color = 'red';
 	}
 
-	function formatTradeResult(label, trade) {
+	function formatTradeResult(label, trade, squares) {
+		squares = squares || global.square;
 		var offered = [];
 		var requested = [];
 		for (var i = 0; i < 40; i++) {
-			if (trade.getProperty(i) === 1) offered.push(UIHtml.escapeHTML(global.square[i].name));
-			else if (trade.getProperty(i) === -1) requested.push(UIHtml.escapeHTML(global.square[i].name));
+			if (trade.getProperty(i) === 1) offered.push(UIHtml.escapeHTML(squares[i].name));
+			else if (trade.getProperty(i) === -1) requested.push(UIHtml.escapeHTML(squares[i].name));
 		}
 		if (trade.getCommunityChestJailCard() === 1 || trade.getChanceJailCard() === 1) offered.push('Get Out of Jail Free card');
 		if (trade.getCommunityChestJailCard() === -1 || trade.getChanceJailCard() === -1) requested.push('Get Out of Jail Free card');

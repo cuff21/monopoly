@@ -42,7 +42,9 @@
         var self = this;
 
         this.buyProperty = function(index) {
-            var s = globalThis.square[index];
+            var state = AIGen5.getGameState(p);
+            var square = AIGen5.getSquares(p);
+            var s = square[index];
             if (!s || s.price === 0 || s.owner !== 0) {
                 return false;
             }
@@ -52,7 +54,7 @@
                 return false;
             }
 
-            var score = AIGen5.Valuation.evaluateProperty(index, p.index, p.money, self.profile, 0);
+            var score = AIGen5.Valuation.evaluateProperty(index, p.index, p.money, self.profile, 0, state);
             var threshold = self.profile.name === 'Sentinel' ? 68 : self.profile.name === 'Gambler' ? 50 : 58;
             return score >= threshold;
         };

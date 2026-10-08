@@ -107,45 +107,8 @@
         return new Genotype(vertices, edges);
     };
 
-    /**
-     * Parses a genotype string formatted as `verts#edges`
-     * Where verts is comma-separated: `marking,order,type,`
-     * And edges is comma-separated: `marking,source,dest,weight,enabled,`
-     */
-    Genotype.fromString = function(str) {
-        var parts = str.split('#');
-        if (parts.length < 2) {
-            throw new Error("Invalid genotype format: expected verts#edges");
-        }
-
-        var vertStr = parts[0].trim();
-        var edgeStr = parts[1].trim();
-
-        var vertices = [];
-        if (vertStr.length > 0) {
-            var vTokens = vertStr.split(',').filter(function(t) { return t.length > 0; });
-            for (var i = 0; i < vTokens.length; i += 3) {
-                var mark = parseInt(vTokens[i], 10);
-                var order = parseInt(vTokens[i + 1], 10);
-                var type = parseInt(vTokens[i + 2], 10);
-                vertices.push(new VertexInfo(mark, order, type));
-            }
-        }
-
-        var edges = [];
-        if (edgeStr.length > 0) {
-            var eTokens = edgeStr.split(',').filter(function(t) { return t.length > 0; });
-            for (var i = 0; i < eTokens.length; i += 5) {
-                var mark = parseInt(eTokens[i], 10);
-                var source = parseInt(eTokens[i + 1], 10);
-                var dest = parseInt(eTokens[i + 2], 10);
-                var weight = parseFloat(eTokens[i + 3]);
-                var enabled = eTokens[i + 4] === '1' || eTokens[i + 4].toLowerCase() === 'true';
-                edges.push(new EdgeInfo(mark, source, dest, weight, enabled));
-            }
-        }
-
-        return new Genotype(vertices, edges);
+    Genotype.fromString = function() {
+        throw new Error("Unsupported legacy Gen6 NEAT data.");
     };
 
     /**

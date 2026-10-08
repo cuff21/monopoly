@@ -23,73 +23,93 @@
 
 	BrowserUI.prototype.alert = function(text, playerIndex, secondPlayerIndex) {
 		if (typeof global.addAlert === 'function') {
-			global.addAlert(text, playerIndex, secondPlayerIndex);
+			if (this.game) global.addAlert(text, playerIndex, secondPlayerIndex, this.game);
+			else global.addAlert(text, playerIndex, secondPlayerIndex);
 		} else if (typeof global.$ !== 'undefined' && global.$('#alert').length) {
 			var $alert = global.$('#alert');
-			var pIdx = playerIndex || (typeof global.turn !== 'undefined' ? global.turn : 0);
-			var badge = (typeof global.playerBadge === 'function') ? global.playerBadge(pIdx) : '';
-			var badge2 = (secondPlayerIndex && typeof global.playerBadge === 'function') ? global.playerBadge(secondPlayerIndex) : '';
+			var state = this.game && this.game.state;
+			var pIdx = playerIndex !== undefined && playerIndex !== null ? playerIndex : (state ? state.turn : 0);
+			var badge = (typeof global.playerBadge === 'function') ? global.playerBadge(pIdx, state) : '';
+			var badge2 = (secondPlayerIndex && typeof global.playerBadge === 'function') ? global.playerBadge(secondPlayerIndex, state) : '';
 			var alertElement = global.$(document.createElement('div'));
 			if (badge) alertElement.append(badge);
 			if (badge2) alertElement.append(badge2);
 			alertElement.append(document.createTextNode(text)).appendTo($alert);
 			$alert.stop().animate({ scrollTop: $alert.prop('scrollHeight') }, 1000);
 
-			if (typeof global.player !== 'undefined' && global.player[global.turn] && !global.player[global.turn].human && global.player[global.turn].AI) {
-				global.player[global.turn].AI.alertList = (global.player[global.turn].AI.alertList || '') + '<div>' + badge + badge2 + text + '</div>';
+			var currentPlayer = state && state.player[state.turn];
+			if (currentPlayer && !currentPlayer.human && currentPlayer.AI) {
+				currentPlayer.AI.alertList = (currentPlayer.AI.alertList || '') + '<div>' + badge + badge2 + text + '</div>';
 			}
 		}
 	};
 
 	BrowserUI.prototype.updateMoney = function() {
 		if (typeof global.updateMoney === 'function') {
-			global.updateMoney();
+			if (this.game) global.updateMoney(this.game);
+			else global.updateMoney();
 		}
 	};
 
 	BrowserUI.prototype.updatePosition = function() {
 		if (typeof global.updatePosition === 'function') {
-			return global.updatePosition();
+			return this.game ? global.updatePosition(this.game) : global.updatePosition();
 		}
 		return Promise.resolve();
 	};
 
 	BrowserUI.prototype.updateOwned = function() {
 		if (typeof global.updateOwned === 'function') {
-			global.updateOwned();
+			if (this.game) global.updateOwned(this.game);
+			else global.updateOwned();
 		}
 	};
 
 	BrowserUI.prototype.updateDice = function(die1, die2) {
 		if (typeof global.updateDice === 'function') {
-			global.updateDice(die1, die2);
+			if (this.game) global.updateDice(this.game, die1, die2);
+			else global.updateDice(die1, die2);
 		}
 	};
 
 	BrowserUI.prototype.updateFreeParking = function() {
 		if (typeof global.updateFreeParkingDisplay === 'function') {
-			global.updateFreeParkingDisplay();
+			if (this.game) global.updateFreeParkingDisplay(this.game);
+			else global.updateFreeParkingDisplay();
 		}
 	};
 
 	BrowserUI.prototype.updateDrawnCard = function(deckType, cardIndex) {
 		if (typeof global.updateDrawnCard === 'function') {
-			return global.updateDrawnCard(deckType, cardIndex);
+			return this.game
+				? global.updateDrawnCard(deckType, cardIndex, this.game)
+				: global.updateDrawnCard(deckType, cardIndex);
 		}
 		return Promise.resolve();
 	};
 
 	BrowserUI.prototype.popup = function(html, action, option, timer) {
 		if (typeof global.popup === 'function') {
-			return global.popup(html, action, option, timer);
+			return global.popup(html, action, option, timer, this.game);
 		}
 		if (typeof action === 'function') action();
 		return Promise.resolve();
 	};
 
 	BrowserUI.prototype.openAuction = function(propertyIndex, property, currentPlayer) {
-		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input type='button' value='Bid' onclick='game.auctionBid();' title='Place your bid.' /><input type='button' value='Pass' title='Skip bidding this time.' onclick='game.auctionPass();' /><input type='button' value='Exit Auction' title='Stop bidding on the property altogether.' onclick='game.auctionExit();' /></div>";
+		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input id='auction-bid-button' type='button' value='Bid' title='Place your bid.' /><input id='auction-pass-button' type='button' value='Pass' title='Skip bidding this time.' /><input id='auction-exit-button' type='button' value='Exit Auction' title='Stop bidding on the property altogether.' /></div>";
 		this.popup(html, 'blank');
+		var game = this.game;
+		[
+			['auction-bid-button', 'auctionBid'],
+			['auction-pass-button', 'auctionPass'],
+			['auction-exit-button', 'auctionExit']
+		].forEach(function(binding) {
+			var button = document.getElementById(binding[0]);
+			if (button && game && typeof game[binding[1]] === 'function') {
+				button.addEventListener('click', function() { game[binding[1]](); });
+			}
+		});
 		this.initializeAuction(propertyIndex, property, currentPlayer);
 		this.onAuctionParticipants();
 		this.updateMoney();
@@ -219,14 +239,16 @@
 	BrowserUI.prototype.onAuctionParticipants = function() {
 		if (typeof document === 'undefined') return;
 		var participants = document.getElementById('auctionparticipants');
-		if (!participants || !Array.isArray(global.player)) return;
-		participants.innerHTML = global.player.slice(1, global.pcount + 1).map(function(p) {
+		var state = this.game && this.game.state;
+		if (!participants || !state || !Array.isArray(state.player)) return;
+		participants.innerHTML = state.player.slice(1, state.pcount + 1).map(function(p) {
 			var status = p.auctionStatus || (p.bidding ? 'Bidding' : 'Out');
 			return "<div class='auction-participant' data-player-index='" + p.index + "'><span class='auction-player-name'><span class='auction-player-swatch' style='background-color: " + UIHtml.escapeHTML(p.color) + ";'></span>" + UIHtml.escapeHTML(p.name) + "</span><span class='auction-status auction-status-" + status.toLowerCase() + "'>" + status + "</span></div>";
 		}).join('');
+		var game = this.game;
 		participants.querySelectorAll('.auction-participant').forEach(function(item) {
 			item.addEventListener('mouseenter', function(event) {
-				if (typeof global.showAuctionPlayerStats === 'function') global.showAuctionPlayerStats(parseInt(this.getAttribute('data-player-index'), 10), event);
+				if (typeof global.showAuctionPlayerStats === 'function') global.showAuctionPlayerStats(parseInt(this.getAttribute('data-player-index'), 10), event, game);
 			});
 			item.addEventListener('mousemove', function(event) {
 				if (typeof global.positionAuctionPlayerStats === 'function') global.positionAuctionPlayerStats(event);
@@ -248,10 +270,11 @@
 		highestBid.textContent = '0';
 		highestBidder.textContent = 'N/A';
 		this.updateAuctionTurn(currentPlayer.name, false);
+		var thisUI = this;
 		bidInput.onkeydown = function(event) {
 			var key = event.keyCode;
 			if (key === 13) {
-				global.game.auctionBid();
+				if (thisUI.game) thisUI.game.auctionBid();
 				return false;
 			}
 			if (key === 8 || key === 9 || key === 46 || (key >= 35 && key <= 40) || event.ctrlKey) return true;
@@ -328,7 +351,12 @@
 		if (typeof document === 'undefined') return;
 		var el = document.getElementById('landed');
 		if (!el) return;
-		el.innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover='showdeed(" + propertyIndex + ");' onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(property.name) + "</a>.<input type='button' id='buypropertybutton' onclick='buy();' value='Buy ($" + property.price + ")' title='Buy " + UIHtml.escapeHTML(property.name) + " for " + UIHtml.escapeHTML(property.pricetext) + ".'/></div>";
+		el.innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover='showdeed(" + propertyIndex + ");' onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(property.name) + "</a>.<input type='button' id='buypropertybutton' value='Buy ($" + property.price + ")' title='Buy " + UIHtml.escapeHTML(property.name) + " for " + UIHtml.escapeHTML(property.pricetext) + ".'/></div>";
+		var buyButton = document.getElementById('buypropertybutton');
+		if (buyButton && this.game && typeof this.game.buy === 'function') {
+			var game = this.game;
+			buyButton.addEventListener('click', function() { game.buy(); });
+		}
 		el.style.display = '';
 		if (typeof global.$ !== 'undefined') global.$('#landed').show();
 	};
@@ -349,7 +377,8 @@
 	};
 
 	BrowserUI.prototype.removePlayerToken = function(playerIndex) {
-		var overlay = global.playerOverlays && global.playerOverlays[playerIndex];
+		var overlays = this.game && this.game.state.playerOverlays;
+		var overlay = overlays && overlays[playerIndex];
 		if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
 	};
 
@@ -381,7 +410,7 @@
 			global.$(".money-bar-arrow").hide();
 			global.$("#p" + playerIndex + "arrow").show();
 		}
-		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true);
+		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
 	};
 
 	BrowserUI.prototype.setDiceVisible = function(visible) {
@@ -394,10 +423,19 @@
 		if (typeof document === 'undefined') return;
 		var landed = document.getElementById('landed');
 		if (!landed) return;
-		var html = "You are in jail.<input type='button' title='Pay $50 fine to get out of jail immediately.' value='Pay $50 fine' onclick='payfifty();' />";
-		if (hasJailCard) html += "<input type='button' id='gojfbutton' title='Use &quot;Get Out of Jail Free&quot; card.' onclick='useJailCard();' value='Use Card' />";
+		var html = "You are in jail.<input type='button' id='pay-fine-button' title='Pay $50 fine to get out of jail immediately.' value='Pay $50 fine' />";
+		if (hasJailCard) html += "<input type='button' id='gojfbutton' title='Use &quot;Get Out of Jail Free&quot; card.' value='Use Card' />";
 		if (mustPayFine) html += "<div>NOTE: If you do not throw doubles after this roll, you <i>must</i> pay the $50 fine.</div>";
 		landed.innerHTML = html;
+		var game = this.game;
+		var payFineButton = document.getElementById('pay-fine-button');
+		if (payFineButton && game && typeof game.payFifty === 'function') {
+			payFineButton.addEventListener('click', function() { game.payFifty(); });
+		}
+		var jailCardButton = document.getElementById('gojfbutton');
+		if (jailCardButton && game && typeof game.useJailCard === 'function') {
+			jailCardButton.addEventListener('click', function() { game.useJailCard(); });
+		}
 		landed.style.display = '';
 		if (typeof global.$ !== 'undefined') global.$('#landed').show();
 	};
@@ -414,7 +452,7 @@
 	BrowserUI.prototype.onGameOver = function(winnerName) {
 		if (typeof global.$ !== 'undefined') {
 			global.$('#board, #control, #moneybar').show();
-			if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true);
+			if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
 			global.$('#refresh').hide();
 			if (typeof global.restartGame === 'function') {
 				global.$('#nextbutton').val('Restart Game').prop('title', 'Return to the settings screen and start another game.').off('click').on('click', global.restartGame);
@@ -434,7 +472,7 @@
 			}
 		}
 		if (typeof global.popup === 'function') {
-			global.popup("<div class='winner-popup-title'>" + UIHtml.escapeHTML(winnerName) + " Wins!!</div>", null, 5);
+			this.popup("<div class='winner-popup-title'>" + UIHtml.escapeHTML(winnerName) + " Wins!!</div>", null, 5);
 		}
 	};
 
@@ -443,7 +481,7 @@
 	};
 
 	BrowserUI.prototype.resetTradeView = function(initiator, recipient, allowRecipientToBeChanged) {
-		if (global.TradeView) global.TradeView.reset(this.tradeState, initiator, recipient, allowRecipientToBeChanged);
+		if (global.TradeView) global.TradeView.reset(this.tradeState, initiator, recipient, allowRecipientToBeChanged, this.game && this.game.state);
 	};
 
 	BrowserUI.prototype.readTradeView = function() {
@@ -451,11 +489,11 @@
 	};
 
 	BrowserUI.prototype.writeTradeView = function(trade) {
-		if (global.TradeView) global.TradeView.write(this.tradeState, trade);
+		if (global.TradeView) global.TradeView.write(this.tradeState, trade, this.game && this.game.state);
 	};
 
 	BrowserUI.prototype.formatTradeResult = function(label, trade) {
-		return global.TradeView ? global.TradeView.formatResult(label, trade) : '';
+		return global.TradeView ? global.TradeView.formatResult(label, trade, this.game && this.game.state.square) : '';
 	};
 
 	BrowserUI.prototype.setTradePanelVisible = function(visible) {
@@ -463,7 +501,7 @@
 		if (visible) global.$('#board, #control').hide();
 		else global.$('#board, #control').show();
 		global.$('#trade').toggle(!!visible);
-		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(!visible);
+		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(!visible, this.game);
 	};
 
 	BrowserUI.prototype.setTradeButtons = function(editing, responding) {

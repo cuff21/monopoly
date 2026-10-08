@@ -28,14 +28,16 @@
         return Object.assign({}, PROFILE_LIBRARY[Math.floor(Math.random() * PROFILE_LIBRARY.length)]);
     };
 
-    function propertyOwner(index, ownership) {
+    function propertyOwner(index, ownership, state) {
         if (ownership && ownership[index] !== undefined) {
             return ownership[index];
         }
-        return square[index].owner;
+        var square = state && state.square || [];
+        return square[index] ? square[index].owner : 0;
     }
 
-    function propertyGroupScore(index, ownerIndex, ownership) {
+    function propertyGroupScore(index, ownerIndex, ownership, state) {
+        var square = state && state.square || [];
         var s = square[index];
         if (!s || typeof s.group === 'undefined' || !s.group || s.group.length === 0) {
             return 0;
@@ -47,9 +49,9 @@
 
         for (var i = 0; i < total; i++) {
             var g = square[s.group[i]];
-            if (propertyOwner(s.group[i], ownership) === ownerIndex) {
+            if (propertyOwner(s.group[i], ownership, state) === ownerIndex) {
                 owned++;
-            } else if (propertyOwner(s.group[i], ownership) === 0) {
+            } else if (propertyOwner(s.group[i], ownership, state) === 0) {
                 open++;
             }
         }
@@ -72,7 +74,8 @@
         return Math.min(35, Math.max(10, avgPrice * 0.12));
     }
 
-    function propertyAssetValue(index, ownerIndex, ownership) {
+    function propertyAssetValue(index, ownerIndex, ownership, state) {
+        var square = state && state.square || [];
         var s = square[index];
         if (!s) {
             return 0;
@@ -81,16 +84,17 @@
         var value = s.price * (s.mortgage ? 0.5 : 1) * 0.65;
         value += (s.baserent || 0) * 3;
         value += (s.houseprice || 0) * 0.5;
-        value += propertyGroupScore(index, ownerIndex, ownership) * 2;
+        value += propertyGroupScore(index, ownerIndex, ownership, state) * 2;
 
-        if (s.group && s.group.length > 0 && propertyGroupScore(index, ownerIndex, ownership) >= 80) {
+        if (s.group && s.group.length > 0 && propertyGroupScore(index, ownerIndex, ownership, state) >= 80) {
             value += s.houseprice * 2;
         }
 
         return value;
     }
 
-    function expectedRent(index, ownerIndex, ownership) {
+    function expectedRent(index, ownerIndex, ownership, state) {
+        var square = state && state.square || [];
         var s = square[index];
         if (!s || s.price === 0) {
             return 0;
@@ -99,7 +103,7 @@
         if (index === 5 || index === 15 || index === 25 || index === 35) {
             var railroadCount = 0;
             for (var railroad = 0; railroad < 4; railroad++) {
-                if (propertyOwner([5, 15, 25, 35][railroad], ownership) === ownerIndex) {
+                if (propertyOwner([5, 15, 25, 35][railroad], ownership, state) === ownerIndex) {
                     railroadCount++;
                 }
             }
@@ -107,21 +111,21 @@
         }
 
         if (index === 12 || index === 28) {
-            var utilityCount = (propertyOwner(12, ownership) === ownerIndex ? 1 : 0) + (propertyOwner(28, ownership) === ownerIndex ? 1 : 0);
+            var utilityCount = (propertyOwner(12, ownership, state) === ownerIndex ? 1 : 0) + (propertyOwner(28, ownership, state) === ownerIndex ? 1 : 0);
             return (s.baserent || 4) * (utilityCount === 2 ? 2.5 : utilityCount === 1 ? 1 : 0);
         }
 
         var rent = s.house > 0 ? s['rent' + Math.min(s.house, 5)] : s.baserent || 0;
-        if (s.group && s.group.length > 0 && propertyGroupScore(index, ownerIndex, ownership) >= 80 && s.house === 0) {
+        if (s.group && s.group.length > 0 && propertyGroupScore(index, ownerIndex, ownership, state) >= 80 && s.house === 0) {
             rent *= 2;
         }
         return rent;
     }
 
-    function expectedRentValue(index, ownerIndex, ownership) {
-        var activePlayers = estimateRemainingPlayers();
+    function expectedRentValue(index, ownerIndex, ownership, state) {
+        var activePlayers = estimateRemainingPlayers(state);
         var landingWeight = 0.8 + activePlayers * 0.05;
-        var occupants = typeof globalThis.player === 'undefined' ? [] : globalThis.player;
+        var occupants = state && state.player || [];
 
         for (var i = 1; i < occupants.length; i++) {
             var opponent = occupants[i];
@@ -133,10 +137,11 @@
             }
         }
 
-        return expectedRent(index, ownerIndex, ownership) * landingWeight;
+        return expectedRent(index, ownerIndex, ownership, state) * landingWeight;
     }
 
-    function opponentThreatScore(index, ownerIndex) {
+    function opponentThreatScore(index, ownerIndex, state) {
+        var square = state && state.square || [];
         var s = square[index];
         if (!s || !s.group || s.group.length < 2) {
             return 0;
@@ -153,7 +158,7 @@
 
         for (var ownerKey in owners) {
             var owned = owners[ownerKey];
-            var opponent = typeof globalThis.player === 'undefined' ? null : globalThis.player[ownerKey];
+            var opponent = state && state.player ? state.player[ownerKey] : null;
             var cashMultiplier = opponent && opponent.money !== undefined ? clamp(0.8 + opponent.money / 3000, 0.8, 1.2) : 1;
             if (owned === s.group.length - 1 && s.owner === 0) {
                 strongestThreat = Math.max(strongestThreat, (70 + s.price * 0.12) * cashMultiplier);
@@ -165,7 +170,8 @@
         return strongestThreat;
     }
 
-    function evaluateProperty(index, ownerIndex, cashOnHand, profile, endgamePressure) {
+    function evaluateProperty(index, ownerIndex, cashOnHand, profile, endgamePressure, state) {
+        var square = state && state.square || [];
         var s = square[index];
         if (!s || s.price === 0 || s.owner !== 0) {
             return -Infinity;
@@ -207,9 +213,9 @@
             score += 60;
         }
 
-        score += propertyGroupScore(index, ownerIndex);
-        score += expectedRentValue(index, ownerIndex) * 0.8;
-        score += opponentThreatScore(index, ownerIndex) * profile.endgameBias;
+        score += propertyGroupScore(index, ownerIndex, null, state);
+        score += expectedRentValue(index, ownerIndex, null, state) * 0.8;
+        score += opponentThreatScore(index, ownerIndex, state) * profile.endgameBias;
         score *= profile.riskTolerance > 0.7 ? 1.08 : 1;
         score += endgamePressure * 12 * profile.endgameBias;
 
@@ -224,7 +230,8 @@
         return score;
     }
 
-    function groupOwnershipSummary(ownerIndex) {
+    function groupOwnershipSummary(ownerIndex, state) {
+        var square = state && state.square || [];
         var summary = [];
         for (var i = 0; i < 40; i++) {
             var s = square[i];
@@ -247,13 +254,11 @@
         return summary;
     }
 
-    function estimateRemainingPlayers() {
-        if (typeof globalThis.player === 'undefined') {
-            return 3;
-        }
+    function estimateRemainingPlayers(state) {
+        var players = state && state.player || [];
         var active = 0;
-        for (var i = 1; i <= globalThis.player.length; i++) {
-            if (globalThis.player[i] && (globalThis.player[i].money >= 0 || globalThis.player[i].creditor === -1)) {
+        for (var i = 1; i < players.length; i++) {
+            if (players[i] && (players[i].money >= 0 || players[i].creditor === -1)) {
                 active++;
             }
         }
@@ -273,6 +278,10 @@
 
         p.name = "Strategic AI Player " + this.constructor.count;
         this.personality = this.profile.name;
+
+        var state = p.game && p.game.state || {};
+        var square = state.square || [];
+        var players = state.player || [];
 
         this.recordTrade = function(opponent, direction, value) {
             var key = opponent && opponent.index !== undefined ? opponent.index : Number(opponent) || 'unknown';
@@ -306,7 +315,7 @@
         };
 
         this.planPortfolio = function() {
-            var groups = groupOwnershipSummary(p.index);
+            var groups = groupOwnershipSummary(p.index, state);
             var target = null;
             var bestScore = -Infinity;
 
@@ -339,8 +348,8 @@
                 return false;
             }
 
-            var endgamePressure = Math.max(0, (estimateRemainingPlayers() - 2) * 0.25);
-            var score = evaluateProperty(index, p.index, p.money, this.profile, endgamePressure);
+            var endgamePressure = Math.max(0, (estimateRemainingPlayers(state) - 2) * 0.25);
+            var score = evaluateProperty(index, p.index, p.money, this.profile, endgamePressure, state);
             var groupBonus = 0;
             if (typeof s.group !== 'undefined' && s.group && s.group.length > 0) {
                 var groupOwned = 0;
@@ -395,10 +404,10 @@
 
             for (var j = 0; j < 40; j++) {
                 if (property[j] > 0) {
-                    incomingValue += propertyAssetValue(j, p.index, ownership);
+                    incomingValue += propertyAssetValue(j, p.index, ownership, state);
                 }
                 if (property[j] < 0) {
-                    outgoingValue += propertyAssetValue(j, p.index);
+                    outgoingValue += propertyAssetValue(j, p.index, null, state);
                 }
             }
 
@@ -430,7 +439,7 @@
 
         this.beforeTurn = function() {
             var s;
-            var groups = groupOwnershipSummary(p.index);
+            var groups = groupOwnershipSummary(p.index, state);
             var bestHouseTarget = null;
             this.planPortfolio();
 
@@ -465,8 +474,8 @@
             }
 
             if (bestHouseTarget && p.money > bestHouseTarget.tile.houseprice + this.getLiquidityFloor() * 0.6) {
-                if (typeof buyHouse === 'function') {
-                    buyHouse(bestHouseTarget.index);
+                if (p.game && typeof p.game.buyHouse === 'function') {
+                    p.game.buyHouse(bestHouseTarget.index);
                 }
             }
 
@@ -478,7 +487,7 @@
                         unmortgageCandidates.push({
                             index: i,
                             cost: Math.round(s.price * 0.55),
-                            returnValue: expectedRentValue(i, p.index) + propertyGroupScore(i, p.index) * 2
+                            returnValue: expectedRentValue(i, p.index, null, state) + propertyGroupScore(i, p.index, null, state) * 2
                         });
                     }
                 }
@@ -492,8 +501,8 @@
                     if (p.money - unmortgageCandidate.cost < this.getLiquidityFloor()) {
                         continue;
                     }
-                    if (typeof unmortgage === 'function') {
-                        unmortgage(unmortgageCandidate.index);
+                    if (p.game && typeof p.game.unmortgage === 'function') {
+                        p.game.unmortgage(unmortgageCandidate.index);
                     }
                 }
             }
@@ -531,7 +540,7 @@
             var availableCash = Math.max(0, p.money - this.getLiquidityFloor());
 
             var getRecipientTradeMinimum = function(recipientIndex) {
-                var recipient = typeof player === 'undefined' ? null : player[recipientIndex];
+                var recipient = players[recipientIndex] || null;
                 var recipientAI = recipient && recipient.AI;
                 var tradeBias = recipientAI && recipientAI.profile ? recipientAI.profile.tradeBias || 1 : 1;
                 var opponentBias = recipientAI && typeof recipientAI.getTradeBias === 'function' ? recipientAI.getTradeBias(p) : 1;
@@ -587,7 +596,7 @@
                     if (offerBlocked || targetSquare.group.indexOf(offerIndex) !== -1) {
                         continue;
                     }
-                    if (propertyGroupScore(offerIndex, p.index) >= 80) {
+                    if (propertyGroupScore(offerIndex, p.index, null, state) >= 80) {
                         continue;
                     }
 
@@ -596,10 +605,10 @@
                     var hypotheticalOwnership = {};
                     hypotheticalOwnership[missingIndex] = p.index;
                     hypotheticalOwnership[offerIndex] = missingOwner;
-                    var receivedValue = propertyAssetValue(missingIndex, p.index, hypotheticalOwnership);
-                    var offeredValue = propertyAssetValue(offerIndex, p.index);
-                    var opponentTargetValue = propertyAssetValue(missingIndex, missingOwner);
-                    var opponentOfferValue = propertyAssetValue(offerIndex, missingOwner, hypotheticalOwnership);
+                    var receivedValue = propertyAssetValue(missingIndex, p.index, hypotheticalOwnership, state);
+                    var offeredValue = propertyAssetValue(offerIndex, p.index, null, state);
+                    var opponentTargetValue = propertyAssetValue(missingIndex, missingOwner, null, state);
+                    var opponentOfferValue = propertyAssetValue(offerIndex, missingOwner, hypotheticalOwnership, state);
                     var recipientMinimum = getRecipientTradeMinimum(missingOwner);
                     var cashOffer = Math.max(0, Math.ceil(opponentTargetValue - opponentOfferValue + recipientMinimum));
                     var netGain = receivedValue - offeredValue - cashOffer;
@@ -623,10 +632,10 @@
                         multiOwnership[missingIndex] = p.index;
                         multiOwnership[firstOfferIndex] = missingOwner;
                         multiOwnership[secondOfferIndex] = missingOwner;
-                        var multiReceivedValue = propertyAssetValue(missingIndex, p.index, multiOwnership);
-                        var multiOfferedValue = propertyAssetValue(firstOfferIndex, p.index) + propertyAssetValue(secondOfferIndex, p.index);
-                        var multiOpponentTargetValue = propertyAssetValue(missingIndex, missingOwner);
-                        var multiOpponentOfferValue = propertyAssetValue(firstOfferIndex, missingOwner, multiOwnership) + propertyAssetValue(secondOfferIndex, missingOwner, multiOwnership);
+                        var multiReceivedValue = propertyAssetValue(missingIndex, p.index, multiOwnership, state);
+                        var multiOfferedValue = propertyAssetValue(firstOfferIndex, p.index, null, state) + propertyAssetValue(secondOfferIndex, p.index, null, state);
+                        var multiOpponentTargetValue = propertyAssetValue(missingIndex, missingOwner, null, state);
+                        var multiOpponentOfferValue = propertyAssetValue(firstOfferIndex, missingOwner, multiOwnership, state) + propertyAssetValue(secondOfferIndex, missingOwner, multiOwnership, state);
                         var multiRecipientMinimum = getRecipientTradeMinimum(missingOwner);
                         var multiCashOffer = Math.max(0, Math.ceil(multiOpponentTargetValue - multiOpponentOfferValue + multiRecipientMinimum));
                         var multiNetGain = multiReceivedValue - multiOfferedValue - multiCashOffer;
@@ -651,9 +660,9 @@
                 if (bestOpportunity.additionalOfferIndex !== undefined) {
                     property[bestOpportunity.additionalOfferIndex] = 1;
                 }
-                proposedTrade = new Trade(p, player[bestOpportunity.owner], bestOpportunity.cash, property, 0, 0);
-                if (typeof game !== 'undefined' && game && typeof game.trade === 'function') {
-                    game.trade(proposedTrade);
+                proposedTrade = new Trade(p, players[bestOpportunity.owner], bestOpportunity.cash, property, 0, 0);
+                if (p.game && typeof p.game.trade === 'function') {
+                    p.game.trade(proposedTrade);
                     return true;
                 }
             }
@@ -662,7 +671,7 @@
                 var railroadOwnership = {};
                 railroadOwnership[requestedRailroad] = p.index;
                 railroadOwnership[offeredUtility] = square[requestedRailroad].owner;
-                var railroadGain = propertyAssetValue(requestedRailroad, p.index, railroadOwnership) - propertyAssetValue(offeredUtility, p.index);
+                var railroadGain = propertyAssetValue(requestedRailroad, p.index, railroadOwnership, state) - propertyAssetValue(offeredUtility, p.index, null, state);
                 if (railroadGain <= 10) {
                     return false;
                 }
@@ -670,9 +679,9 @@
                 utilityForRailroadFlag = false;
                 property[requestedRailroad] = -1;
                 property[offeredUtility] = 1;
-                proposedTrade = new Trade(p, player[square[requestedRailroad].owner], 0, property, 0, 0);
-                if (typeof game !== 'undefined' && game && typeof game.trade === 'function') {
-                    game.trade(proposedTrade);
+                proposedTrade = new Trade(p, players[square[requestedRailroad].owner], 0, property, 0, 0);
+                if (p.game && typeof p.game.trade === 'function') {
+                    p.game.trade(proposedTrade);
                     return true;
                 }
             }
@@ -682,18 +691,18 @@
 
         this.postBail = function() {
             var developedDanger = 0;
-            var opponents = typeof globalThis.player === 'undefined' ? [] : globalThis.player;
+            var opponents = players;
 
             for (var i = 0; i < 40; i++) {
                 var property = square[i];
                 if (property && property.owner !== 0 && property.owner !== p.index && (property.house > 0 || property.hotel === 1)) {
-                    developedDanger = Math.max(developedDanger, expectedRentValue(i, property.owner));
+                    developedDanger = Math.max(developedDanger, expectedRentValue(i, property.owner, null, state));
                 }
             }
 
             var hasFreeCard = p.communityChestJailCard || p.chanceJailCard;
             var reserveAfterFine = p.money - 50 >= this.getLiquidityFloor() * 0.75;
-            var endgamePressure = Math.max(0, (estimateRemainingPlayers() - 2) * 0.25);
+            var endgamePressure = Math.max(0, (estimateRemainingPlayers(state) - 2) * 0.25);
 
             if (p.jailroll === 2) {
                 return true;
@@ -722,7 +731,7 @@
                     continue;
                 }
                 if (s.house === 0 && s.hotel !== 1 && !s.mortgage) {
-                    mortgageCandidates.push({ index: i, value: propertyAssetValue(i, p.index) });
+                    mortgageCandidates.push({ index: i, value: propertyAssetValue(i, p.index, null, state) });
                 }
             }
 
@@ -736,9 +745,9 @@
 
                 for (var j = 0; j < 40; j++) {
                     var candidate = square[j];
-                    if (candidate.owner === p.index && (candidate.house > 0 || candidate.hotel === 1) && canSellHouse(j)) {
+                    if (candidate.owner === p.index && (candidate.house > 0 || candidate.hotel === 1) && p.game && p.game.canSellHouse(j)) {
                         var saleValue = candidate.houseprice * 0.5;
-                        var rentLoss = expectedRentValue(j, p.index) / Math.max(1, saleValue);
+                        var rentLoss = expectedRentValue(j, p.index, null, state) / Math.max(1, saleValue);
                         houseCandidates.push({ index: j, rentLoss: rentLoss });
                     }
                 }
@@ -751,7 +760,7 @@
                     return left.rentLoss - right.rentLoss;
                 });
 
-                if (typeof sellHouse === 'function' && sellHouse(houseCandidates[0].index)) {
+                if (p.game && p.game.sellHouse(houseCandidates[0].index)) {
                     sold = true;
                 }
             }
@@ -760,8 +769,8 @@
                 return left.value - right.value;
             });
             for (var mortgageCandidate = 0; mortgageCandidate < mortgageCandidates.length && p.money < 0; mortgageCandidate++) {
-                if (typeof mortgage === 'function') {
-                    mortgage(mortgageCandidates[mortgageCandidate].index);
+                if (p.game && typeof p.game.mortgage === 'function') {
+                    p.game.mortgage(mortgageCandidates[mortgageCandidate].index);
                 }
             }
         };
@@ -772,7 +781,7 @@
                 return -1;
             }
 
-            var value = evaluateProperty(property, p.index, p.money, this.profile, Math.max(0, (estimateRemainingPlayers() - 2) * 0.25));
+            var value = evaluateProperty(property, p.index, p.money, this.profile, Math.max(0, (estimateRemainingPlayers(state) - 2) * 0.25), state);
             var liquidityFloor = this.getLiquidityFloor();
             var minimumBid = currentBid + 1;
             var bidStep = 10;

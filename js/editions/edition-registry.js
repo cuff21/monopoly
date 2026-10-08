@@ -28,27 +28,23 @@ _global.Monopoly.Editions = (function() {
 
 	function setActive(name) {
 		if (!editions[name]) return false;
-		var stateContext = _global.GameStateContext;
-		var state = stateContext && stateContext.getCurrentState();
-		if (state) {
-			state.activeEdition = name;
-			return true;
-		}
 		activeName = name;
 		return true;
 	}
 
 	function getActiveName() {
-		var stateContext = _global.GameStateContext;
-		var state = stateContext && stateContext.getCurrentState();
-		return state && state.activeEdition ? state.activeEdition : activeName;
+		return activeName;
+	}
+
+	function get(name) {
+		return editions[name] || null;
 	}
 
 	function getNames() {
 		return Object.keys(editions);
 	}
 
-	return { register: register, getActive: getActive, setActive: setActive, getActiveName: getActiveName, getNames: getNames };
+	return { register: register, get: get, getActive: getActive, setActive: setActive, getActiveName: getActiveName, getNames: getNames };
 })();
 
 if (typeof module !== 'undefined' && module.exports) {

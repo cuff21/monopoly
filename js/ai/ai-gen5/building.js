@@ -9,7 +9,8 @@
     // Finds the single best-ROI house purchase across all of the player's completed groups, skipping any
     // tile that would need a house/hotel the shared bank (32 houses, 12 hotels) doesn't have left.
     function findBestCandidate(p, profile, completedGroupTiles, supply) {
-        var square = globalThis.square;
+        var square = AIGen5.getSquares(p);
+        var gameState = AIGen5.getGameState(p);
         var bestCandidate = null;
         var bestROI = -Infinity;
 
@@ -40,7 +41,7 @@
                 var currentRent = tile.house === 0 ? tile.baserent : tile['rent' + tile.house];
                 var nextRent = tile.house === 4 ? tile.rent5 : tile['rent' + (tile.house + 1)];
                 var rentGain = Math.max(0, (nextRent || currentRent || 0) - (currentRent || 0));
-                var threat = AIGen5.Probability ? AIGen5.Probability.aggregateBoardThreat(groupTiles[j], p.index, 2) : 0;
+                var threat = AIGen5.Probability ? AIGen5.Probability.aggregateBoardThreat(groupTiles[j], p.index, 2, gameState) : 0;
                 var roi = (rentGain / tile.houseprice) * (patience + threat * threatMultiplier) * (profile.houseBias || 1);
                 if (roi > bestROI) {
                     bestROI = roi;
@@ -59,8 +60,8 @@
         params = params || {};
         var minROI = params.batchBuildMinROI || 0.2;
         var safetyMargin = params.reserveSafetyMargin || 1.15;
-        var square = globalThis.square;
-        var groups = AIGen5.Valuation ? AIGen5.Valuation.groupOwnershipSummary(p.index) : [];
+        var square = AIGen5.getSquares(p);
+        var groups = AIGen5.Valuation ? AIGen5.Valuation.groupOwnershipSummary(p.index, p) : [];
         var purchased = [];
 
         var seenGroupStarts = {};
@@ -81,7 +82,7 @@
 
         var guard = 0;
         while (guard++ < 40) {
-            var supply = typeof getHouseHotelSupply === 'function' ? getHouseHotelSupply() : null;
+            var supply = p.game && typeof p.game.getHouseHotelSupply === 'function' ? p.game.getHouseHotelSupply() : null;
             var best = findBestCandidate(p, profile, completedGroupTiles, supply);
             if (!best.candidate || best.roi < minROI) {
                 break;
@@ -94,8 +95,8 @@
 
             // buyHouse re-checks the bank itself; treat a false/undefined result as "can't build" and stop
             // instead of re-selecting the same denied candidate on every remaining guard iteration.
-            if (typeof buyHouse === 'function') {
-                if (buyHouse(best.candidate.index) === false) {
+            if (p.game && typeof p.game.buyHouse === 'function') {
+                if (p.game.buyHouse(best.candidate.index) === false) {
                     break;
                 }
             }

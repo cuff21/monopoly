@@ -201,24 +201,24 @@
 	function buildCommunityChestCards() {
 		var cards = [];
 
-		cards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(p) {
+		cards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(game, p) {
 			p.communityChestJailCard = true;
 		});
-		cards[1] = new Card("You have won second prize in a beauty contest. Collect $10.", function() { addamount(10, 'Community Chest');});
-		cards[2] = new Card("From sale of stock, you get $50.", function() { addamount(50, 'Community Chest');});
-		cards[3] = new Card("Life insurance matures. Collect $100.", function() { addamount(100, 'Community Chest');});
-		cards[4] = new Card("Income tax refund. Collect $20.", function() { addamount(20, 'Community Chest');});
-		cards[5] = new Card("Holiday fund matures. Receive $100.", function() { addamount(100, 'Community Chest');});
-		cards[6] = new Card("You inherit $100.", function() { addamount(100, 'Community Chest');});
-		cards[7] = new Card("Receive $25 consultancy fee.", function() { addamount(25, 'Community Chest');});
-		cards[8] = new Card("Pay hospital fees of $100.", function() { subtractamount(100, 'Community Chest');});
-		cards[9] = new Card("Bank error in your favor. Collect $200.", function() { addamount(200, 'Community Chest');});
-		cards[10] = new Card("Pay school fees of $50.", function() { subtractamount(50, 'Community Chest');});
-		cards[11] = new Card("Doctor's fee. Pay $50.", function() { subtractamount(50, 'Community Chest');});
-		cards[12] = new Card("It is your birthday. Collect $10 from every player.", function() { collectfromeachplayer(10, 'Community Chest');});
-		cards[13] = new Card("Advance to \"GO\" (Collect $200).", function() { advance(0);});
-		cards[14] = new Card("You are assessed for street repairs. $40 per house. $115 per hotel.", function() { streetrepairs(40, 115);});
-		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass \"GO\". Do not collect $200.", function() { gotojail();});
+		cards[1] = new Card("You have won second prize in a beauty contest. Collect $10.", function(game) { game.addAmount(10, 'Community Chest');});
+		cards[2] = new Card("From sale of stock, you get $50.", function(game) { game.addAmount(50, 'Community Chest');});
+		cards[3] = new Card("Life insurance matures. Collect $100.", function(game) { game.addAmount(100, 'Community Chest');});
+		cards[4] = new Card("Income tax refund. Collect $20.", function(game) { game.addAmount(20, 'Community Chest');});
+		cards[5] = new Card("Holiday fund matures. Receive $100.", function(game) { game.addAmount(100, 'Community Chest');});
+		cards[6] = new Card("You inherit $100.", function(game) { game.addAmount(100, 'Community Chest');});
+		cards[7] = new Card("Receive $25 consultancy fee.", function(game) { game.addAmount(25, 'Community Chest');});
+		cards[8] = new Card("Pay hospital fees of $100.", function(game) { game.subtractAmount(100, 'Community Chest');});
+		cards[9] = new Card("Bank error in your favor. Collect $200.", function(game) { game.addAmount(200, 'Community Chest');});
+		cards[10] = new Card("Pay school fees of $50.", function(game) { game.subtractAmount(50, 'Community Chest');});
+		cards[11] = new Card("Doctor's fee. Pay $50.", function(game) { game.subtractAmount(50, 'Community Chest');});
+		cards[12] = new Card("It is your birthday. Collect $10 from every player.", function(game) { game.collectFromEachPlayer(10, 'Community Chest');});
+		cards[13] = new Card("Advance to \"GO\" (Collect $200).", function(game) { game.advance(0);});
+		cards[14] = new Card("You are assessed for street repairs. $40 per house. $115 per hotel.", function(game) { game.streetRepairs(40, 115);});
+		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass \"GO\". Do not collect $200.", function(game) { game.goToJail();});
 
 		return cards;
 	}
@@ -226,24 +226,24 @@
 	function buildChanceCards() {
 		var cards = [];
 
-		cards[0] = new Card("GET OUT OF JAIL FREE. This card may be kept until needed or traded.", function(p) {
+		cards[0] = new Card("GET OUT OF JAIL FREE. This card may be kept until needed or traded.", function(game, p) {
 			p.chanceJailCard = true;
 		});
-		cards[1] = new Card("Make General Repairs on All Your Property. For each house pay $25. For each hotel $100.", function() { streetrepairs(25, 100);});
-		cards[2] = new Card("Speeding fine $15.", function() { subtractamount(15, 'Chance');});
-		cards[3] = new Card("You have been elected chairman of the board. Pay each player $50.", function() { payeachplayer(50, 'Chance');});
-		cards[4] = new Card("Go back three spaces.", function() { gobackthreespaces();});
-		cards[5] = new Card("ADVANCE TO THE NEAREST UTILITY. IF UNOWNED, you may buy it from the Bank. IF OWNED, throw dice and pay owner a total ten times the amount thrown.", function() { advanceToNearestUtility();});
-		cards[6] = new Card("Bank pays you dividend of $50.", function() { addamount(50, 'Chance');});
-		cards[7] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function() { advanceToNearestRailroad();});
-		cards[8] = new Card("Pay poor tax of $15.", function() { subtractamount(15, 'Chance');});
-		cards[9] = new Card("Take a trip to Reading Rail Road. If you pass \"GO\" collect $200.", function() { advance(5);});
-		cards[10] = new Card("ADVANCE to Boardwalk.", function() { advance(39);});
-		cards[11] = new Card("ADVANCE to Illinois Avenue. If you pass \"GO\" collect $200.", function() { advance(24);});
-		cards[12] = new Card("Your building loan matures. Collect $150.", function() { addamount(150, 'Chance');});
-		cards[13] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function() { advanceToNearestRailroad();});
-		cards[14] = new Card("ADVANCE to St. Charles Place. If you pass \"GO\" collect $200.", function() { advance(11);});
-		cards[15] = new Card("Go to Jail. Go Directly to Jail. Do not pass \"GO\". Do not collect $200.", function() { gotojail();});
+		cards[1] = new Card("Make General Repairs on All Your Property. For each house pay $25. For each hotel $100.", function(game) { game.streetRepairs(25, 100);});
+		cards[2] = new Card("Speeding fine $15.", function(game) { game.subtractAmount(15, 'Chance');});
+		cards[3] = new Card("You have been elected chairman of the board. Pay each player $50.", function(game) { game.payEachPlayer(50, 'Chance');});
+		cards[4] = new Card("Go back three spaces.", function(game) { game.goBackThreeSpaces();});
+		cards[5] = new Card("ADVANCE TO THE NEAREST UTILITY. IF UNOWNED, you may buy it from the Bank. IF OWNED, throw dice and pay owner a total ten times the amount thrown.", function(game) { game.advanceToNearestUtility();});
+		cards[6] = new Card("Bank pays you dividend of $50.", function(game) { game.addAmount(50, 'Chance');});
+		cards[7] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function(game) { game.advanceToNearestRailroad();});
+		cards[8] = new Card("Pay poor tax of $15.", function(game) { game.subtractAmount(15, 'Chance');});
+		cards[9] = new Card("Take a trip to Reading Rail Road. If you pass \"GO\" collect $200.", function(game) { game.advance(5);});
+		cards[10] = new Card("ADVANCE to Boardwalk.", function(game) { game.advance(39);});
+		cards[11] = new Card("ADVANCE to Illinois Avenue. If you pass \"GO\" collect $200.", function(game) { game.advance(24);});
+		cards[12] = new Card("Your building loan matures. Collect $150.", function(game) { game.addAmount(150, 'Chance');});
+		cards[13] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function(game) { game.advanceToNearestRailroad();});
+		cards[14] = new Card("ADVANCE to St. Charles Place. If you pass \"GO\" collect $200.", function(game) { game.advance(11);});
+		cards[15] = new Card("Go to Jail. Go Directly to Jail. Do not pass \"GO\". Do not collect $200.", function(game) { game.goToJail();});
 
 		return cards;
 	}

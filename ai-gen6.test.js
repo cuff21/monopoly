@@ -9,15 +9,68 @@ const { Gen6AI } = require('./js/ai/ai-gen6/index');
 const { SimBoard } = require('./js/simulation/match-runner');
 const { Tournament } = require('./js/ai/ai-gen6/sim/tournament');
 const { Population } = require('./js/ai/ai-gen6/neat/population');
+const PopulationLoader = require('./js/ai/ai-gen6/data/population-loader');
 const { Gen6Trainer } = require('./js/ai/ai-gen6/sim/trainer');
+const Gen6SimulationAdapter = require('./js/ai/ai-gen6/simulation-adapter');
 const PolicyEvaluator = require('./js/ai/ai-gen6/sim/policy-evaluator');
 const ApplicationScriptManifest = require('./js/script-manifest');
 const { processBatch, bootstrapWorker } = require('./js/simulation/worker-entry');
 const { createWorkerMessageHandler } = require('./js/simulation/worker-runtime');
+const Gen6Compatibility = require('./js/ai/ai-gen6/schema1-compatibility');
 require('./js/game/property-actions');
 
 async function runTests() {
     console.log('Testing Gen6 AI Interface & Headless Decoupled Core...');
+
+    [126, 146, 147].forEach(inputCount => {
+        assert.throws(
+            () => Gen6Compatibility.rejectLegacyInput({ inputCount }),
+            /Unsupported legacy Gen6 NEAT data/,
+            inputCount + '-input saved policies must be rejected'
+        );
+        assert.throws(
+            () => Gen6Compatibility.rejectLegacyInput({ schemaVersion: 1, inputCount }),
+            /legacy NEAT fields are not supported/,
+            'matching version metadata must not make a legacy shape usable'
+        );
+    });
+    assert.throws(() => Gen6Compatibility.rejectLegacyInput('saved-neat-genome'), /Unsupported legacy Gen6 NEAT data/);
+    assert.throws(() => Gen6Compatibility.rejectLegacyInput({ population: [] }), /Unsupported legacy Gen6 NEAT data/);
+    assert.throws(() => Genotype.fromString('saved-neat-genome'), /Unsupported legacy Gen6 NEAT data/);
+    assert.throws(() => PopulationLoader.fromString('saved-neat-population'), /Unsupported legacy Gen6 NEAT data/);
+    assert.throws(() => Population.loadFromString('saved-neat-population'), /Unsupported legacy Gen6 NEAT data/);
+    assert.throws(() => new Gen6AI({}, 'saved-neat-genome'), /Unsupported legacy Gen6 NEAT data/);
+    assert.throws(() => Gen6SimulationAdapter.deserialize({ kind: 'gen6', genotype: 'saved-neat-genome' }), /Unsupported legacy Gen6 NEAT data/);
+    const workerGenome = Genotype.createInitial(3, 2);
+    const workerPayload = Gen6SimulationAdapter.serialize({ kind: 'gen6', genotype: workerGenome });
+    const restoredWorkerGenome = Gen6SimulationAdapter.deserialize(workerPayload).genotype;
+    assert.ok(restoredWorkerGenome instanceof Genotype, 'worker transport should restore an in-memory genotype');
+    assert.strictEqual(restoredWorkerGenome.toString(), workerGenome.toString(), 'structured worker transport should preserve genome values');
+
+    let enumeratedLegacyKeys = 0;
+    const legacyStorage = {
+        get length() { return 3; },
+        key(index) {
+            enumeratedLegacyKeys++;
+            return ['gen6Population', 'gameHistory', 'gen6Champion'][index];
+        },
+        getItem() { throw new Error('legacy values must never be read'); }
+    };
+    assert.throws(() => Gen6Compatibility.rejectLegacyStorage(legacyStorage), /gen6Population, gen6Champion/);
+    assert.strictEqual(enumeratedLegacyKeys, 3, 'legacy detection should enumerate key names only');
+    assert.strictEqual(Gen6Compatibility.rejectLegacyStorage({ length: 1, key: () => 'gameHistory' }).length, 0);
+    const schema1PolicyEnvelope = {
+        format: 'monopoly-gen6-policy', schemaVersion: 1, policyId: 'active',
+        tensors: [{ name: 'example', shape: [1], values: new Float32Array([0]) }],
+        validation: {}, coverage: {}
+    };
+    assert.strictEqual(Gen6Compatibility.assertSchema1Record(schema1PolicyEnvelope), schema1PolicyEnvelope);
+    assert.throws(() => Gen6Compatibility.assertSchema1Record({ schemaVersion: 1 }), /Malformed Schema 1/);
+    assert.throws(() => Gen6Compatibility.assertSchema1Record({
+        ...schema1PolicyEnvelope, tensors: [{ name: 'broken', shape: [2], values: new Float32Array([0]) }]
+    }), /Malformed Schema 1 Gen6 policy record/);
+    assert.throws(() => Gen6Compatibility.assertSchema1Record({ schemaVersion: 2 }), /schemaVersion 1 is required/);
+    console.log('✔ Test 0.01: Unsupported Gen6 schemas and legacy storage are rejected without reading values.');
 
     // --- Test 0.05: Browser simulation worker bootstrap loads all required modules ---
     const importedScripts = [];
@@ -82,7 +135,10 @@ async function runTests() {
     assert.strictEqual(workerMatches.length, 4);
     assert.strictEqual(workerMaxActiveMatches, 2, 'pool should execute concurrently but respect its worker limit');
     assert.ok(workerMessages.slice(0, 3).every(message => message.matches[0].edition === 'NYC' && message.matches[0].playerCount === 6), 'worker messages should preserve the fixed tournament setup');
-    assert.strictEqual(workerMessages[3].matches[0].contestants[0].genotype, workerBrains[0].toString());
+    assert.deepStrictEqual(
+        workerMessages[3].matches[0].contestants[0].genotype,
+        Gen6SimulationAdapter.serialize({ kind: 'gen6', genotype: workerBrains[0] }).genotype
+    );
     assert.deepStrictEqual(workerMessages[3].matches[0].contestants[1], { kind: 'baseline', ai: 'gen5', profile: 'Tactician' });
 
     let slotWorkerCount = 0;
@@ -173,29 +229,22 @@ async function runTests() {
     assert.strictEqual(new Phenotype(eightPlayerChild).inputCount, 146, 'crossover should preserve v2 input nodes');
     assert.strictEqual(new Phenotype(legacyChild).inputCount, 126, 'crossover should preserve legacy input nodes');
 
-    const savedGen6Globals = { player: global.player, pcount: global.pcount, square: global.square };
-    global.player = [null, ...Array.from({ length: 8 }, (_, index) => ({
+    const eightPlayerRoster = [null, ...Array.from({ length: 8 }, (_, index) => ({
         index: index + 1,
         position: index + 1,
         money: 1000 + index
     }))];
-    global.pcount = 8;
-    global.square = [];
-    try {
-        const eightPlayerAI = new Gen6AI(global.player[8], Genotype.createInitial(147, 9));
-        let eightPlayerDecisionInputs;
-        eightPlayerAI.phenotype.evaluate = inputs => {
-            eightPlayerDecisionInputs = inputs;
-            return new Float64Array(9);
-        };
-        eightPlayerAI.getDecision();
-        assert.strictEqual(eightPlayerDecisionInputs[15], 8 / 39, '147-input brains should see player 8 position');
-        assert.strictEqual(eightPlayerDecisionInputs[23], 1007 / 4000, '147-input brains should see player 8 money');
-    } finally {
-        global.player = savedGen6Globals.player;
-        global.pcount = savedGen6Globals.pcount;
-        global.square = savedGen6Globals.square;
-    }
+    const eightPlayerGame = { state: { player: eightPlayerRoster, pcount: 8, square: [] } };
+    eightPlayerRoster[8].game = eightPlayerGame;
+    const eightPlayerAI = new Gen6AI(eightPlayerRoster[8], Genotype.createInitial(147, 9));
+    let eightPlayerDecisionInputs;
+    eightPlayerAI.phenotype.evaluate = inputs => {
+        eightPlayerDecisionInputs = inputs;
+        return new Float64Array(9);
+    };
+    eightPlayerAI.getDecision();
+    assert.strictEqual(eightPlayerDecisionInputs[15], 8 / 39, '147-input brains should see player 8 position');
+    assert.strictEqual(eightPlayerDecisionInputs[23], 1007 / 4000, '147-input brains should see player 8 money');
 
     const tradeContextAI = new Gen6AI({ index: 1, money: 1000, position: 0 }, Genotype.createInitial(147, 9));
     let encodedOffer;
@@ -208,50 +257,38 @@ async function runTests() {
     console.log('✔ Test 0.6: Eight-player and context input schemas verified.');
 
     // --- Test 0.62: Gen6 property outputs invoke legal mortgage and debt actions ---
-    const policyGlobals = {};
-    ['player', 'square', 'pcount', 'mortgage', 'unmortgage', 'getHouseHotelSupply', 'canSellHouse', 'sellHouse', 'game'].forEach(name => {
-        policyGlobals[name] = global[name];
-    });
     const policyPlayer = { index: 1, money: 1500, position: 0 };
     const policySquares = Array.from({ length: 40 }, () => ({ owner: 0, house: 0, hotel: 0, mortgage: false, price: 100, houseprice: 50, group: [] }));
     policySquares[1].owner = 1;
-    global.player = [null, policyPlayer];
-    global.square = policySquares;
-    global.pcount = 1;
-    global.getHouseHotelSupply = () => ({ housesAvailable: 0, hotelsAvailable: 0 });
     let mortgageCalls = 0;
     let unmortgageCalls = 0;
     let houseSaleCalls = 0;
-    global.mortgage = index => { mortgageCalls++; policySquares[index].mortgage = true; return true; };
-    global.unmortgage = index => { unmortgageCalls++; policySquares[index].mortgage = false; return true; };
-    global.canSellHouse = () => true;
-    global.sellHouse = index => { houseSaleCalls++; policySquares[index].house--; policyPlayer.money += 100; return true; };
-    try {
-        const policyAI = new Gen6AI(policyPlayer, Genotype.createInitial(147, 9));
-        policyAI.getDecision = () => policySquares[1].mortgage
-            ? { unmortgage: true, mortgage: false, buildHouseCount: 0 }
-            : { mortgage: true, unmortgage: false, buildHouseCount: 0 };
-        policyAI.beforeTurn();
-        assert.strictEqual(mortgageCalls, 1, 'mortgage output should invoke mortgage()');
-        policyAI.beforeTurn();
-        assert.strictEqual(unmortgageCalls, 1, 'unmortgage output should invoke unmortgage()');
+    const policyGame = {
+        state: { player: [null, policyPlayer], square: policySquares, pcount: 1 },
+        mortgage(index) { mortgageCalls++; policySquares[index].mortgage = true; return true; },
+        unmortgage(index) { unmortgageCalls++; policySquares[index].mortgage = false; return true; },
+        getHouseHotelSupply() { return { housesAvailable: 0, hotelsAvailable: 0 }; },
+        canSellHouse() { return true; },
+        sellHouse(index) { houseSaleCalls++; policySquares[index].house--; policyPlayer.money += 100; return true; }
+    };
+    policyPlayer.game = policyGame;
+    const policyAI = new Gen6AI(policyPlayer, Genotype.createInitial(147, 9));
+    policyAI.getDecision = () => policySquares[1].mortgage
+        ? { unmortgage: true, mortgage: false, buildHouseCount: 0 }
+        : { mortgage: true, unmortgage: false, buildHouseCount: 0 };
+    policyAI.beforeTurn();
+    assert.strictEqual(mortgageCalls, 1, 'mortgage output should invoke mortgage()');
+    policyAI.beforeTurn();
+    assert.strictEqual(unmortgageCalls, 1, 'unmortgage output should invoke unmortgage()');
 
-        policySquares[1].house = 1;
-        policyPlayer.money = -50;
-        policyAI.getDecision = () => ({ sellHouseCount: 1 });
-        policyAI.payDebt();
-        assert.strictEqual(houseSaleCalls, 1, 'sellHouseCount should limit and invoke house sales');
-    } finally {
-        Object.keys(policyGlobals).forEach(name => {
-            if (policyGlobals[name] === undefined) delete global[name];
-            else global[name] = policyGlobals[name];
-        });
-    }
+    policySquares[1].house = 1;
+    policyPlayer.money = -50;
+    policyAI.getDecision = () => ({ sellHouseCount: 1 });
+    policyAI.payDebt();
+    assert.strictEqual(houseSaleCalls, 1, 'sellHouseCount should limit and invoke house sales');
     console.log('✔ Test 0.62: Gen6 property policy actions verified.');
 
     // --- Test 0.65: Gen6 proposes a legal reciprocal monopoly trade ---
-    const tradeGlobals = {};
-    ['player', 'square', 'pcount', 'game'].forEach(name => { tradeGlobals[name] = global[name]; });
     const tradeBot = { index: 1, position: 5, money: 1200 };
     const tradeOpponent = { index: 2, position: 10, money: 1100 };
     const tradeBoard = Array.from({ length: 40 }, (_, index) => ({ index, owner: 0, house: 0, hotel: 0, mortgage: false, houseprice: 50, group: null }));
@@ -259,23 +296,17 @@ async function runTests() {
     tradeBoard[6].group = tradeBoard[8].group = [6, 8];
     tradeBoard[1].owner = tradeBoard[6].owner = 1;
     tradeBoard[3].owner = tradeBoard[8].owner = 2;
-    global.player = [null, tradeBot, tradeOpponent];
-    global.square = tradeBoard;
-    global.pcount = 2;
     let proposedTrade = null;
-    global.game = { trade: trade => { proposedTrade = trade; } };
-    try {
-        const tradingAI = new Gen6AI(tradeBot, Genotype.createInitial(147, 9));
-        tradingAI.getDecision = () => ({ proposeTrade: true });
-        assert.strictEqual(tradingAI.onLand(), true, 'proposal output should submit a valid reciprocal trade');
-        assert.strictEqual(proposedTrade.getProperty(3), -1, 'AI should request the opponent-owned missing group member');
-        assert.strictEqual(proposedTrade.getProperty(6), 1, 'AI should offer its piece completing the opponent group');
-    } finally {
-        ['player', 'square', 'pcount', 'game'].forEach(name => {
-            if (tradeGlobals[name] === undefined) delete global[name];
-            else global[name] = tradeGlobals[name];
-        });
-    }
+    const tradeGame = {
+        state: { player: [null, tradeBot, tradeOpponent], square: tradeBoard, pcount: 2 },
+        trade(trade) { proposedTrade = trade; }
+    };
+    tradeBot.game = tradeGame;
+    const tradingAI = new Gen6AI(tradeBot, Genotype.createInitial(147, 9));
+    tradingAI.getDecision = () => ({ proposeTrade: true });
+    assert.strictEqual(tradingAI.onLand(), true, 'proposal output should submit a valid reciprocal trade');
+    assert.strictEqual(proposedTrade.getProperty(3), -1, 'AI should request the opponent-owned missing group member');
+    assert.strictEqual(proposedTrade.getProperty(6), 1, 'AI should offer its piece completing the opponent group');
     console.log('✔ Test 0.65: Reciprocal trade proposal verified.');
 
     // --- Test 1: Gen6AI instantiation & decision methods ---
@@ -322,7 +353,6 @@ async function runTests() {
 
     const startTime = Date.now();
     const preSimulationPlayerArray = global.player;
-    const preSimulationPlayers = global.player.slice();
     const preSimulationGame = global.game;
     const preSimulationSquare = global.square;
     const board = new SimBoard(contestants, 60);
@@ -332,7 +362,6 @@ async function runTests() {
     assert.ok(Array.isArray(results), 'board.run() should return an array');
     assert.strictEqual(results.length, 4, 'should have results for all 4 players');
     assert.strictEqual(global.player, preSimulationPlayerArray, 'headless match should restore the original player array');
-    assert.deepStrictEqual(global.player, preSimulationPlayers, 'headless match should restore the original player entries');
     assert.strictEqual(global.game, preSimulationGame, 'headless match should restore the previous game instance');
     assert.strictEqual(global.square, preSimulationSquare, 'headless match should restore the original board');
     assert.ok(results.every(result => Number.isInteger(result.turns) && result.turns >= 0 && result.turns <= 60), 'match results should report bounded turns played');
@@ -357,14 +386,14 @@ async function runTests() {
     const workerResult = await processBatch({
         matches: [
             {
-                contestants: contestants.map(g => g.toString ? g.toString() : g),
+                contestants: contestants.map(g => Gen6SimulationAdapter.serialize(g)),
                 maxTurns: 20,
                 edition: 'NYC',
                 playerCount: 5
             },
             {
                 contestants: [
-                    { kind: 'gen6', genotype: contestants[0].toString() },
+                    Gen6SimulationAdapter.serialize(contestants[0]),
                     { kind: 'baseline', ai: 'gen5', profile: 'Tactician' },
                     { kind: 'baseline', ai: 'strategic', profile: 'Balanced' },
                     { kind: 'baseline', ai: 'strategic', profile: 'Defensive' }
@@ -479,10 +508,13 @@ async function runTests() {
     }
     console.log('✔ Test 5: Tournament finalist bracket verified without clones.');
 
-    // --- Test 6: Trainer evaluates, evolves, and restores multiple generations ---
+    // --- Test 6: Trainer evolves and rejects saved legacy generations ---
     const storedData = {};
+    const storageReads = [];
     const memoryStorage = {
-        getItem(key) { return storedData[key] || null; },
+        get length() { return Object.keys(storedData).length; },
+        key(index) { return Object.keys(storedData)[index] || null; },
+        getItem(key) { storageReads.push(key); return storedData[key] || null; },
         setItem(key, value) { storedData[key] = value; }
     };
     let evaluatedGenerations = 0;
@@ -526,6 +558,8 @@ async function runTests() {
 
     const unapprovedData = {};
     const unapprovedStorage = {
+        get length() { return Object.keys(unapprovedData).length; },
+        key(index) { return Object.keys(unapprovedData)[index] || null; },
         getItem(key) { return unapprovedData[key] || null; },
         setItem(key, value) { unapprovedData[key] = value; }
     };
@@ -537,33 +571,17 @@ async function runTests() {
     });
     const unapprovedResult = await unapprovedTrainer.train(1);
     assert.strictEqual(unapprovedResult.validation.passed, false);
-    assert.strictEqual(unapprovedStorage.getItem('gen6Champion'), null, 'a policy failing held-out validation must not become playable');
-    assert.ok(unapprovedStorage.getItem('gen6Population'), 'failed candidates should still preserve training progress');
+    assert.strictEqual(unapprovedData.gen6Champion, undefined, 'a policy failing held-out validation must not become playable');
+    assert.ok(unapprovedData.gen6Population, 'failed candidates should still preserve training progress');
 
-    const restoredTrainer = Gen6Trainer.loadOrCreate({
-        storage: memoryStorage,
-        tournamentFactory: fixedTournamentFactory,
-        policyEvaluator: trainingPolicyEvaluator
-    });
-    assert.strictEqual(restoredTrainer.population.generation, 2, 'saved population should restore its generation');
-    assert.strictEqual(restoredTrainer.population.size, 8, 'saved population should restore its configured size');
-    assert.strictEqual(restoredTrainer.population.inputCount, 147, 'saved population should restore its input schema');
-    assert.strictEqual(Gen6Trainer.getStoredChampion(memoryStorage).toString(), trainingResult.champion.toString());
-    const resizedTrainer = Gen6Trainer.loadOrCreate({
-        storage: memoryStorage,
-        populationSize: Gen6Trainer.DEFAULT_POPULATION_SIZE,
-        policyEvaluator: trainingPolicyEvaluator
-    });
-    assert.strictEqual(resizedTrainer.population.size, 32, 'an explicit training size should expand a restored population');
-    assert.strictEqual(
-        resizedTrainer.population.species.reduce((total, species) => total + species.members.length, 0),
-        32,
-        'restored training should immediately contain the requested number of genomes'
-    );
+    const readsBeforeReject = storageReads.length;
+    assert.throws(() => Gen6Trainer.loadOrCreate({ storage: memoryStorage }), /Unsupported legacy Gen6 localStorage data/);
+    assert.throws(() => Gen6Trainer.getStoredChampion(memoryStorage), /Unsupported legacy Gen6 localStorage data/);
+    assert.strictEqual(storageReads.length, readsBeforeReject, 'legacy storage must be rejected before reading any values');
     const legacyPopulation = new Population(4, 126, 9);
     legacyPopulation.initialize();
-    assert.strictEqual(Population.loadFromString(legacyPopulation.saveToString()).inputCount, 126, 'legacy population files should retain their 126-input schema');
-    console.log('✔ Test 6: Trainer lifecycle and persistence verified.');
+    assert.throws(() => Population.loadFromString(legacyPopulation.saveToString()), /Unsupported legacy Gen6 NEAT data/);
+    console.log('✔ Test 6: Trainer lifecycle and legacy persistence rejection verified.');
 
     console.log('\nAll Gen6 tests passed successfully!');
 }

@@ -14,7 +14,15 @@ if (!globalThis.square) {
 
 const { StrategicAI, PROFILE_LIBRARY } = require('./js/ai/ai-strategic.js');
 
-const player = { index: 1, money: 2000, name: 'Tester', human: false };
+const state = { square: globalThis.square, player: [], pcount: 8 };
+function createPlayer(index, money, name, methods) {
+  const player = Object.assign({ index, money, name, human: false }, methods && methods.player);
+  player.game = Object.assign({ state }, methods && methods.game);
+  state.player[index] = player;
+  return player;
+}
+
+const player = createPlayer(1, 2000, 'Tester');
 const ai = new StrategicAI(player);
 
 assert.strictEqual(typeof ai.buyProperty, 'function');
@@ -26,7 +34,7 @@ assert.strictEqual(ai.buyProperty(10), false, 'should skip overpriced or low-val
 square[0].owner = 2;
 square[1].owner = 2;
 square[2].owner = 0;
-const blocker = new StrategicAI({ index: 6, money: 2000, name: 'Blocker', human: false }, { name: 'Balanced' });
+const blocker = new StrategicAI(createPlayer(6, 2000, 'Blocker'), { name: 'Balanced' });
 assert.strictEqual(blocker.buyProperty(2), true, 'should prioritize blocking an opponent near a monopoly');
 square[0].owner = 0;
 square[1].owner = 0;
@@ -44,11 +52,11 @@ assert.strictEqual(ai.acceptTrade(trade) !== false, true, 'trade evaluator shoul
 ai.recordTrade({ index: 2 }, 'accepted', 150);
 assert.strictEqual(ai.tradeMemory[2].accepted >= 1, true, 'trade memory should track outcomes');
 
-const aggressive = new StrategicAI({ index: 4, money: 3000, name: 'Aggro', human: false }, { name: 'Aggressive' });
+const aggressive = new StrategicAI(createPlayer(4, 3000, 'Aggro'), { name: 'Aggressive' });
 assert.strictEqual(aggressive.profile.name, 'Aggressive', 'personality assignment should work');
 assert.strictEqual(typeof aggressive.planPortfolio, 'function', 'portfolio planner should exist');
 assert.strictEqual(typeof aggressive.bid, 'function', 'auction logic should exist');
-const strategicBidder = new StrategicAI({ index: 5, money: 1000, name: 'Bidder', human: false }, { name: 'Balanced' });
+const strategicBidder = new StrategicAI(createPlayer(5, 1000, 'Bidder'), { name: 'Balanced' });
 square[0].owner = 5;
 assert.ok(strategicBidder.bid(1, 0) > 0, 'should open an auction for a property completing a group');
 assert.strictEqual(strategicBidder.bid(3, 0), 0, 'should pass on a weak property instead of bidding automatically');
@@ -66,30 +74,29 @@ globalThis.Trade = function(initiator, recipient, money, property) {
   this.getCommunityChestJailCard = () => 0;
   this.getChanceJailCard = () => 0;
 };
-globalThis.player = [];
-globalThis.player[2] = { index: 2, money: 1000, name: 'Opponent' };
-globalThis.game = { trade: (tradeOffer) => { proposedSetTrade = tradeOffer; } };
+createPlayer(2, 1000, 'Opponent');
 square[1].owner = 2;
 square[2].owner = 5;
 square[3].owner = 5;
-const setTrader = new StrategicAI({ index: 5, money: 1000, name: 'Set Builder', human: false }, { name: 'Balanced' });
+const setTraderPlayer = createPlayer(5, 1000, 'Set Builder', { game: { trade: tradeOffer => { proposedSetTrade = tradeOffer; } } });
+const setTrader = new StrategicAI(setTraderPlayer, { name: 'Balanced' });
 assert.strictEqual(setTrader.onLand(), true, 'should proactively offer a trade for a missing group property');
 assert.strictEqual(proposedSetTrade.getProperty(1), -1, 'should request the missing group property');
 assert.strictEqual(proposedSetTrade.getProperty(3), 1, 'should offer a property the opponent can value');
 assert.ok(proposedSetTrade.getMoney() >= 0, 'should include a fair cash adjustment when needed');
-const recipientAI = new StrategicAI(globalThis.player[2], { name: 'Balanced' });
+const recipientAI = new StrategicAI(state.player[2], { name: 'Balanced' });
 assert.notStrictEqual(recipientAI.acceptTrade(proposedSetTrade), false, 'generated set-completion offer should be negotiable for the recipient');
-const jailed = new StrategicAI({ index: 7, money: 100, name: 'Jailed', human: false, jail: true, jailroll: 2 }, { name: 'Defensive' });
+const jailed = new StrategicAI(createPlayer(7, 100, 'Jailed', { player: { jail: true, jailroll: 2 } }), { name: 'Defensive' });
 assert.strictEqual(jailed.postBail(), true, 'should leave jail on the forced third turn');
 let selectedHouseIndex = -1;
-globalThis.buyHouse = (index) => { selectedHouseIndex = index; };
+const houseBuilder = { buyHouse(index) { selectedHouseIndex = index; } };
 square[0].owner = 8;
 square[1].owner = 8;
 square[2].owner = 8;
 square[0].house = 1;
 square[1].house = 0;
 square[2].house = 1;
-const evenBuilder = new StrategicAI({ index: 8, money: 2000, name: 'Even Builder', human: false }, { name: 'Balanced' });
+const evenBuilder = new StrategicAI(createPlayer(8, 2000, 'Even Builder', { game: houseBuilder }), { name: 'Balanced' });
 evenBuilder.beforeTurn();
 assert.strictEqual(selectedHouseIndex, 1, 'should build on the lowest-house property first');
 square[0].owner = 0;

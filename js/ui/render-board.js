@@ -1,121 +1,89 @@
 // Board rendering: player token positions and the sliding-overlay move animation.
 
-async function updatePosition() {
-	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
-		return Promise.resolve();
-	}
+async function updatePosition(gameInstance) {
+	if (gameInstance && gameInstance.ui && gameInstance.ui.isHeadless) return Promise.resolve();
+	if (!gameInstance && typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) return Promise.resolve();
 
+	var gameState = gameInstance && gameInstance.state;
+	var players = gameState ? gameState.player : player;
+	var playerCount = gameState ? gameState.pcount : pcount;
+	var currentTurn = gameState ? gameState.turn : turn;
+	var previousPositions = gameState ? (gameState.lastKnownPosition || (gameState.lastKnownPosition = [])) : lastKnownPosition;
+	var previousJails = gameState ? (gameState.lastKnownJail || (gameState.lastKnownJail = [])) : lastKnownJail;
+	var moveDirection = gameState ? (gameState.nextMoveDirection || 1) : nextMoveDirection;
 	var movers = [];
 
-	for (var i = 1; i <= pcount; i++) {
-		var p = player[i];
-		var previousPosition = lastKnownPosition[i];
-		var wasJailed = lastKnownJail[i];
-
-		if (previousPosition !== undefined && !wasJailed && p.jail) {
+	for (var i = 1; i <= playerCount; i++) {
+		var currentPlayer = players[i];
+		var previousPosition = previousPositions[i];
+		var wasJailed = previousJails[i];
+		if (previousPosition !== undefined && !wasJailed && currentPlayer.jail) {
 			movers.push({ index: i, toJail: true });
-		} else if (previousPosition !== undefined && !wasJailed && !p.jail && previousPosition !== p.position) {
-			movers.push({ index: i, fromIndex: previousPosition, toIndex: p.position, direction: nextMoveDirection });
-			nextMoveDirection = 1;
+		} else if (previousPosition !== undefined && !wasJailed && !currentPlayer.jail && previousPosition !== currentPlayer.position) {
+			movers.push({ index: i, fromIndex: previousPosition, toIndex: currentPlayer.position, direction: moveDirection });
+			if (gameState) gameState.nextMoveDirection = 1;
+			else nextMoveDirection = 1;
+			moveDirection = 1;
 		}
 	}
 
-	// Reset borders
 	document.getElementById("jail").style.border = "1px solid black";
 	document.getElementById("jailpositionholder").innerHTML = "";
 	for (var i = 0; i < 40; i++) {
 		document.getElementById("cell" + i).style.border = "1px solid black";
 		document.getElementById("cell" + i + "positionholder").innerHTML = "";
-
 	}
 
-	var sq, left, top;
-
+	var left, top;
 	for (var x = 0; x < 40; x++) {
-		sq = square[x];
 		left = 0;
 		top = 0;
-
-		for (var y = turn; y <= pcount; y++) {
-
-			if (player[y].position == x && !player[y].jail) {
-
-				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + player[y].name + "' style='background-color: " + player[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-				if (left == 36) {
-					left = 0;
-					top = 12;
-				} else
-					left += 12;
+		for (var y = currentTurn; y <= playerCount; y++) {
+			if (players[y].position == x && !players[y].jail) {
+				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + players[y].name + "' style='background-color: " + players[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+				if (left == 36) { left = 0; top = 12; } else left += 12;
 			}
 		}
-
-		for (var y = 1; y < turn; y++) {
-
-			if (player[y].position == x && !player[y].jail) {
-				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + player[y].name + "' style='background-color: " + player[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-				if (left == 36) {
-					left = 0;
-					top = 12;
-				} else
-					left += 12;
+		for (var y = 1; y < currentTurn; y++) {
+			if (players[y].position == x && !players[y].jail) {
+				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + players[y].name + "' style='background-color: " + players[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+				if (left == 36) { left = 0; top = 12; } else left += 12;
 			}
 		}
 	}
 
 	left = 0;
 	top = 53;
-	for (var i = turn; i <= pcount; i++) {
-		if (player[i].jail) {
-			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + i + "' title='" + player[i].name + "' style='background-color: " + player[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-
-			if (left === 36) {
-				left = 0;
-				top = 41;
-			} else {
-				left += 12;
-			}
+	for (var i = currentTurn; i <= playerCount; i++) {
+		if (players[i].jail) {
+			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + i + "' title='" + players[i].name + "' style='background-color: " + players[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+			if (left === 36) { left = 0; top = 41; } else left += 12;
+		}
+	}
+	for (var i = 1; i < currentTurn; i++) {
+		if (players[i].jail) {
+			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + i + "' title='" + players[i].name + "' style='background-color: " + players[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
+			if (left === 36) { left = 0; top = 41; } else left += 12;
 		}
 	}
 
-	for (var i = 1; i < turn; i++) {
-		if (player[i].jail) {
-			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + i + "' title='" + player[i].name + "' style='background-color: " + player[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-			if (left === 36) {
-				left = 0;
-				top = 41;
-			} else
-				left += 12;
-		}
-	}
+	var currentPlayer = players[currentTurn];
+	if (currentPlayer.jail) document.getElementById("jail").style.border = "1px solid " + currentPlayer.color;
+	else document.getElementById("cell" + currentPlayer.position).style.border = "1px solid " + currentPlayer.color;
 
-	p = player[turn];
-
-	if (p.jail) {
-		document.getElementById("jail").style.border = "1px solid " + p.color;
-	} else {
-		document.getElementById("cell" + p.position).style.border = "1px solid " + p.color;
-	}
-
-	// Keep every overlay in sync with its (now hidden) real token, snapping non-movers instantly
-	// in case another player's move shifted their stacking offset within a shared cell.
 	var movingIndexes = movers.map(function(move) { return move.index; });
-	for (var i = 1; i <= pcount; i++) {
-		if (movingIndexes.indexOf(i) === -1) {
-			snapOverlay(i);
-		}
+	for (var i = 1; i <= playerCount; i++) {
+		if (movingIndexes.indexOf(i) === -1) snapOverlay(i, gameState);
 	}
-
 	var animations = movers.map(function(move) {
-		return move.toJail ? animateOverlayToJail(move.index) : animateOverlayMove(move.index, move.fromIndex, move.toIndex, move.direction);
+		return move.toJail
+			? animateOverlayToJail(move.index, gameState)
+			: animateOverlayMove(move.index, move.fromIndex, move.toIndex, move.direction, gameState);
 	});
-
-	if (animations.length > 0) {
-		await Promise.all(animations);
-	}
-
-	for (var i = 1; i <= pcount; i++) {
-		lastKnownPosition[i] = player[i].position;
-		lastKnownJail[i] = player[i].jail;
+	if (animations.length > 0) await Promise.all(animations);
+	for (var i = 1; i <= playerCount; i++) {
+		previousPositions[i] = players[i].position;
+		previousJails[i] = players[i].jail;
 	}
 }
 
@@ -123,84 +91,65 @@ function getCellRect(index) {
 	return document.getElementById("cell" + index).getBoundingClientRect();
 }
 
-// Returns the corner cells crossed when travelling from fromIndex to toIndex in the given
-// direction, in order, followed by toIndex - i.e. the full sequence of stops along the board's
-// square path. This lets a move that wraps most of the way around the board (e.g. a "advance to"
-// card) slide through every side it actually passes over, instead of cutting across the middle.
+var boardCorners = [0, 10, 20, 30];
+
+// Include crossed corners so long moves follow the board path rather than cutting across it.
 function buildWaypointIndexes(fromIndex, toIndex, direction) {
 	var distance = direction === 1
 		? ((toIndex - fromIndex) % 40 + 40) % 40
 		: ((fromIndex - toIndex) % 40 + 40) % 40;
-
 	var waypoints = [];
 	for (var step = 1; step < distance; step++) {
 		var index = ((fromIndex + direction * step) % 40 + 40) % 40;
-		if (boardCorners.indexOf(index) !== -1) {
-			waypoints.push(index);
-		}
+		if (boardCorners.indexOf(index) !== -1) waypoints.push(index);
 	}
-
 	waypoints.push(toIndex);
 	return waypoints;
 }
 
-function getOrCreateOverlay(i) {
-	var overlay = playerOverlays[i];
+// Overlay state belongs to the supplied Game; legacy browser startup uses the globals.
+function getOrCreateOverlay(i, gameState) {
+	var overlays = gameState ? (gameState.playerOverlays || (gameState.playerOverlays = [])) : playerOverlays;
+	var players = gameState ? gameState.player : player;
+	var overlay = overlays[i];
 	if (!overlay) {
 		overlay = document.createElement("div");
 		overlay.className = "cell-position token-overlay";
 		document.body.appendChild(overlay);
-		playerOverlays[i] = overlay;
+		overlays[i] = overlay;
 	}
-	overlay.style.backgroundColor = player[i].color;
+	overlay.style.backgroundColor = players[i].color;
 	return overlay;
 }
 
-// Overlays live in document.body (not #board) so their fixed positioning isn't affected by the
-// board's layout, but that also means hiding #board doesn't hide them - callers that hide/show the
-// board must pair it with this.
-function setTokenOverlaysVisible(visible) {
-	for (var i = 0; i < playerOverlays.length; i++) {
-		if (playerOverlays[i]) {
-			playerOverlays[i].style.display = visible ? "" : "none";
-		}
+function setTokenOverlaysVisible(visible, gameInstance) {
+	var overlays = gameInstance && gameInstance.state ? gameInstance.state.playerOverlays || [] : playerOverlays;
+	for (var i = 0; i < overlays.length; i++) {
+		if (overlays[i]) overlays[i].style.display = visible ? "" : "none";
 	}
 }
 
-// Removes all overlay tokens from the DOM, e.g. when starting a new game so a previous game's
-// tokens don't linger on the setup screen.
 function resetTokenOverlays() {
 	for (var i = 0; i < playerOverlays.length; i++) {
-		if (playerOverlays[i] && playerOverlays[i].parentNode) {
-			playerOverlays[i].parentNode.removeChild(playerOverlays[i]);
-		}
+		if (playerOverlays[i] && playerOverlays[i].parentNode) playerOverlays[i].parentNode.removeChild(playerOverlays[i]);
 	}
 	playerOverlays.length = 0;
 }
 
-// The real token div is hidden (see .player-token in styles.css) but still rendered by the normal
-// instant-render logic, so its rect already accounts for any multi-token stacking within a cell.
 function getRealTokenRect(i) {
 	var el = document.getElementById("playertoken" + i);
 	return el ? el.getBoundingClientRect() : null;
 }
 
-// getBoundingClientRect() is viewport-relative, but overlays are positioned absolutely in the
-// document (so they scroll with the page), so every rect needs the current scroll offset added.
 function toPagePosition(rect) {
 	return { left: rect.left + window.scrollX, top: rect.top + window.scrollY };
 }
 
-// Instantly moves an overlay to match its real token, with no transition/animation. Falls back to
-// the player's cell/jail rect if the real token element isn't found, so the overlay never just
-// freezes in place (which looked like the token failing to move until the next render).
-function snapOverlay(i) {
-	var rect = getRealTokenRect(i) || getFallbackRect(i);
-	if (!rect) {
-		return;
-	}
-
-	var overlay = getOrCreateOverlay(i);
+// Snap non-movers to their rendered token, falling back to the state-owned player position.
+function snapOverlay(i, gameState) {
+	var rect = getRealTokenRect(i) || getFallbackRect(i, gameState);
+	if (!rect) return;
+	var overlay = getOrCreateOverlay(i, gameState);
 	var pos = toPagePosition(rect);
 	overlay.style.transition = "none";
 	overlay.style.left = pos.left + "px";
@@ -208,78 +157,55 @@ function snapOverlay(i) {
 	void overlay.offsetHeight;
 }
 
-// Rect to fall back to when the real (hidden) token element can't be found for some reason.
-function getFallbackRect(i) {
-	var p = player[i];
-	if (!p) {
-		return null;
-	}
+function getFallbackRect(i, gameState) {
+	var players = gameState ? gameState.player : player;
+	var p = players[i];
+	if (!p) return null;
 	return p.jail ? document.getElementById("jail").getBoundingClientRect() : getCellRect(p.position);
 }
 
-// Transitions an overlay's left/top style(s) to new values and resolves once done.
 function slideOverlay(overlay, changes, duration) {
 	return new Promise(function(resolve) {
 		overlay.style.transition = Object.keys(changes).map(function(prop) {
 			return prop + " " + duration + "ms linear";
 		}).join(", ");
 		void overlay.offsetHeight;
-
-		Object.keys(changes).forEach(function(prop) {
-			overlay.style[prop] = changes[prop];
-		});
-
+		Object.keys(changes).forEach(function(prop) { overlay.style[prop] = changes[prop]; });
 		setTimeout(resolve, duration);
 	});
 }
 
-// Slides a token's overlay along the board's square path from fromIndex to toIndex, stopping at
-// every corner crossed along the way so long moves travel all the way around instead of cutting
-// straight across the board.
-async function animateOverlayMove(i, fromIndex, toIndex, direction) {
-	var overlay = getOrCreateOverlay(i);
+async function animateOverlayMove(i, fromIndex, toIndex, direction, gameState) {
+	var overlay = getOrCreateOverlay(i, gameState);
 	var waypoints = buildWaypointIndexes(fromIndex, toIndex, direction);
 	var currentRect = getCellRect(fromIndex);
-
-	// Snap to the true departure point first; the overlay may not have been positioned yet
-	// (e.g. its very first animated move), which previously left it stranded off in a corner.
 	var currentPos = toPagePosition(currentRect);
 	overlay.style.transition = "none";
 	overlay.style.left = currentPos.left + "px";
 	overlay.style.top = currentPos.top + "px";
 	void overlay.offsetHeight;
-
 	for (var w = 0; w < waypoints.length; w++) {
 		var isLastWaypoint = w === waypoints.length - 1;
-		// Always use the plain cell rect to decide whether this leg is horizontal or vertical:
-		// the real token rect can be a pixel off (its own border/stacking offset), which previously
-		// made the last leg on a top/bottom row misdetect as a vertical move and never slide left.
 		var waypointCellRect = getCellRect(waypoints[w]);
-		// The real token rect should always exist by now, but fall back to the destination
-		// cell's rect rather than silently skipping the step and stranding the token mid-path.
 		var nextRect = isLastWaypoint ? (getRealTokenRect(i) || waypointCellRect) : waypointCellRect;
-
 		var sameRow = Math.round(currentRect.top) === Math.round(waypointCellRect.top);
 		var prop = sameRow ? "left" : "top";
 		var nextPos = toPagePosition(nextRect);
 		var value = (sameRow ? nextPos.left : nextPos.top) + "px";
-
 		await slideOverlay(overlay, { [prop]: value }, 125);
 		currentRect = waypointCellRect;
 	}
-
-	// Brief pause so the arrival is visible even during a quick string of doubles.
 	await sleep(250);
 }
 
-// Being sent to jail slides the token directly, in a straight line, instead of following the board path.
-async function animateOverlayToJail(i) {
-	var overlay = getOrCreateOverlay(i);
+async function animateOverlayToJail(i, gameState) {
+	var overlay = getOrCreateOverlay(i, gameState);
 	var target = getRealTokenRect(i) || document.getElementById("jail").getBoundingClientRect();
 	var pos = toPagePosition(target);
-
 	await slideOverlay(overlay, { left: pos.left + "px", top: pos.top + "px" }, 250);
-
-	// Brief pause so the arrival is visible even during a quick string of doubles.
 	await sleep(250);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = { updatePosition: updatePosition, setTokenOverlaysVisible: setTokenOverlaysVisible };
 }

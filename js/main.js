@@ -7,6 +7,30 @@ function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function bindBrowserGameState(gameInstance) {
+	var stateKeys = [
+		'player', 'square', 'communityChestCards', 'chanceCards', 'playersGame', 'pcount',
+		'auctionEnabled', 'pendingAuction', 'freeParkingTaxes', 'freeParkingPot', 'turn',
+		'doublecount', 'lastGamePlayerCount', 'lastKnownPosition', 'lastKnownJail',
+		'playerOverlays', 'nextMoveDirection'
+	];
+	stateKeys.forEach(function(key) {
+		Object.defineProperty(window, key, {
+			configurable: true,
+			enumerable: true,
+			get: function() { return gameInstance.state[key]; },
+			set: function(value) { gameInstance.state[key] = value; }
+		});
+	});
+	window.buy = function() { return gameInstance.buy(); };
+	window.mortgage = function(index) { return gameInstance.mortgage(index); };
+	window.unmortgage = function(index) { return gameInstance.unmortgage(index); };
+	window.buyHouse = function(index) { return gameInstance.buyHouse(index); };
+	window.sellHouse = function(index) { return gameInstance.sellHouse(index); };
+	window.canSellHouse = function(index) { return gameInstance.canSellHouse(index); };
+	window.getHouseHotelSupply = function() { return gameInstance.getHouseHotelSupply(); };
+}
+
 // Overwrite an array with numbers from one to the array's length in a random order.
 Array.prototype.randomize = function(length) {
 	length = (length || this.length);
@@ -32,12 +56,33 @@ function onloadBehavior() {
 		gen6Trainer: Gen6Trainer,
 		createWorkerPool: Gen6Trainer.createBrowserWorkerPool
 	});
-	game = new Game();
-	redefineGame();
+	var edition = Monopoly.Editions.getActive();
+	var boardGroups = edition.buildGroups();
+	var initialState = GameStateContext.createState({
+		player: [],
+		square: edition.buildSquares(boardGroups),
+		communityChestCards: edition.buildCommunityChestCards(),
+		chanceCards: edition.buildChanceCards(),
+		playersGame: [],
+		pcount: 2,
+		auctionEnabled: true,
+		pendingAuction: -1,
+		freeParkingTaxes: true,
+		freeParkingPot: 0,
+		turn: 0,
+		doublecount: 0,
+		lastGamePlayerCount: 2,
+		lastKnownPosition: [],
+		lastKnownJail: [],
+		playerOverlays: [],
+		nextMoveDirection: 1
+	});
+	game = new Game(undefined, initialState);
+	bindBrowserGameState(game);
 	resetTokenOverlays();
 
 	for (var i = 0; i <= 8; i++) {
-		player[i] = new Player("", "");
+		player[i] = new Player("", "", game);
 		player[i].index = i;
 	}
 
@@ -305,10 +350,10 @@ function onloadBehavior() {
 
 		if (p.money < s.houseprice) {
 			if (s.house === 4) {
-				popup("<p>You need $" + (s.houseprice - player[s.owner].money) + " more to buy a hotel for " + s.name + ".</p>");
+				game.ui.popup("<p>You need $" + (s.houseprice - player[s.owner].money) + " more to buy a hotel for " + s.name + ".</p>");
 				return;
 			} else {
-				popup("<p>You need $" + (s.houseprice - player[s.owner].money) + " more to buy a house for " + s.name + ".</p>");
+				game.ui.popup("<p>You need $" + (s.houseprice - player[s.owner].money) + " more to buy a house for " + s.name + ".</p>");
 				return;
 			}
 		}
@@ -316,10 +361,10 @@ function onloadBehavior() {
 		var supply = getHouseHotelSupply();
 
 		if (s.house < 4 && supply.housesAvailable <= 0) {
-			popup("<p>All 32 houses are owned. You must wait until one becomes available.</p>");
+			game.ui.popup("<p>All 32 houses are owned. You must wait until one becomes available.</p>");
 			return;
 		} else if (s.house === 4 && supply.hotelsAvailable <= 0) {
-			popup("<p>All 12 hotels are owned. You must wait until one becomes available.</p>");
+			game.ui.popup("<p>All 12 hotels are owned. You must wait until one becomes available.</p>");
 			return;
 		}
 

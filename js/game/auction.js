@@ -13,7 +13,7 @@
 
 	var startAIBid = function(gameInstance) {
 		var state = gameInstance.auctionState;
-		var bidder = player[state.currentBidder];
+		var bidder = gameInstance.state.player[state.currentBidder];
 		state.aiBidCount++;
 		var bid = bidder.AI && typeof bidder.AI.bid === 'function'
 			? bidder.AI.bid(state.property, state.highestBid)
@@ -36,8 +36,9 @@
 
 	var finalizeAuction = function(gameInstance) {
 		var state = gameInstance.auctionState;
-		var p = player[state.highestBidder];
-		var sq = square[state.property];
+		var gameState = gameInstance.state;
+		var p = gameState.player[state.highestBidder];
+		var sq = gameState.square[state.property];
 
 		if (state.highestBid > 0) {
 			p.pay(state.highestBid, 0);
@@ -51,20 +52,20 @@
 		}
 		if (gameInstance.ui) gameInstance.ui.closeAuction();
 
-		for (var i = 1; i <= pcount; i++) {
-			player[i].bidding = true;
-			player[i].auctionStatus = "Bidding";
+		for (var i = 1; i <= gameState.pcount; i++) {
+			gameState.player[i].bidding = true;
+			gameState.player[i].auctionStatus = "Bidding";
 		}
 
 		if (!gameInstance.auction()) {
-			if (player[turn].human) {
-				if (doublecount > 0) {
+			if (gameState.player[gameState.turn].human) {
+				if (gameState.doublecount > 0) {
 					if (gameInstance.ui) gameInstance.ui.updateButtonState("Roll again", "You threw doubles. Roll again.");
 				} else {
 					if (gameInstance.ui) gameInstance.ui.updateButtonState("End turn", "End turn and advance to the next player.");
 				}
 			} else {
-				play();
+				if (typeof gameInstance.play === 'function') gameInstance.play();
 			}
 		}
 	};
@@ -75,13 +76,14 @@
 
 	Game.prototype.auction = function() {
 		var state = this.auctionState;
+		var gameState = this.state;
 		if (state.queue.length === 0) {
 			return false;
 		}
 
 		var index = state.queue.shift();
 
-		var s = square[index];
+		var s = gameState.square[index];
 
 		if (s.price === 0 || s.owner !== 0) {
 			return this.auction();
@@ -92,15 +94,15 @@
 		state.highestBid = 0;
 		state.aiBidCount = 0;
 		state.history = [];
-		state.currentBidder = turn >= 1 && turn <= pcount ? turn : turn + 1;
+		state.currentBidder = gameState.turn >= 1 && gameState.turn <= gameState.pcount ? gameState.turn : gameState.turn + 1;
 
-		if (state.currentBidder > pcount) {
-			state.currentBidder -= pcount;
+		if (state.currentBidder > gameState.pcount) {
+			state.currentBidder -= gameState.pcount;
 		}
 
-		for (var i = 1; i <= pcount; i++) {
-			player[i].bidding = true;
-			player[i].auctionStatus = "Bidding";
+		for (var i = 1; i <= gameState.pcount; i++) {
+			gameState.player[i].bidding = true;
+			gameState.player[i].auctionStatus = "Bidding";
 		}
 
 		if (this.ui && this.ui.isHeadless) {
@@ -108,18 +110,19 @@
 			return true;
 		}
 
-		if (this.ui) this.ui.openAuction(state.property, s, player[state.currentBidder]);
+		if (this.ui) this.ui.openAuction(state.property, s, gameState.player[state.currentBidder]);
 
-		if (!player[state.currentBidder].human) startAIBid(this);
+		if (!gameState.player[state.currentBidder].human) startAIBid(this);
 		return true;
 	};
 
 	Game.prototype.auctionPass = function(isBid) {
 		var state = this.auctionState;
-		if (!isBid && player[state.currentBidder].bidding) {
-			player[state.currentBidder].bidding = false;
-			player[state.currentBidder].auctionStatus = "Passing";
-			updateAuctionHistory(this, player[state.currentBidder].name + " passed.");
+		var gameState = this.state;
+		if (!isBid && gameState.player[state.currentBidder].bidding) {
+			gameState.player[state.currentBidder].bidding = false;
+			gameState.player[state.currentBidder].auctionStatus = "Passing";
+			updateAuctionHistory(this, gameState.player[state.currentBidder].name + " passed.");
 			updateAuctionParticipants(this);
 		}
 		if (state.highestBidder === 0) {
@@ -129,15 +132,15 @@
 		while (true) {
 			state.currentBidder++;
 
-			if (state.currentBidder > pcount) {
-				state.currentBidder -= pcount;
+			if (state.currentBidder > gameState.pcount) {
+				state.currentBidder -= gameState.pcount;
 			}
 
 			if (state.currentBidder == state.highestBidder) {
 				finalizeAuction(this);
 				return;
-			} else if (player[state.currentBidder].bidding) {
-				var p = player[state.currentBidder];
+			} else if (gameState.player[state.currentBidder].bidding) {
+				var p = gameState.player[state.currentBidder];
 
 				if (!p.human) {
 					if (state.aiBidCount >= MAX_AI_BIDS_PER_AUCTION) {
@@ -174,11 +177,12 @@
 
 		}
 
-		if (this.ui) this.ui.updateAuctionTurn(player[state.currentBidder].name, true);
+		if (this.ui) this.ui.updateAuctionTurn(gameState.player[state.currentBidder].name, true);
 	};
 
 	Game.prototype.auctionBid = function(bid) {
 		var state = this.auctionState;
+		var gameState = this.state;
 		if (bid === undefined) bid = this.ui ? this.ui.readAuctionBid() : 0;
 
 		if (bid === "" || bid === null) {
@@ -187,17 +191,17 @@
 			if (this.ui) this.ui.setAuctionBidError("Your bid must be a number.");
 		} else {
 
-			if (bid > player[state.currentBidder].money) {
+			if (bid > gameState.player[state.currentBidder].money) {
 				if (this.ui) this.ui.setAuctionBidError("You don't have enough money to bid $" + bid + ".");
 			} else if (bid > state.highestBid) {
 				state.highestBid = bid;
 				state.highestBidder = state.currentBidder;
-				if (this.ui) this.ui.updateAuctionBid(parseInt(bid, 10), player[state.highestBidder].name);
-				updateAuctionHistory(this, player[state.currentBidder].name + " bid $" + state.highestBid + ".");
+				if (this.ui) this.ui.updateAuctionBid(parseInt(bid, 10), gameState.player[state.highestBidder].name);
+				updateAuctionHistory(this, gameState.player[state.currentBidder].name + " bid $" + state.highestBid + ".");
 
 				if (this.ui) this.ui.focusAuctionBid();
 
-				if (player[state.currentBidder].human) {
+				if (gameState.player[state.currentBidder].human) {
 					this.auctionPass(true);
 				}
 			} else {
@@ -208,9 +212,10 @@
 
 	Game.prototype.auctionExit = function() {
 		var state = this.auctionState;
-		player[state.currentBidder].bidding = false;
-		player[state.currentBidder].auctionStatus = "Out";
-		updateAuctionHistory(this, player[state.currentBidder].name + " exited.");
+		var bidder = this.state.player[state.currentBidder];
+		bidder.bidding = false;
+		bidder.auctionStatus = "Out";
+		updateAuctionHistory(this, bidder.name + " exited.");
 		updateAuctionParticipants(this);
 		this.auctionPass();
 	};

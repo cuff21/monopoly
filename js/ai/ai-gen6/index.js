@@ -56,11 +56,12 @@
      * Helper to encode current game state and evaluate network decisions.
      */
     Gen6AI.prototype.getDecision = function(selectedPropertyIndex, contextMoney, contextProperties) {
+        var state = this.player && this.player.game && this.player.game.state;
         var players = [];
         var inputCount = this.phenotype.inputCount;
         var playerSlots = inputCount === 126 ? 4 : 8;
-        var pcountVal = (typeof pcount !== 'undefined' ? pcount : playerSlots);
-        var pArray = (typeof player !== 'undefined' && Array.isArray(player)) ? player : [];
+        var pcountVal = state ? state.pcount : playerSlots;
+        var pArray = state && Array.isArray(state.player) ? state.player : [];
 
         for (var i = 1; i <= Math.min(playerSlots, pcountVal); i++) {
             if (pArray[i]) {
@@ -75,7 +76,7 @@
         var inputs = NetworkAdapter.encodeInputs({
             players: players,
             currentTurn: turnIdx,
-            squares: (typeof square !== 'undefined' ? square : []),
+            squares: state ? state.square : [],
             selectedPropertyIndex: selectedPropertyIndex,
             contextMoney: contextMoney,
             contextProperties: contextProperties
@@ -90,7 +91,8 @@
      * @returns {boolean}
      */
     Gen6AI.prototype.buyProperty = function(index) {
-        var s = (typeof square !== 'undefined') ? square[index] : null;
+        var state = this.player && this.player.game && this.player.game.state;
+        var s = state ? state.square[index] : null;
         if (!s || this.player.money < s.price) {
             return false;
         }
@@ -123,37 +125,39 @@
      * @returns {boolean} true if trade proposed
      */
     Gen6AI.prototype.beforeTurn = function() {
-        if (typeof square === 'undefined') return false;
+        var game = this.player && this.player.game;
+        var state = game && game.state;
+        if (!state) return false;
 
         // Apply the policy's mortgage decisions to properties without improvements.
         for (var i = 0; i < 40; i++) {
-            var sq = square[i];
+            var sq = state.square[i];
             if (!sq || sq.owner !== this.player.index) continue;
 
             var d = this.getDecision(i, this.player.money);
             if (sq.mortgage) {
                 var unmortgagePrice = Math.round(sq.price * 0.55);
-                if (d.unmortgage && this.player.money >= unmortgagePrice && typeof unmortgage === 'function') {
-                    unmortgage(i);
+                if (d.unmortgage && this.player.money >= unmortgagePrice) {
+                    game.unmortgage(i);
                 }
-            } else if (d.mortgage && !sq.house && !sq.hotel && typeof mortgage === 'function') {
-                mortgage(i);
+            } else if (d.mortgage && !sq.house && !sq.hotel) {
+                game.mortgage(i);
             }
         }
 
         // 2. Build houses on completed color groups
-        var supply = (typeof getHouseHotelSupply === 'function') ? getHouseHotelSupply() : { housesAvailable: 32, hotelsAvailable: 12 };
+        var supply = game.getHouseHotelSupply();
         if (supply.housesAvailable > 0 || supply.hotelsAvailable > 0) {
             for (var i = 0; i < 40; i++) {
-                var sq = square[i];
+                var sq = state.square[i];
                 if (sq && sq.owner === this.player.index && sq.group && sq.houseprice > 0 && !sq.mortgage) {
                     var ownsAll = sq.group.every(function(idx) {
-                        return square[idx] && square[idx].owner === sq.owner && !square[idx].mortgage;
+                        return state.square[idx] && state.square[idx].owner === sq.owner && !state.square[idx].mortgage;
                     });
                     if (ownsAll && sq.house < 5 && this.player.money >= sq.houseprice) {
                         var d = this.getDecision(i);
-                        if (d.buildHouseCount > 0 && typeof buyHouse === 'function') {
-                            buyHouse(i);
+                        if (d.buildHouseCount > 0) {
+                            game.buyHouse(i);
                         }
                     }
                 }
@@ -168,52 +172,53 @@
      * @returns {boolean} true if trade proposed
      */
     Gen6AI.prototype.onLand = function() {
-        if (typeof square === 'undefined' || typeof Trade !== 'function' ||
-            typeof game === 'undefined' || !game || typeof game.trade !== 'function') {
-            return false;
-        }
+        var game = this.player && this.player.game;
+        var state = game && game.state;
+        if (!state || typeof Trade !== 'function' || typeof game.trade !== 'function') return false;
 
         var groups = [];
         var seenGroups = {};
-        for (var i = 0; i < 40; i++) {
-            var sq = square[i];
-            if (!sq || !sq.group || sq.houseprice <= 0) continue;
-            var key = sq.group.slice().sort(function(a, b) { return a - b; }).join(',');
+        for (var i = 0; i < state.square.length; i++) {
+            var square = state.square[i];
+            if (!square || !square.group || square.houseprice <= 0) continue;
+            var key = square.group.slice().sort(function(a, b) { return a - b; }).join(',');
             if (!seenGroups[key]) {
                 seenGroups[key] = true;
-                groups.push(sq.group);
+                groups.push(square.group);
             }
         }
 
         function isTradableGroup(group) {
             return group.every(function(index) {
-                var property = square[index];
+                var property = state.square[index];
                 return property && !property.mortgage && !property.house && !property.hotel;
             });
         }
 
-        for (var a = 0; a < groups.length; a++) {
-            var requestedGroup = groups[a];
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            var requestedGroup = groups[groupIndex];
             if (!isTradableGroup(requestedGroup)) continue;
             var requestedIndex = -1;
             var opponentIndex = -1;
             var ownsRequestedRemainder = requestedGroup.every(function(index) {
-                if (square[index].owner === this.player.index) return true;
-                if (requestedIndex !== -1 || square[index].owner <= 0 || square[index].owner === this.player.index) return false;
+                var owner = state.square[index].owner;
+                if (owner === this.player.index) return true;
+                if (requestedIndex !== -1 || owner <= 0) return false;
                 requestedIndex = index;
-                opponentIndex = square[index].owner;
+                opponentIndex = owner;
                 return true;
             }, this);
             if (!ownsRequestedRemainder || requestedIndex === -1) continue;
 
-            for (var b = 0; b < groups.length; b++) {
-                if (a === b) continue;
-                var offeredGroup = groups[b];
+            for (var offeredGroupIndex = 0; offeredGroupIndex < groups.length; offeredGroupIndex++) {
+                if (groupIndex === offeredGroupIndex) continue;
+                var offeredGroup = groups[offeredGroupIndex];
                 if (!isTradableGroup(offeredGroup)) continue;
                 var offeredIndex = -1;
                 var opponentOwnsRemainder = offeredGroup.every(function(index) {
-                    if (square[index].owner === opponentIndex) return true;
-                    if (offeredIndex !== -1 || square[index].owner !== this.player.index) return false;
+                    var owner = state.square[index].owner;
+                    if (owner === opponentIndex) return true;
+                    if (offeredIndex !== -1 || owner !== this.player.index) return false;
                     offeredIndex = index;
                     return true;
                 }, this);
@@ -222,14 +227,11 @@
                 var propertyTransfer = [];
                 propertyTransfer[requestedIndex] = -1;
                 propertyTransfer[offeredIndex] = 1;
-                var decisions = this.getDecision(this.player.position, 0, propertyTransfer);
-                if (!decisions.proposeTrade) return false;
-
-                game.trade(new Trade(this.player, player[opponentIndex], 0, propertyTransfer, 0, 0));
+                if (!this.getDecision(this.player.position, 0, propertyTransfer).proposeTrade) return false;
+                game.trade(new Trade(this.player, state.player[opponentIndex], 0, propertyTransfer, 0, 0));
                 return true;
             }
         }
-
         return false;
     };
 
@@ -237,30 +239,30 @@
      * Called when player money is negative before bankruptcy check.
      */
     Gen6AI.prototype.payDebt = function() {
-        if (typeof square === 'undefined') return;
+        var game = this.player && this.player.game;
+        var state = game && game.state;
+        if (!state) return;
 
         // 1. Sell houses if necessary
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < state.square.length; i++) {
             if (this.player.money >= 0) break;
-            var sq = square[i];
+            var sq = state.square[i];
             if (sq && sq.owner === this.player.index && (sq.house > 0 || sq.hotel > 0)) {
                 var decision = this.getDecision(i, this.player.money);
                 var sellCount = decision.sellHouseCount;
-                while (sellCount > 0 && typeof canSellHouse === 'function' && canSellHouse(i) && this.player.money < 0) {
-                    if (typeof sellHouse === 'function' && !sellHouse(i)) break;
+                while (sellCount > 0 && game.canSellHouse(i) && this.player.money < 0) {
+                    if (!game.sellHouse(i)) break;
                     sellCount--;
                 }
             }
         }
 
         // 2. Mortgage properties if still in debt
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < state.square.length; i++) {
             if (this.player.money >= 0) break;
-            var sq = square[i];
+            var sq = state.square[i];
             if (sq && sq.owner === this.player.index && !sq.mortgage && sq.house === 0 && sq.hotel === 0) {
-                if (typeof mortgage === 'function') {
-                    mortgage(i);
-                }
+                game.mortgage(i);
             }
         }
     };

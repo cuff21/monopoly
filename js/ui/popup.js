@@ -3,8 +3,9 @@
 var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
 	(typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
 
-function popup(HTML, action, option, timer) {
-	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+function popup(HTML, action, option, timer, gameInstance) {
+	var popupGame = gameInstance || (typeof game !== 'undefined' ? game : null);
+	if (popupGame && popupGame.ui && popupGame.ui.isHeadless) {
 		for (var a = 1; a < arguments.length; a++) {
 			if (typeof arguments[a] === "function") {
 				arguments[a]();
@@ -50,7 +51,15 @@ function popup(HTML, action, option, timer) {
 	}
 
 	if (timeout === undefined || isNaN(timeout)) {
-		timeout = (typeof player !== "undefined" && player[turn] && !player[turn].human) ? 3 : 0;
+		var state = popupGame && popupGame.state;
+		var currentPlayer = state && state.player && state.player[state.turn];
+		if (currentPlayer) {
+			timeout = currentPlayer.human ? 0 : 3;
+		} else if (!gameInstance) {
+			timeout = (typeof player !== "undefined" && player[turn] && !player[turn].human) ? 3 : 0;
+		} else {
+			timeout = 0;
+		}
 	}
 
 	// Yes/No
@@ -108,8 +117,12 @@ function popup(HTML, action, option, timer) {
 	}
 }
 
-function updateDrawnCard(cardType, cardIndex) {
-	var card = cardType === "chance" ? chanceCards[cardIndex] : communityChestCards[cardIndex];
+function updateDrawnCard(cardType, cardIndex, gameInstance) {
+	var gameState = gameInstance && gameInstance.state;
+	var cards = gameState
+		? (cardType === "chance" ? gameState.chanceCards : gameState.communityChestCards)
+		: (cardType === "chance" ? chanceCards : communityChestCards);
+	var card = cards[cardIndex];
 	var textElement = document.getElementById(cardType + "-card-text");
 	var groupElement = document.querySelector("#" + (cardType === "chance" ? "chance-display" : "community-chest-display"));
 	var animationComplete = Promise.resolve();
@@ -154,8 +167,10 @@ function getPlayerPersonality(p) {
 	return null;
 }
 
-function getPlayerStatsHTML(playerIndex, showPersonality) {
-	var p = player[playerIndex];
+function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
+	var players = gameState ? gameState.player : player;
+	var squares = gameState ? gameState.square : square;
+	var p = players[playerIndex];
 	var HTML = "<div class='statsplayername'>" + UIHtml.escapeHTML(p.name) + "</div>";
 	if (showPersonality) {
 		var personality = getPlayerPersonality(p);
@@ -166,7 +181,7 @@ function getPlayerStatsHTML(playerIndex, showPersonality) {
 	var write = false;
 
 	for (var i = 0; i < 40; i++) {
-		var sq = square[i];
+		var sq = squares[i];
 
 		if (sq.owner === playerIndex) {
 			var mortgagetext = sq.mortgage ? "title='Mortgaged' style='color: grey;'" : "";
@@ -207,15 +222,17 @@ function getPlayerStatsHTML(playerIndex, showPersonality) {
 	return write ? HTML + "</table>" : HTML + UIHtml.escapeHTML(p.name) + " dosen't have any properties.";
 }
 
-function showAuctionPlayerStats(playerIndex, event) {
+function showAuctionPlayerStats(playerIndex, event, gameInstance) {
+	var gameState = gameInstance && gameInstance.state;
+	var players = gameState ? gameState.player : player;
 	var tooltip = document.getElementById("auctionplayerstats");
 	if (!tooltip) {
 		tooltip = document.createElement("div");
 		tooltip.id = "auctionplayerstats";
 		document.body.appendChild(tooltip);
 	}
-	tooltip.innerHTML = getPlayerStatsHTML(playerIndex, false);
-	tooltip.style.borderColor = player[playerIndex].color;
+	tooltip.innerHTML = getPlayerStatsHTML(playerIndex, false, gameState);
+	tooltip.style.borderColor = players[playerIndex].color;
 	tooltip.style.display = "block";
 	positionAuctionPlayerStats(event);
 }
@@ -296,5 +313,5 @@ function hidedeed() {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { getPlayerStatsHTML: getPlayerStatsHTML };
+	module.exports = { popup: popup, getPlayerStatsHTML: getPlayerStatsHTML };
 }

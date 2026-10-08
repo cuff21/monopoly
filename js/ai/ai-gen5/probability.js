@@ -2,6 +2,20 @@
 (function(global) {
     var AIGen5 = global.AIGen5 = global.AIGen5 || {};
 
+    AIGen5.getGameState = function(subject) {
+        if (subject && subject.game && subject.game.state) return subject.game.state;
+        if (subject && subject.state) return subject.state;
+        return subject && Array.isArray(subject.square) ? subject : null;
+    };
+    AIGen5.getSquares = function(subject) {
+        var state = AIGen5.getGameState(subject);
+        return state && Array.isArray(state.square) ? state.square : [];
+    };
+    AIGen5.getPlayers = function(subject) {
+        var state = AIGen5.getGameState(subject);
+        return state && Array.isArray(state.player) ? state.player : [];
+    };
+
     var BOARD_SIZE = 40;
     // Doubles give an extra roll, but a 3rd consecutive double sends the player to jail instead of moving.
     var EXPECTED_ROLLS_PER_TURN = 1 + (1 / 6) + (1 / 36);
@@ -23,15 +37,15 @@
         return !!p && (p.money >= 0 || p.creditor === -1);
     }
 
-    function getActivePlayers() {
-        if (typeof globalThis.player === 'undefined') {
-            return [];
-        }
-        var playerLimit = globalThis.pcount && globalThis.pcount > 0 ? Math.min(globalThis.player.length, globalThis.pcount + 1) : globalThis.player.length;
+    function getActivePlayers(subject) {
+        var state = AIGen5.getGameState(subject);
+        var players = AIGen5.getPlayers(subject);
+        if (!state) return [];
+        var playerLimit = state.pcount > 0 ? Math.min(players.length, state.pcount + 1) : players.length;
         var active = [];
         for (var i = 1; i < playerLimit; i++) {
-            if (isPlayerActive(globalThis.player[i])) {
-                active.push(globalThis.player[i]);
+            if (isPlayerActive(players[i])) {
+                active.push(players[i]);
             }
         }
         return active;
@@ -81,10 +95,10 @@
     }
 
     // Sums landing probability across all active opponents (or all active players if excludePlayerIndex is omitted).
-    function aggregateBoardThreat(targetIndex, excludePlayerIndex, turnsAhead) {
+    function aggregateBoardThreat(targetIndex, excludePlayerIndex, turnsAhead, subject) {
         var rolls = turnsToRolls(turnsAhead);
         var total = 0;
-        var players = getActivePlayers();
+        var players = getActivePlayers(subject);
         for (var i = 0; i < players.length; i++) {
             var opponent = players[i];
             if (opponent.index === excludePlayerIndex || opponent.position === undefined || opponent.jail) {

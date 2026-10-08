@@ -11,13 +11,16 @@
     var BrowserWorkerPool = (typeof module !== 'undefined' && module.exports)
         ? require('../../../simulation/worker-pool')
         : global.SimulationWorkerPool;
+    var Gen6Compatibility = (typeof module !== 'undefined' && module.exports)
+        ? require('../schema1-compatibility')
+        : global.Gen6Schema1Compatibility;
     var Population = PopulationModule.Population;
 
     var POPULATION_KEY = 'gen6Population';
     var CHAMPION_KEY = 'gen6Champion';
     var MAX_GENERATIONS_PER_RUN = 20;
     var DEFAULT_POPULATION_SIZE = 32;
-    var DEFAULT_TURNS_PER_MATCH = 100;
+    var DEFAULT_TURNS_PER_MATCH = 60;
     var DEFAULT_WORKER_URL = 'js/simulation/worker-entry.js';
 
     function defaultStorage() {
@@ -26,6 +29,11 @@
         } catch (error) {
             return null;
         }
+    }
+
+    function rejectLegacyStorage(storage) {
+        if (!Gen6Compatibility) throw new Error('Gen6 compatibility checks are unavailable.');
+        Gen6Compatibility.rejectLegacyStorage(storage);
     }
 
     function Gen6Trainer(options) {
@@ -161,6 +169,7 @@
     Gen6Trainer.getStoredChampion = function(storage) {
         storage = storage === undefined ? defaultStorage() : storage;
         if (!storage) return null;
+        rejectLegacyStorage(storage);
         var serialized = storage.getItem(CHAMPION_KEY);
         return serialized ? Genotype.fromString(serialized) : null;
     };
@@ -168,6 +177,7 @@
     Gen6Trainer.loadOrCreate = function(options) {
         options = options || {};
         var storage = options.storage === undefined ? defaultStorage() : options.storage;
+        rejectLegacyStorage(storage);
         var serialized = storage && storage.getItem(POPULATION_KEY);
         if (!serialized) {
             options.storage = storage;

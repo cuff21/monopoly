@@ -10,40 +10,42 @@
         return !!p && (p.money >= 0 || p.creditor === -1);
     }
 
-    function getActivePlayers() {
-        if (typeof globalThis.player === 'undefined') {
-            return [];
-        }
-        var playerLimit = globalThis.pcount && globalThis.pcount > 0 ? Math.min(globalThis.player.length, globalThis.pcount + 1) : globalThis.player.length;
+    function getActivePlayers(subject) {
+        var state = AIGen5.getGameState(subject);
+        var players = AIGen5.getPlayers(subject);
+        if (!state) return [];
+        var playerLimit = state.pcount > 0 ? Math.min(players.length, state.pcount + 1) : players.length;
         var active = [];
         for (var i = 1; i < playerLimit; i++) {
-            if (isPlayerActive(globalThis.player[i])) {
-                active.push(globalThis.player[i]);
+            if (isPlayerActive(players[i])) {
+                active.push(players[i]);
             }
         }
         return active;
     }
 
-    function groupIsMonopoly(group, ownerIndex) {
+    function groupIsMonopoly(group, ownerIndex, subject) {
+        var square = AIGen5.getSquares(subject);
         if (!group || !group.length) {
             return false;
         }
         for (var i = 0; i < group.length; i++) {
-            if (!globalThis.square[group[i]] || globalThis.square[group[i]].owner !== ownerIndex) {
+            if (!square[group[i]] || square[group[i]].owner !== ownerIndex) {
                 return false;
             }
         }
         return true;
     }
 
-    function countMonopolies(ownerIndex, onlyBuildable) {
-        if (typeof globalThis.square === 'undefined' || (ownerIndex !== 0 && !ownerIndex)) {
+    function countMonopolies(ownerIndex, onlyBuildable, subject) {
+        var square = AIGen5.getSquares(subject);
+        if (!square.length || (ownerIndex !== 0 && !ownerIndex)) {
             return 0;
         }
         var seenGroups = {};
         var total = 0;
         for (var i = 0; i < 40; i++) {
-            var s = globalThis.square[i];
+            var s = square[i];
             if (!s || !s.group || s.group.length === 0) {
                 continue;
             }
@@ -55,21 +57,22 @@
                 continue;
             }
             seenGroups[key] = true;
-            if (groupIsMonopoly(s.group, ownerIndex)) {
+            if (groupIsMonopoly(s.group, ownerIndex, subject)) {
                 total++;
             }
         }
         return total;
     }
 
-    function countBoardMonopolies(onlyBuildable) {
-        if (typeof globalThis.square === 'undefined') {
+    function countBoardMonopolies(onlyBuildable, subject) {
+        var square = AIGen5.getSquares(subject);
+        if (!square.length) {
             return 0;
         }
         var seenGroups = {};
         var total = 0;
         for (var i = 0; i < 40; i++) {
-            var s = globalThis.square[i];
+            var s = square[i];
             if (!s || !s.group || s.group.length === 0 || s.owner === 0) {
                 continue;
             }
@@ -81,7 +84,7 @@
                 continue;
             }
             seenGroups[key] = true;
-            if (groupIsMonopoly(s.group, s.owner)) {
+            if (groupIsMonopoly(s.group, s.owner, subject)) {
                 total++;
             }
         }
@@ -89,10 +92,11 @@
     }
 
     function projectedImmediateHouses(player, squareIndex, cashAfterTrade) {
-        if (!player || typeof globalThis.square === 'undefined') {
+        var square = AIGen5.getSquares(player);
+        if (!player || !square.length) {
             return 0;
         }
-        var s = globalThis.square[squareIndex];
+        var s = square[squareIndex];
         if (!s || !s.group || !s.houseprice || s.houseprice <= 0) {
             return 0;
         }
@@ -102,17 +106,18 @@
         var maxTotalHouses = s.group.length * 5;
         var affordableTotalHouses = Math.floor(freeCash / s.houseprice);
         var feasibleHouses = Math.min(maxTotalHouses, affordableTotalHouses);
-        var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility() : 1;
+        var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility(player) : 1;
         return Math.floor(feasibleHouses * buildFeasibility);
     }
 
     // Projects build capacity over the next 2-4 turns, modeling passing GO, net rental income,
     // and whether the player will cross the critical 3-house inflection threshold within that window.
     function projectedFutureBuildability(player, squareIndex, cashAfterTrade, turnsAhead) {
-        if (!player || typeof globalThis.square === 'undefined') {
+        var square = AIGen5.getSquares(player);
+        if (!player || !square.length) {
             return { immediateHouses: 0, futureHouses: 0, reachesThreeHouses: false, futureRentThreat: 0 };
         }
-        var s = globalThis.square[squareIndex];
+        var s = square[squareIndex];
         if (!s || !s.group || !s.houseprice || s.houseprice <= 0) {
             return { immediateHouses: 0, futureHouses: 0, reachesThreeHouses: false, futureRentThreat: 0 };
         }
@@ -124,16 +129,16 @@
         var maxTotalHouses = s.group.length * 5;
 
         var immediateHouses = Math.min(maxTotalHouses, Math.floor(freeCash / housePrice));
-        var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility() : 1;
+        var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility(player) : 1;
         immediateHouses = Math.floor(immediateHouses * buildFeasibility);
 
         // Expected passing GO income (~$200 every 5 turns => ~$40/turn)
         var expectedGoIncome = 40 * turnsAhead;
         var expectedRentIncome = 0;
         for (var i = 0; i < 40; i++) {
-            var tile = globalThis.square[i];
+            var tile = square[i];
             if (tile && tile.owner === player.index && !tile.mortgage) {
-                var rentVal = AIGen5.Valuation && typeof AIGen5.Valuation.expectedRentValue === 'function' ? AIGen5.Valuation.expectedRentValue(i, player.index, null, turnsAhead) : (tile.baserent || 0);
+                var rentVal = AIGen5.Valuation && typeof AIGen5.Valuation.expectedRentValue === 'function' ? AIGen5.Valuation.expectedRentValue(i, player.index, null, turnsAhead, player) : (tile.baserent || 0);
                 expectedRentIncome += rentVal * 0.4;
             }
         }
@@ -149,7 +154,7 @@
         var houseLevel = Math.min(5, Math.floor(totalFutureHouses / s.group.length));
         var avgRent = 0;
         for (var g = 0; g < s.group.length; g++) {
-            var gsq = globalThis.square[s.group[g]];
+            var gsq = square[s.group[g]];
             if (houseLevel > 0) {
                 avgRent += (gsq['rent' + houseLevel] || (gsq.baserent * 5));
             } else {
@@ -167,11 +172,8 @@
         };
     }
 
-    function getPlayerByIndex(index) {
-        if (typeof globalThis.player === 'undefined') {
-            return null;
-        }
-        return globalThis.player[index] || null;
+    function getPlayerByIndex(index, subject) {
+        return AIGen5.getPlayers(subject)[index] || null;
     }
 
     // Approximate liquidation value of cash + properties + houses, used only for relative ranking between players.
@@ -180,11 +182,9 @@
             return 0;
         }
         var total = p.money || 0;
-        if (typeof globalThis.square === 'undefined') {
-            return total;
-        }
+        var square = AIGen5.getSquares(p);
         for (var i = 0; i < 40; i++) {
-            var s = globalThis.square[i];
+            var s = square[i];
             if (!s || s.owner !== p.index) {
                 continue;
             }
@@ -197,7 +197,7 @@
 
     // Classifies a player's relative position among active players: 'Leader', 'Contender', 'Weak', or 'NearBankrupt'.
     function strengthRank(p) {
-        var players = getActivePlayers();
+        var players = getActivePlayers(p);
         if (!p || players.length === 0) {
             return 'Contender';
         }
@@ -222,18 +222,19 @@
 
     // Estimates how dangerous it would be for `forPlayerIndex` to complete the color group containing `squareIndex`,
     // combining their ability to afford houses with how often opponents are likely to land on that group.
-    function monopolyRisk(squareIndex, forPlayerIndex, cashAfterTrade) {
-        if (typeof globalThis.square === 'undefined') {
+    function monopolyRisk(squareIndex, forPlayerIndex, cashAfterTrade, subject) {
+        var square = AIGen5.getSquares(subject);
+        if (!square.length) {
             return 0;
         }
-        var s = globalThis.square[squareIndex];
+        var s = square[squareIndex];
         if (!s || !s.group || s.group.length === 0) {
             return 0;
         }
 
-        var forPlayer = getPlayerByIndex(forPlayerIndex);
+        var forPlayer = getPlayerByIndex(forPlayerIndex, subject);
         var houseBudget = (s.houseprice || 100) * s.group.length * 3;
-        var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility() : 1;
+        var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility(subject) : 1;
         var cash = cashAfterTrade !== undefined ? cashAfterTrade : (forPlayer ? forPlayer.money || 0 : 0);
         var reserve = forPlayer && AIGen5.Liquidity ? AIGen5.Liquidity.computeReserve(forPlayer, { riskTolerance: 0.6 }) : 120;
         var freeCash = Math.max(0, cash - reserve);
@@ -242,12 +243,12 @@
         var traffic = 0;
         if (AIGen5.Probability) {
             for (var i = 0; i < s.group.length; i++) {
-                traffic += AIGen5.Probability.aggregateBoardThreat(s.group[i], forPlayerIndex, 4);
+                traffic += AIGen5.Probability.aggregateBoardThreat(s.group[i], forPlayerIndex, 4, subject);
             }
             traffic = traffic / s.group.length;
         }
 
-        var boardBuildableMonopolies = countBoardMonopolies(true);
+        var boardBuildableMonopolies = countBoardMonopolies(true, subject);
         var soleMonopolyBonus = boardBuildableMonopolies === 0 ? 2.5 : (boardBuildableMonopolies === 1 ? 1.6 : 1.1);
 
         var immediateHouses = s.houseprice > 0 ? Math.min(s.group.length * 5, Math.floor(freeCash / s.houseprice)) : 0;
@@ -265,18 +266,19 @@
     // Stagnation rises when many turns have elapsed, nearly all buyable properties are owned,
     // and no player holds a buildable monopoly to advance the game.
     function getStagnationFactor(p, turnNumber) {
-        if (typeof globalThis.square === 'undefined') {
+        var square = AIGen5.getSquares(p);
+        if (!square.length) {
             return 0;
         }
 
-        var buildableMonopolies = countBoardMonopolies(true);
+        var buildableMonopolies = countBoardMonopolies(true, p);
         if (buildableMonopolies > 0) {
             return 0; // If any monopoly exists, houses can be built and progress continues.
         }
 
         var unownedCount = 0;
         for (var i = 0; i < 40; i++) {
-            var s = globalThis.square[i];
+            var s = square[i];
             if (s && s.price > 0 && s.owner === 0) {
                 unownedCount++;
             }

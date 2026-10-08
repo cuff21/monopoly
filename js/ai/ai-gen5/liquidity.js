@@ -4,8 +4,8 @@
 
     var AVERAGE_CARD_PAYMENT_BUFFER = 25;
 
-    function getTaxHazard(index) {
-        var s = globalThis.square && globalThis.square[index];
+    function getTaxHazard(index, subject) {
+        var s = AIGen5.getSquares(subject)[index];
         if (!s) {
             return 0;
         }
@@ -23,10 +23,10 @@
     }
 
     function computeBuildingObligationReserve(p) {
-        if (!p || typeof globalThis.square === 'undefined') {
+        if (!p) {
             return 0;
         }
-        var square = globalThis.square;
+        var square = AIGen5.getSquares(p);
         var seenGroups = {};
         var houseBuffer = 0;
         for (var i = 0; i < 40; i++) {
@@ -64,7 +64,7 @@
         var base = Math.max(120, (p.money || 0) * (profile && profile.liquidityFloor || 0.12));
         var ownExposure = 0;
         var taxExposure = 0;
-        var square = globalThis.square;
+        var square = AIGen5.getSquares(p);
 
         // Jail status mitigation: while in jail, player is shielded from landing on dangerous properties.
         var inJail = !!p.jail;
@@ -86,7 +86,7 @@
                 }
 
                 // Tax hazards (e.g. Income Tax $200, Luxury Tax $100)
-                var taxAmount = getTaxHazard(i);
+                var taxAmount = getTaxHazard(i, p);
                 if (taxAmount > 0) {
                     taxExposure += landProbability * taxAmount;
                     continue;
@@ -94,7 +94,7 @@
 
                 // Opponent rental exposure
                 if (s.owner !== 0 && s.owner !== p.index && !s.mortgage) {
-                    var rent = AIGen5.Valuation ? AIGen5.Valuation.expectedRent(i, s.owner, null) : (s.baserent || 0);
+                    var rent = AIGen5.Valuation ? AIGen5.Valuation.expectedRent(i, s.owner, null, p) : (s.baserent || 0);
                     if (Number.isFinite(rent)) {
                         ownExposure += landProbability * rent;
                     }
@@ -116,10 +116,10 @@
     // Emergency liquidity: measures how much unencumbered equity a player can raise immediately
     // by mortgaging unimproved properties and liquidating houses at 50% resale value.
     function emergencyLiquidity(p) {
-        if (!p || typeof globalThis.square === 'undefined') {
+        if (!p) {
             return { cash: (p && p.money) || 0, propertyEquity: 0, total: (p && p.money) || 0 };
         }
-        var square = globalThis.square;
+        var square = AIGen5.getSquares(p);
         var propertyEquity = 0;
         var cash = p.money || 0;
 

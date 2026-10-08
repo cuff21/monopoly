@@ -45,6 +45,12 @@
 
 		var workerPool = null;
 		var trainer = null;
+		var workerPoolTerminated = false;
+		function terminateWorkerPool() {
+			if (!workerPool || workerPoolTerminated) return;
+			workerPoolTerminated = true;
+			workerPool.terminate();
+		}
 		if (control) {
 			control.stopRequested = false;
 			control.getWorkerStats = function() {
@@ -55,7 +61,7 @@
 			control.stop = function() {
 				control.stopRequested = true;
 				if (trainer && trainer.stop) trainer.stop();
-				if (workerPool) workerPool.terminate();
+				terminateWorkerPool();
 			};
 		}
 		try {
@@ -76,7 +82,7 @@
 			if (control && control.stopRequested) return { stopped: true, population: trainer.population, validation: null };
 			return await trainer.train(generations, onProgress);
 		} finally {
-			if (workerPool) workerPool.terminate();
+			terminateWorkerPool();
 		}
 	}
 

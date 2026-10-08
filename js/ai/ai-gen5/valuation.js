@@ -6,15 +6,16 @@
         return Math.max(min, Math.min(max, value));
     }
 
-    function propertyOwner(index, ownership) {
+    function propertyOwner(index, ownership, subject) {
         if (ownership && ownership[index] !== undefined) {
             return ownership[index];
         }
-        return globalThis.square[index].owner;
+        var square = AIGen5.getSquares(subject);
+        return square[index] ? square[index].owner : 0;
     }
 
-    function groupScore(index, ownerIndex, ownership) {
-        var square = globalThis.square;
+    function groupScore(index, ownerIndex, ownership, subject) {
+        var square = AIGen5.getSquares(subject);
         var s = square[index];
         if (!s || typeof s.group === 'undefined' || !s.group || s.group.length === 0) {
             return 0;
@@ -25,7 +26,7 @@
         var total = s.group.length;
 
         for (var i = 0; i < total; i++) {
-            var owner = propertyOwner(s.group[i], ownership);
+            var owner = propertyOwner(s.group[i], ownership, subject);
             if (owner === ownerIndex) {
                 owned++;
             } else if (owner === 0) {
@@ -53,34 +54,36 @@
 
     // Discounts future house-building value as the shared 32-house bank runs dry, since a completed
     // monopoly is worth less if there's little chance of actually developing it any time soon.
-    function houseBuildFeasibility() {
-        if (typeof getHouseHotelSupply !== 'function') {
+    function houseBuildFeasibility(subject) {
+        var game = subject && subject.game;
+        if (!game || typeof game.getHouseHotelSupply !== 'function') {
             return 1;
         }
-        return clamp(getHouseHotelSupply().housesAvailable / 10, 0.2, 1);
+        return clamp(game.getHouseHotelSupply().housesAvailable / 10, 0.2, 1);
     }
 
-    function assetValue(index, ownerIndex, ownership) {
-        var s = globalThis.square[index];
+    function assetValue(index, ownerIndex, ownership, subject) {
+        var square = AIGen5.getSquares(subject);
+        var s = square[index];
         if (!s) {
             return 0;
         }
 
-        var buildFeasibility = houseBuildFeasibility();
+        var buildFeasibility = houseBuildFeasibility(subject);
         var value = s.price * (s.mortgage ? 0.5 : 1) * 0.65;
         value += (s.baserent || 0) * 3;
         value += (s.houseprice || 0) * 0.5 * buildFeasibility;
-        value += groupScore(index, ownerIndex, ownership) * 2;
+        value += groupScore(index, ownerIndex, ownership, subject) * 2;
 
-        if (s.group && s.group.length > 0 && groupScore(index, ownerIndex, ownership) >= 80) {
+        if (s.group && s.group.length > 0 && groupScore(index, ownerIndex, ownership, subject) >= 80) {
             value += s.houseprice * 2 * buildFeasibility;
         }
 
         return value;
     }
 
-    function baseRent(index, ownerIndex, ownership) {
-        var square = globalThis.square;
+    function baseRent(index, ownerIndex, ownership, subject) {
+        var square = AIGen5.getSquares(subject);
         var s = square[index];
         if (!s || s.price === 0) {
             return 0;
@@ -89,7 +92,7 @@
         if (index === 5 || index === 15 || index === 25 || index === 35) {
             var railroadCount = 0;
             [5, 15, 25, 35].forEach(function(railroad) {
-                if (propertyOwner(railroad, ownership) === ownerIndex) {
+                if (propertyOwner(railroad, ownership, subject) === ownerIndex) {
                     railroadCount++;
                 }
             });
@@ -97,32 +100,32 @@
         }
 
         if (index === 12 || index === 28) {
-            var utilityCount = (propertyOwner(12, ownership) === ownerIndex ? 1 : 0) + (propertyOwner(28, ownership) === ownerIndex ? 1 : 0);
+            var utilityCount = (propertyOwner(12, ownership, subject) === ownerIndex ? 1 : 0) + (propertyOwner(28, ownership, subject) === ownerIndex ? 1 : 0);
             return (s.baserent || 4) * (utilityCount === 2 ? 2.5 : utilityCount === 1 ? 1 : 0);
         }
 
         var rent = s.house > 0 ? (s['rent' + Math.min(s.house, 5)] !== undefined ? s['rent' + Math.min(s.house, 5)] : (s.baserent || 10) * Math.pow(2, s.house)) : (s.baserent || 0);
-        if (s.group && s.group.length > 0 && groupScore(index, ownerIndex, ownership) >= 80 && s.house === 0) {
+        if (s.group && s.group.length > 0 && groupScore(index, ownerIndex, ownership, subject) >= 80 && s.house === 0) {
             rent *= 2;
         }
         return Number.isFinite(rent) ? rent : 0;
     }
 
     // Rent weighted by the real probability that any active opponent lands on this square within `turnsAhead` turns.
-    function expectedRentValue(index, ownerIndex, ownership, turnsAhead) {
-        var rent = baseRent(index, ownerIndex, ownership);
+    function expectedRentValue(index, ownerIndex, ownership, turnsAhead, subject) {
+        var rent = baseRent(index, ownerIndex, ownership, subject);
         if (rent <= 0) {
             return 0;
         }
         if (!AIGen5.Probability) {
             return rent;
         }
-        var threat = AIGen5.Probability.aggregateBoardThreat(index, ownerIndex, turnsAhead || 2);
+        var threat = AIGen5.Probability.aggregateBoardThreat(index, ownerIndex, turnsAhead || 2, subject);
         return rent * (0.5 + threat);
     }
 
-    function opponentThreatScore(index, ownerIndex) {
-        var square = globalThis.square;
+    function opponentThreatScore(index, ownerIndex, subject) {
+        var square = AIGen5.getSquares(subject);
         var s = square[index];
         if (!s || !s.group || s.group.length < 2) {
             return 0;
@@ -139,7 +142,7 @@
 
         for (var ownerKey in owners) {
             var owned = owners[ownerKey];
-            var opponent = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(Number(ownerKey)) : null;
+            var opponent = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(Number(ownerKey), subject) : null;
             var cashMultiplier = opponent && opponent.money !== undefined ? clamp(0.8 + opponent.money / 3000, 0.8, 1.2) : 1;
             var rank = opponent && AIGen5.Analytics ? AIGen5.Analytics.strengthRank(opponent) : 'Contender';
             var rankMultiplier = rank === 'Leader' ? 1.3 : rank === 'Weak' || rank === 'NearBankrupt' ? 0.6 : 1;
@@ -154,8 +157,8 @@
         return strongestThreat;
     }
 
-    function evaluateProperty(index, ownerIndex, cashOnHand, profile, endgamePressure) {
-        var square = globalThis.square;
+    function evaluateProperty(index, ownerIndex, cashOnHand, profile, endgamePressure, subject) {
+        var square = AIGen5.getSquares(subject);
         var s = square[index];
         if (!s || s.price === 0 || s.owner !== 0) {
             return -Infinity;
@@ -164,7 +167,7 @@
         var score = 0;
         score += s.price * 0.18;
         score += (s.baserent || 0) * 1.1;
-        score += (s.houseprice || 0) * 0.12 * houseBuildFeasibility();
+        score += (s.houseprice || 0) * 0.12 * houseBuildFeasibility(subject);
 
         if (typeof s.group !== 'undefined' && s.group && s.group.length > 0) {
             var ownedInGroup = 0;
@@ -196,9 +199,9 @@
             score += 60;
         }
 
-        score += groupScore(index, ownerIndex);
-        score += expectedRentValue(index, ownerIndex, null, 2) * 0.8;
-        score += opponentThreatScore(index, ownerIndex) * (profile.endgameBias || 1);
+        score += groupScore(index, ownerIndex, null, subject);
+        score += expectedRentValue(index, ownerIndex, null, 2, subject) * 0.8;
+        score += opponentThreatScore(index, ownerIndex, subject) * (profile.endgameBias || 1);
         score *= (profile.riskTolerance || 0.6) > 0.7 ? 1.08 : 1;
         score += (endgamePressure || 0) * 12 * (profile.endgameBias || 1);
 
@@ -212,8 +215,8 @@
         return score;
     }
 
-    function groupOwnershipSummary(ownerIndex) {
-        var square = globalThis.square;
+    function groupOwnershipSummary(ownerIndex, subject) {
+        var square = AIGen5.getSquares(subject);
         var summary = [];
         for (var i = 0; i < 40; i++) {
             var s = square[i];
@@ -233,8 +236,8 @@
 
     // Evaluates strategic blocking leverage of a square:
     // blocks color monopoly completion, railroad clusters (3rd/4th railroad), or utility pairs.
-    function strategicBlockingValue(index, forPlayerIndex, againstPlayerIndex) {
-        var square = globalThis.square;
+    function strategicBlockingValue(index, forPlayerIndex, againstPlayerIndex, subject) {
+        var square = AIGen5.getSquares(subject);
         if (!square) {
             return 0;
         }
@@ -254,7 +257,7 @@
                 }
             }
             if (againstOwned === s.group.length - 1) {
-                var oppPlayer = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(againstPlayerIndex) : null;
+                var oppPlayer = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(againstPlayerIndex, subject) : null;
                 var rank = oppPlayer && AIGen5.Analytics ? AIGen5.Analytics.strengthRank(oppPlayer) : 'Contender';
                 var rankMult = rank === 'Leader' ? 2.0 : (rank === 'NearBankrupt' ? 0.7 : 1.2);
                 blockingScore += ((s.price || 0) * 0.8 + (s.houseprice || 100) * 1.5) * rankMult;
@@ -289,10 +292,10 @@
 
     // Evaluates tempo: speed of achieving developed monopolies (especially 3 houses) relative to opponents.
     function tempoScore(p, ownership) {
-        if (!p || typeof globalThis.square === 'undefined') {
+        if (!p) {
             return 0;
         }
-        var square = globalThis.square;
+        var square = AIGen5.getSquares(p);
         var maxTempo = 0;
         var seenGroups = {};
 
@@ -309,7 +312,7 @@
 
             var ownedCount = 0;
             for (var g = 0; g < s.group.length; g++) {
-                var owner = propertyOwner(s.group[g], ownership);
+                var owner = propertyOwner(s.group[g], ownership, p);
                 if (owner === p.index) {
                     ownedCount++;
                 }

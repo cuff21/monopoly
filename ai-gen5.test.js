@@ -17,6 +17,14 @@ globalThis.player[1] = { index: 1, money: 1500, name: 'AI Under Test', human: fa
 globalThis.player[6] = { index: 6, money: 3000, name: 'Leader', human: false, position: 10 };
 globalThis.player[7] = { index: 7, money: 40, name: 'Weakling', human: false, position: 12 };
 globalThis.player[8] = { index: 8, money: 1500, name: 'Builder', human: false, position: 0 };
+const fixtureState = { square: globalThis.square, player: globalThis.player, pcount: 8 };
+function attachFixturePlayer(player) {
+    player.game = player.game || { state: fixtureState };
+    player.game.state = fixtureState;
+    fixtureState.player[player.index] = player;
+    return player;
+}
+Object.keys(globalThis.player).forEach(function(index) { attachFixturePlayer(globalThis.player[index]); });
 
 const Probability = require('./js/ai/ai-gen5/probability.js');
 const Analytics = require('./js/ai/ai-gen5/game-analytics.js');
@@ -45,9 +53,10 @@ assert.ok(reserveNearDanger > reserveSafe, 'reserve should rise when a hotel-cov
 let houseBuyLog = [];
 globalThis.buyHouse = function(index) {
     houseBuyLog.push(index);
-    const s = globalThis.square[index];
+    const s = fixtureState.square[index];
     s.house = s.house + 1;
 };
+builder.game.buyHouse = globalThis.buyHouse;
 
 builder.money = 5000;
 houseBuyLog = [];
@@ -66,27 +75,30 @@ assert.strictEqual(purchasesWhenTight.length, 0, 'should withhold building when 
 let mortgagedIndexes = [];
 let soldHouseIndexes = [];
 globalThis.mortgage = function(index) {
-    const s = globalThis.square[index];
+    const s = fixtureState.square[index];
     if (s.mortgage) return false;
     s.mortgage = true;
     mortgagedIndexes.push(index);
-    globalThis.player[6].money += Math.round(s.price * 0.5);
+    fixtureState.player[6].money += Math.round(s.price * 0.5);
     return true;
 };
 globalThis.sellHouse = function(index) {
-    const s = globalThis.square[index];
+    const s = fixtureState.square[index];
     if (s.house === 0 && s.hotel === 0) return false;
     soldHouseIndexes.push(index);
     if (s.hotel === 1) { s.hotel = 0; s.house = 4; } else { s.house -= 1; }
-    globalThis.player[6].money += Math.round(s.houseprice * 0.5);
+    fixtureState.player[6].money += Math.round(s.houseprice * 0.5);
     return true;
 };
 globalThis.canSellHouse = function(index) {
-    const s = globalThis.square[index];
+    const s = fixtureState.square[index];
     return s.house > 0 || s.hotel === 1;
 };
 
 const debtor = globalThis.player[6];
+debtor.game.mortgage = globalThis.mortgage;
+debtor.game.sellHouse = globalThis.sellHouse;
+debtor.game.canSellHouse = globalThis.canSellHouse;
 globalThis.square[3].owner = 6;
 globalThis.square[3].mortgage = false;
 globalThis.square[3].house = 0;
@@ -106,6 +118,7 @@ property[3] = 1; // AI gives away square 3
 property[4] = -1; // AI receives square 4
 const signature = TradeMemory.createSignature(property, 0);
 globalThis.player[9] = { index: 9, money: 500, name: 'Fresh Opponent' };
+attachFixturePlayer(globalThis.player[9]);
 const opponent = globalThis.player[9];
 const snapshotTurn1 = TradeMemory.snapshotOf(opponent, 1);
 ledger.recordOutcome(opponent.index, signature, 'rejected', snapshotTurn1);
@@ -184,6 +197,7 @@ globalThis.square = [];
 for (var i = 0; i < 40; i++) {
     globalThis.square[i] = { index: i, owner: 0, mortgage: false, house: 0, hotel: 0, group: undefined, price: 0, baserent: 0, houseprice: 0 };
 }
+fixtureState.square = globalThis.square;
 for (var groupIndex = 0; groupIndex < 40; groupIndex++) {
     globalThis.square[groupIndex].group = undefined;
 }
@@ -191,16 +205,17 @@ globalThis.square[21] = { index: 21, owner: 0, mortgage: false, house: 0, hotel:
 globalThis.square[23] = { index: 23, owner: 0, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 220, baserent: 90, houseprice: 100 };
 globalThis.square[24] = { index: 24, owner: 0, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 240, baserent: 100, houseprice: 100 };
 globalThis.player = [];
+fixtureState.player = globalThis.player;
 for (var playerIndex = 0; playerIndex <= 8; playerIndex++) {
-    globalThis.player[playerIndex] = { index: playerIndex, money: 1500, name: 'Ghost ' + playerIndex, human: false, position: 0, creditor: -1, jail: false, jailroll: 0 };
+    attachFixturePlayer({ index: playerIndex, money: 1500, name: 'Ghost ' + playerIndex, human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
 }
-globalThis.pcount = 4;
-globalThis.player[1] = { index: 1, money: 1500, name: 'Red Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 };
-globalThis.player[2] = { index: 2, money: 1800, name: 'Blue Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 };
-globalThis.player[3] = { index: 3, money: 900, name: 'Lime Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 };
-globalThis.player[4] = { index: 4, money: 600, name: 'Human', human: true, position: 0, creditor: -1, jail: false, jailroll: 0 };
+fixtureState.pcount = 4;
+attachFixturePlayer({ index: 1, money: 1500, name: 'Red Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
+attachFixturePlayer({ index: 2, money: 1800, name: 'Blue Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
+attachFixturePlayer({ index: 3, money: 900, name: 'Lime Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
+attachFixturePlayer({ index: 4, money: 600, name: 'Human', human: true, position: 0, creditor: -1, jail: false, jailroll: 0 });
 
-var activePlayers = Analytics.getActivePlayers();
+var activePlayers = Analytics.getActivePlayers(fixtureState);
 assert.strictEqual(activePlayers.length, 4, 'should ignore ghost players above the real game count');
 assert.ok(activePlayers.some(function(p) { return p.index === 1; }), 'should still include active players inside the real game count');
 
@@ -243,8 +258,8 @@ globalThis.square[3] = { index: 3, owner: 2, mortgage: false, house: 0, hotel: 0
 globalThis.square[21].owner = 2;
 globalThis.square[23].owner = 2;
 globalThis.square[24].owner = 2;
-assert.strictEqual(Analytics.countMonopolies(2, true), 2, 'player 2 should be credited with exactly 2 distinct buildable monopolies');
-assert.strictEqual(Analytics.countBoardMonopolies(true), 2, 'board should count 2 distinct monopolies even if owned by same player');
+assert.strictEqual(Analytics.countMonopolies(2, true, fixtureState), 2, 'player 2 should be credited with exactly 2 distinct buildable monopolies');
+assert.strictEqual(Analytics.countBoardMonopolies(true, fixtureState), 2, 'board should count 2 distinct monopolies even if owned by same player');
 
 // Real-time build threat scenario: Exact user scenario where (Sentinel) must decline Red Bot's monopoly trade
 // Setup board state
@@ -351,7 +366,7 @@ assert.ok(highStagnationOpportunity !== undefined, 'findOpportunity should handl
 // --- 10. Realism Upgrades: Stress Liquidity, Tendency, Future Buildability, Blocking & Deadlock ---
 // 10a. True Reserve, Emergency Liquidity & Jail Mitigation
 globalThis.square[10] = { index: 10, owner: 6, mortgage: false, house: 5, hotel: 1, baserent: 20, houseprice: 200, rent5: 1050 };
-const testPlayer = { index: 5, money: 800, position: 0, jail: false, jailroll: 0 };
+const testPlayer = attachFixturePlayer({ index: 5, money: 800, position: 0, jail: false, jailroll: 0 });
 globalThis.square[4] = { index: 4, name: 'City Tax', price: 0, group: null, baserent: 0, houseprice: 0 };
 const normalReserve = Liquidity.computeReserve(testPlayer, balancedProfile);
 testPlayer.jail = true;
@@ -387,14 +402,14 @@ globalThis.player[6].money = 2500;
 const futureBuildLeader = Analytics.projectedFutureBuildability(globalThis.player[6], 21, 2500, 3);
 assert.strictEqual(futureBuildLeader.reachesThreeHouses, true, 'wealthy opponent with color monopoly should reach 3-house inflection within 3 turns');
 
-const futureRisk = Analytics.monopolyRisk(21, 6, 2500);
+const futureRisk = Analytics.monopolyRisk(21, 6, 2500, fixtureState);
 assert.ok(futureRisk > 2.0, 'monopolyRisk should be significantly elevated when opponent can build to 3 houses');
 
 // 10d. Strategic Lane Blocking & Tempo Scoring
 globalThis.square[15] = { index: 15, owner: 2, group: [5, 15, 25, 35] };
 globalThis.square[25] = { index: 25, owner: 2, group: [5, 15, 25, 35] };
 globalThis.square[35] = { index: 35, owner: 1, group: [5, 15, 25, 35] };
-const rrBlocking = Valuation.strategicBlockingValue(35, 1, 2);
+const rrBlocking = Valuation.strategicBlockingValue(35, 1, 2, fixtureState);
 assert.ok(rrBlocking >= 50, 'holding 3rd railroad should carry substantial strategic blocking value');
 
 globalThis.square[21].house = 3;
@@ -411,14 +426,14 @@ for (let sIdx = 0; sIdx < 40; sIdx++) {
         globalThis.square[sIdx].hotel = 0;
     }
 }
-const richPlayer = { index: 1, money: 3500, AI: { turnNumber: 20 } };
-const poorPlayer = { index: 2, money: 500, AI: { turnNumber: 20 } };
+const richPlayer = attachFixturePlayer({ index: 1, money: 3500, AI: { turnNumber: 20 } });
+const poorPlayer = attachFixturePlayer({ index: 2, money: 500, AI: { turnNumber: 20 } });
 const leaderDeadlock = Analytics.getDeadlockState(richPlayer, poorPlayer, 20);
 assert.strictEqual(leaderDeadlock.mode, 'AsymmetricLead', 'wealthier player should be in AsymmetricLead deadlock state');
 assert.strictEqual(leaderDeadlock.isLeader, true, 'isLeader should be true in AsymmetricLead');
 
-const equalPlayer1 = { index: 1, money: 1000, AI: { turnNumber: 20 } };
-const equalPlayer2 = { index: 2, money: 1000, AI: { turnNumber: 20 } };
+const equalPlayer1 = attachFixturePlayer({ index: 1, money: 1000, AI: { turnNumber: 20 } });
+const equalPlayer2 = attachFixturePlayer({ index: 2, money: 1000, AI: { turnNumber: 20 } });
 const symDeadlock = Analytics.getDeadlockState(equalPlayer1, equalPlayer2, 20);
 assert.strictEqual(symDeadlock.mode, 'SymmetricalDeadlock', 'equally positioned players should be in SymmetricalDeadlock');
 

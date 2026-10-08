@@ -68,7 +68,7 @@ function setup() {
 	document.getElementById("stats").style.top = "0px";
 	document.getElementById("stats").style.left = "0px";
 	console.log("Starting the game!");
-	play();
+	game.play();
 }
 
 function restartGame() {
