@@ -1,6 +1,19 @@
 // Modal popup, deed tooltip, and player-stats panel rendering.
 
+var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
+	(typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
+
 function popup(HTML, action, option, timer) {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		for (var a = 1; a < arguments.length; a++) {
+			if (typeof arguments[a] === "function") {
+				arguments[a]();
+				break;
+			}
+		}
+		return;
+	}
+
 	function clearTimer() {
 		if (popup.autoCloseTimer) {
 			clearInterval(popup.autoCloseTimer);
@@ -143,11 +156,11 @@ function getPlayerPersonality(p) {
 
 function getPlayerStatsHTML(playerIndex, showPersonality) {
 	var p = player[playerIndex];
-	var HTML = "<div class='statsplayername'>" + p.name + "</div>";
+	var HTML = "<div class='statsplayername'>" + UIHtml.escapeHTML(p.name) + "</div>";
 	if (showPersonality) {
 		var personality = getPlayerPersonality(p);
 		if (personality) {
-			HTML += "<div class='statsplayerprofile' data-personality='" + personality + "' data-profile='" + personality + "'>Personality: " + personality + "</div>";
+			HTML += "<div class='statsplayerprofile' data-personality='" + UIHtml.escapeHTML(personality) + "' data-profile='" + UIHtml.escapeHTML(personality) + "'>Personality: " + UIHtml.escapeHTML(personality) + "</div>";
 		}
 	}
 	var write = false;
@@ -170,11 +183,11 @@ function getPlayerStatsHTML(playerIndex, showPersonality) {
 				housetext = "<span style='float: right; font-weight: bold;'>" + sq.house + "&nbsp;x&nbsp;<img src='images/house.png' alt='' title='House' class='house' style='float: none;' /></span>";
 			}
 
-			HTML += "<tr><td class='statscellcolor' style='background: " + sq.color + ";";
+			HTML += "<tr><td class='statscellcolor' style='background: " + UIHtml.escapeHTML(sq.color) + ";";
 			if (sq.groupNumber === 1 || sq.groupNumber === 2) {
 				HTML += " border: 1px solid grey;";
 			}
-			HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + sq.name + housetext + "</td></tr>";
+			HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.name) + housetext + "</td></tr>";
 		}
 	}
 
@@ -191,7 +204,7 @@ function getPlayerStatsHTML(playerIndex, showPersonality) {
 		}
 	}
 
-	return write ? HTML + "</table>" : HTML + p.name + " dosen't have any properties.";
+	return write ? HTML + "</table>" : HTML + UIHtml.escapeHTML(p.name) + " dosen't have any properties.";
 }
 
 function showAuctionPlayerStats(playerIndex, event) {
@@ -269,16 +282,10 @@ function showdeed(property) {
 			document.getElementById("deed-houseprice").textContent = sq.houseprice;
 			document.getElementById("deed-hotelprice").textContent = sq.houseprice;
 
-		} else if (sq.groupNumber == 2) {
+		} else if (sq.groupProfile) {
 			$("#deed-special").show();
 			document.getElementById("deed-special-name").textContent = sq.name;
-			document.getElementById("deed-special-text").innerHTML = Monopoly.Editions.getActive().text.utility();
-			document.getElementById("deed-special-mortgage").textContent = (sq.price / 2);
-
-		} else if (sq.groupNumber == 1) {
-			$("#deed-special").show();
-			document.getElementById("deed-special-name").textContent = sq.name;
-			document.getElementById("deed-special-text").innerHTML = Monopoly.Editions.getActive().text.transit();
+			document.getElementById("deed-special-text").innerHTML = EditionRenderer.renderSpecialDeedText(sq.groupProfile);
 			document.getElementById("deed-special-mortgage").textContent = (sq.price / 2);
 		}
 	}
@@ -286,4 +293,8 @@ function showdeed(property) {
 
 function hidedeed() {
 	$("#deed").hide();
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = { getPlayerStatsHTML: getPlayerStatsHTML };
 }

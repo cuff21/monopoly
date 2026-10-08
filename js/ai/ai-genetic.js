@@ -389,3 +389,10 @@ function AITest3(p, params) {
 
 	}
 }
+
+if (typeof AISetupRegistry !== 'undefined') AISetupRegistry.register({
+	id: "3",
+	label: "AI 3",
+	trackResults: true,
+	createPlayer: function(player) { return new AITest3(player, generateParameters()); }
+});

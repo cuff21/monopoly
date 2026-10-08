@@ -1,92 +1,221 @@
-// New York City edition. NOTE: preserved as-is from the legacy newyorkcityedition.js — it already
-// referenced stale globals (addalert/hide) that don't exist elsewhere in this codebase, so City Tax
-// and Luxury Tax on this edition were already broken before this reorganization. Not fixed here since
-// that wasn't part of this restructuring pass; only relocated into the edition plugin interface.
+// New York City edition with tax choices and card actions routed through the shared game/UI APIs.
 (function() {
-	function corrections() {
-		document.getElementById("cell24name").textContent = "blooming...";
+	var utilityRentTiers = [4, 10];
+	var transitRentTiers = [25, 50, 100, 200];
+	var colorGroupRentRule = { mode: "colorGroup", monopolyMultiplier: 2 };
+
+	function formatPrice(price) {
+		return "$" + price;
 	}
 
-	function utilityText() {
-		return '&nbsp;&nbsp;&nbsp;&nbsp;If one "Utility" is owned rent is 4 times amount shown on dice.<br /><br />&nbsp;&nbsp;&nbsp;&nbsp;If both "Utilitys" are owned rent is 10 times amount shown on dice.';
+	function formatUtilityRent(rent) {
+		return rent.multiplier + "x dice";
 	}
 
-	function transitText() {
-		return '<div style="font-size: 14px; line-height: 1.5;">Rent<span style="float: right;">$25.</span><br />If 2 Transportations are owned<span style="float: right;">50.</span><br />If 3 &nbsp; &nbsp; " &nbsp; &nbsp; " &nbsp; &nbsp; "<span style="float: right;">100.</span><br />If 4 &nbsp; &nbsp; " &nbsp; &nbsp; " &nbsp; &nbsp; "<span style="float: right;">200.</span></div>';
+	function colorGroup(groupName, groupColor) {
+		return {
+			groupName: groupName,
+			groupColor: groupColor,
+			presentation: { priceText: formatPrice },
+			rules: { kind: "color", rentRule: colorGroupRentRule }
+		};
 	}
 
-	function cityTax() {
-		var p = player[turn];
+	function buildGroups() {
+		var groups = [];
+		groups[1] = {
+			groupName: "railroads",
+			groupColor: "white",
+			presentation: { priceText: formatPrice },
+			rules: { kind: "transit", deed: { groupName: "Transportations", rents: transitRentTiers }, rentRule: { mode: "fixed", tiers: transitRentTiers } }
+		};
+		groups[2] = {
+			groupName: "utilities",
+			groupColor: "white",
+			presentation: { priceText: formatPrice, rentText: formatUtilityRent },
+			rules: { kind: "utility", deed: { multipliers: utilityRentTiers }, rentRule: { mode: "diceMultiplier", tiers: utilityRentTiers } }
+		};
+		groups[3] = colorGroup("dark purple", "#4B0082");
+		groups[4] = colorGroup("light blue", "#AACCFF");
+		groups[5] = colorGroup("purple", "purple");
+		groups[6] = colorGroup("orange", "orange");
+		groups[7] = colorGroup("red", "red");
+		groups[8] = colorGroup("yellow", "yellow");
+		groups[9] = colorGroup("green", "green");
+		groups[10] = colorGroup("blue", "blue");
+		return groups;
+	}
 
-		if (p.human) {
-			var buttonAonclick = 'hide("popupbackground"); hide("popupwrap"); var p=player[turn]; addalert(p.name+" paid $200 for landing on City Tax."); p.pay(200, 0);';
-			var buttonBonclick = ' hide("popupbackground"); hide("popupwrap"); var p=player[turn]; var cost=p.money; for(var i=0; i<40; i++){sq=square[i]; if(sq.owner==turn) { if(sq.mortgage) { cost+=sq.price*0.5; } else { cost+=sq.price; } cost+=(sq.house*sq.houseprice); } } cost*=0.1; cost=Math.round(cost); addalert(p.name+" paid $"+cost+" for landing on City Tax."); p.pay(cost,0);';
-
-			popup("You landed on City Tax. You must pay $200 or ten percent of your total worth.<div><input type='button' value='Pay $200' onclick='" + buttonAonclick + "' /><input type='button' value='Pay 10%' onclick='" + buttonBonclick + "' /></div>", false);
-		} else {
-			addalert(p.name + " paid $200 for landing on City Tax.");
-			p.pay(200, 0);
+	function cityTax(context) {
+		var p = context.player;
+		var percentageCost = p.money;
+		for (var i = 0; i < context.squares.length; i++) {
+			var property = context.squares[i];
+			if (property.owner === p.index) {
+				percentageCost += property.mortgage ? property.price * 0.5 : property.price;
+				percentageCost += property.house * property.houseprice;
+			}
 		}
+		percentageCost = Math.round(percentageCost * 0.1);
+
+		function payTax(amount) {
+			if (context.freeParkingTaxes) context.addTaxToFreeParking(amount);
+			p.pay(amount, 0);
+			context.ui.alert(p.name + " paid $" + amount + " for landing on City Tax.");
+		}
+
+		if (p.human && typeof context.ui.chooseTax === 'function') {
+			context.ui.chooseTax(200, percentageCost, payTax);
+		} else {
+			payTax(200);
+		}
+		context.ui.displayLanded("You landed on City Tax. Pay $200 or 10% of total worth.");
 	}
 
-	function luxuryTax() {
-		addalert(player[turn].name + " paid $75 for landing on Luxury Tax.");
-		player[turn].pay(75, 0);
-
-		$("landed").show().text("You landed on Luxury Tax. Pay $75.");
+	function luxuryTax(context) {
+		var p = context.player;
+		context.ui.alert(p.name + " paid $75 for landing on Luxury Tax.");
+		p.pay(75, 0);
+		context.ui.displayLanded("You landed on Luxury Tax. Pay $75.");
 	}
 
-	function buildSquares() {
+	function buildSquares(groups) {
+		groups = groups || buildGroups();
 		var squares = [];
 
-		squares[0] = new Square("GO", "COLLECT $200 SALARY AS YOU PASS.", "white");
-		squares[1] = new Square("Port Authority Bus Terminal", "$60", "#4B0082", 60, 3, 2, 10, 30, 90, 160, 250);
-		squares[2] = new Square("Community Chest", "FOLLOW INSTRUCTIONS ON TOP CARD", "white");
-		squares[3] = new Square("Lincoln Tunnel", "$60", "#4B0082", 60, 3, 4, 20, 60, 180, 320, 450);
-		squares[4] = new Square("City Tax", "PAY 10% OR $200", "white");
-		squares[5] = new Square("LOMTO", "$200", "white", 200, 1);
-		squares[6] = new Square("Statue of Liberty", "$100", "#AACCFF", 100, 4, 6, 30, 90, 270, 400, 550);
-		squares[7] = new Square("Chance", "NEW YORK LOTTERY GAMES", "white");
-		squares[8] = new Square("Empire State Building", "$100", "#AACCFF", 100, 4, 6, 30, 90, 270, 400, 550);
-		squares[9] = new Square("Central Park", "$120", "#AACCFF", 120, 4, 8, 40, 100, 300, 450, 600);
-		squares[10] = new Square("Just Visiting", "", "white");
-		squares[11] = new Square("98.7 Kiss FM", "$140", "purple", 140, 5, 10, 50, 150, 450, 625, 750);
-		squares[12] = new Square("Con Edison Electric", "$150", "white", 150, 2);
-		squares[13] = new Square("Thirteen WNET", "$140", "purple", 140, 5, 10, 50, 150, 450, 625, 750);
-		squares[14] = new Square("The New York Times", "$160", "purple", 160, 5, 12, 60, 180, 500, 700, 900);
-		squares[15] = new Square("New York City Transit", "$200", "white", 200, 1);
-		squares[16] = new Square("New York Rangers", "$180", "orange", 180, 6, 14, 70, 200, 550, 750, 950);
-		squares[17] = new Square("Community Chest", "FOLLOW INSTRUCTIONS ON TOP CARD", "white");
-		squares[18] = new Square("New York Knicks", "$180", "orange", 180, 6, 14, 70, 200, 550, 750, 950);
-		squares[19] = new Square("Madison Square Garden", "$200", "orange", 200, 6, 16, 80, 220, 600, 800, 1000);
-		squares[20] = new Square("Free Parking", "", "white");
-		squares[21] = new Square("macy*s", "$220", "red", 220, 7, 18, 90, 250, 700, 875, 1050);
-		squares[22] = new Square("Chance", "NEW YORK LOTTERY GAMES", "white");
-		squares[23] = new Square("FAO Schwarz", "$220", "red", 220, 7, 18, 90, 250, 700, 875, 1050);
-		squares[24] = new Square("bloomingdale's", "$240", "red", 240, 7, 20, 100, 300, 750, 925, 1100);
-		squares[25] = new Square("Metro-North Railroad", "$200", "white", 200, 1);
-		squares[26] = new Square("Deloitte & Touche LLP", "$260", "yellow", 260, 8, 22, 110, 330, 800, 975, 1150);
-		squares[27] = new Square("SmithBarney", "$260", "yellow", 260, 8, 22, 110, 330, 800, 975, 1150);
-		squares[28] = new Square("Con Edison Gas", "$150", "white", 150, 2);
-		squares[29] = new Square("CITIBANK", "$280", "yellow", 280, 8, 24, 120, 360, 850, 1025, 1200);
-		squares[30] = new Square("Go to Jail", "Go directly to Jail. Do not pass GO. Do not collect $200.", "white");
-		squares[31] = new Square("The Regency Hotel", "$300", "green", 300, 9, 26, 130, 390, 900, 1100, 1275);
-		squares[32] = new Square("Essex House", "$300", "green", 300, 9, 26, 130, 390, 900, 1100, 1275);
-		squares[33] = new Square("Community Chest", "FOLLOW INSTRUCTIONS ON TOP CARD", "white");
-		squares[34] = new Square("The Plaza", "$320", "green", 320, 9, 28, 150, 450, 1000, 1200, 1400);
-		squares[35] = new Square("United Airlines", "$200", "white", 200, 1);
-		squares[36] = new Square("Chance", "NEW YORK LOTTERY GAMES", "white");
-		squares[37] = new Square("Tiffany & CO.", "$350", "blue", 350, 10, 35, 175, 500, 1100, 1300, 1500);
-		squares[38] = new Square("LUXURY TAX", "Pay $75", "white");
-		squares[39] = new Square("TRUMP TOWER", "$400", "blue", 400, 10, 50, 200, 600, 1400, 1700, 2000);
+		squares[0] = new Square({ name: "GO", presentation: { priceText: "COLLECT $200 SALARY AS YOU PASS.", color: "white" } });
+		squares[1] = new Square({
+			name: "Port Authority Bus Terminal",
+			rules: { price: 60, groupNumber: 3, baseRent: 2, rentTiers: [10, 30, 90, 160, 250] }
+		});
+		squares[2] = new Square({ name: "Community Chest", presentation: { priceText: "FOLLOW INSTRUCTIONS ON TOP CARD", color: "white" } });
+		squares[3] = new Square({
+			name: "Lincoln Tunnel",
+			rules: { price: 60, groupNumber: 3, baseRent: 4, rentTiers: [20, 60, 180, 320, 450] }
+		});
+		squares[4] = new Square({ name: "City Tax", presentation: { priceText: "PAY 10% OR $200", color: "white" }, behavior: { onLand: cityTax } });
+		squares[5] = new Square({
+			name: "LOMTO",
+			rules: { price: 200, groupNumber: 1 }
+		});
+		squares[6] = new Square({
+			name: "Statue of Liberty",
+			rules: { price: 100, groupNumber: 4, baseRent: 6, rentTiers: [30, 90, 270, 400, 550] }
+		});
+		squares[7] = new Square({ name: "Chance", presentation: { priceText: "NEW YORK LOTTERY GAMES", color: "white" } });
+		squares[8] = new Square({
+			name: "Empire State Building",
+			rules: { price: 100, groupNumber: 4, baseRent: 6, rentTiers: [30, 90, 270, 400, 550] }
+		});
+		squares[9] = new Square({
+			name: "Central Park",
+			rules: { price: 120, groupNumber: 4, baseRent: 8, rentTiers: [40, 100, 300, 450, 600] }
+		});
+		squares[10] = new Square({ name: "Just Visiting", presentation: { priceText: "", color: "white" } });
+		squares[11] = new Square({
+			name: "98.7 Kiss FM",
+			rules: { price: 140, groupNumber: 5, baseRent: 10, rentTiers: [50, 150, 450, 625, 750] }
+		});
+		squares[12] = new Square({
+			name: "Con Edison Electric",
+			rules: { price: 150, groupNumber: 2 }
+		});
+		squares[13] = new Square({
+			name: "Thirteen WNET",
+			rules: { price: 140, groupNumber: 5, baseRent: 10, rentTiers: [50, 150, 450, 625, 750] }
+		});
+		squares[14] = new Square({
+			name: "The New York Times",
+			rules: { price: 160, groupNumber: 5, baseRent: 12, rentTiers: [60, 180, 500, 700, 900] }
+		});
+		squares[15] = new Square({
+			name: "New York City Transit",
+			rules: { price: 200, groupNumber: 1 }
+		});
+		squares[16] = new Square({
+			name: "New York Rangers",
+			rules: { price: 180, groupNumber: 6, baseRent: 14, rentTiers: [70, 200, 550, 750, 950] }
+		});
+		squares[17] = new Square({ name: "Community Chest", presentation: { priceText: "FOLLOW INSTRUCTIONS ON TOP CARD", color: "white" } });
+		squares[18] = new Square({
+			name: "New York Knicks",
+			rules: { price: 180, groupNumber: 6, baseRent: 14, rentTiers: [70, 200, 550, 750, 950] }
+		});
+		squares[19] = new Square({
+			name: "Madison Square Garden",
+			rules: { price: 200, groupNumber: 6, baseRent: 16, rentTiers: [80, 220, 600, 800, 1000] }
+		});
+		squares[20] = new Square({ name: "Free Parking", presentation: { priceText: "", color: "white" } });
+		squares[21] = new Square({
+			name: "macy*s",
+			rules: { price: 220, groupNumber: 7, baseRent: 18, rentTiers: [90, 250, 700, 875, 1050] }
+		});
+		squares[22] = new Square({ name: "Chance", presentation: { priceText: "NEW YORK LOTTERY GAMES", color: "white" } });
+		squares[23] = new Square({
+			name: "FAO Schwarz",
+			rules: { price: 220, groupNumber: 7, baseRent: 18, rentTiers: [90, 250, 700, 875, 1050] }
+		});
+		squares[24] = new Square({
+			name: "bloomingdale's",
+			presentation: { boardName: "blooming..." },
+			rules: { price: 240, groupNumber: 7, baseRent: 20, rentTiers: [100, 300, 750, 925, 1100] }
+		});
+		squares[25] = new Square({
+			name: "Metro-North Railroad",
+			rules: { price: 200, groupNumber: 1 }
+		});
+		squares[26] = new Square({
+			name: "Deloitte & Touche LLP",
+			rules: { price: 260, groupNumber: 8, baseRent: 22, rentTiers: [110, 330, 800, 975, 1150] }
+		});
+		squares[27] = new Square({
+			name: "SmithBarney",
+			rules: { price: 260, groupNumber: 8, baseRent: 22, rentTiers: [110, 330, 800, 975, 1150] }
+		});
+		squares[28] = new Square({
+			name: "Con Edison Gas",
+			rules: { price: 150, groupNumber: 2 }
+		});
+		squares[29] = new Square({
+			name: "CITIBANK",
+			rules: { price: 280, groupNumber: 8, baseRent: 24, rentTiers: [120, 360, 850, 1025, 1200] }
+		});
+		squares[30] = new Square({ name: "Go to Jail", presentation: { priceText: "Go directly to Jail. Do not pass GO. Do not collect $200.", color: "white" } });
+		squares[31] = new Square({
+			name: "The Regency Hotel",
+			rules: { price: 300, groupNumber: 9, baseRent: 26, rentTiers: [130, 390, 900, 1100, 1275] }
+		});
+		squares[32] = new Square({
+			name: "Essex House",
+			rules: { price: 300, groupNumber: 9, baseRent: 26, rentTiers: [130, 390, 900, 1100, 1275] }
+		});
+		squares[33] = new Square({ name: "Community Chest", presentation: { priceText: "FOLLOW INSTRUCTIONS ON TOP CARD", color: "white" } });
+		squares[34] = new Square({
+			name: "The Plaza",
+			rules: { price: 320, groupNumber: 9, baseRent: 28, rentTiers: [150, 450, 1000, 1200, 1400] }
+		});
+		squares[35] = new Square({
+			name: "United Airlines",
+			rules: { price: 200, groupNumber: 1 }
+		});
+		squares[36] = new Square({ name: "Chance", presentation: { priceText: "NEW YORK LOTTERY GAMES", color: "white" } });
+		squares[37] = new Square({
+			name: "Tiffany & CO.",
+			rules: { price: 350, groupNumber: 10, baseRent: 35, rentTiers: [175, 500, 1100, 1300, 1500] }
+		});
+		squares[38] = new Square({ name: "LUXURY TAX", presentation: { priceText: "Pay $75", color: "white" }, behavior: { onLand: luxuryTax } });
+		squares[39] = new Square({
+			name: "TRUMP TOWER",
+			rules: { price: 400, groupNumber: 10, baseRent: 50, rentTiers: [200, 600, 1400, 1700, 2000] }
+		});
 
-		return squares;
+		return Square.applyGroupDefinitions(squares, groups);
 	}
 
 	function buildCommunityChestCards() {
 		var cards = [];
 
-		cards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function() { p.communityChestJailCard = true; updateOwned();});
+		cards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(p) { p.communityChestJailCard = true; });
 		cards[1] = new Card("You have won lifetime home delivery of the New York Times. Collect $10", function() { addamount(10, 'Community Chest');});
 		cards[2] = new Card("From sale of Macy's stock, you get $45", function() { addamount(45, 'Community Chest');});
 		cards[3] = new Card("Life insurance matures. Collect $100", function() { addamount(100, 'Community Chest');});
@@ -109,7 +238,7 @@
 	function buildChanceCards() {
 		var cards = [];
 
-		cards[0] = new Card("Get out of Jail free. This card may be kept until needed or sold.", function() { p.chanceJailCard=true; updateOwned();});
+		cards[0] = new Card("Get out of Jail free. This card may be kept until needed or sold.", function(p) { p.chanceJailCard = true; });
 		cards[1] = new Card("Make general repairs on all your property. For each house pay $25. For each hotel $100.", function() { streetrepairs(25, 100);});
 		cards[2] = new Card("Pay poor tax of $15.", function() { subtractamount(15, 'Chance');});
 		cards[3] = new Card("You have been elected chairman of Con Edison. Pay each player $50.", function() { payeachplayer(50, 'Chance');});
@@ -130,11 +259,9 @@
 	}
 
 	Monopoly.Editions.register("NYC", {
+		buildGroups: buildGroups,
 		buildSquares: buildSquares,
 		buildCommunityChestCards: buildCommunityChestCards,
-		buildChanceCards: buildChanceCards,
-		corrections: corrections,
-		text: { utility: utilityText, transit: transitText },
-		tax: { city: cityTax, luxury: luxuryTax }
+		buildChanceCards: buildChanceCards
 	});
 })();

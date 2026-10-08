@@ -804,4 +804,17 @@
     }
 
     global.StrategicAI = StrategicAI;
+    if (global.AISetupRegistry) global.AISetupRegistry.register({
+        id: "4",
+        label: "Strategic AI",
+        profiles: function() {
+            return global.StrategicAI.PROFILE_LIBRARY.map(function(profile) { return profile.name; });
+        },
+        createPlayer: function(player, selection) {
+            var profile = selection.profile === "Random"
+                ? global.StrategicAI.getRandomProfile()
+                : { name: selection.profile };
+            return new global.StrategicAI(player, profile);
+        }
+    });
 })(typeof window !== 'undefined' ? window : globalThis);

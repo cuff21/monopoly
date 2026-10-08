@@ -128,4 +128,17 @@
     }
 
     global.Gen5AI = Gen5AI;
+    if (global.AISetupRegistry) global.AISetupRegistry.register({
+        id: "5",
+        label: "Gen5 AI",
+        profiles: function() {
+            return global.Gen5AI.PROFILE_LIBRARY.map(function(profile) { return profile.name; });
+        },
+        createPlayer: function(player, selection) {
+            var profile = selection.profile === "Random"
+                ? global.Gen5AI.getRandomProfile()
+                : { name: selection.profile };
+            return new global.Gen5AI(player, profile);
+        }
+    });
 })(typeof window !== 'undefined' ? window : globalThis);

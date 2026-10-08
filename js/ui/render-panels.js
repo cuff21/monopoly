@@ -1,13 +1,20 @@
 // Money bar, owned-properties panel, and alert log rendering.
 
+var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
+	(typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
+
 function playerBadge(playerIndex) {
 	if (!player[playerIndex]) {
 		return "";
 	}
-	return "<span class='alert-badge' style='background-color: " + player[playerIndex].color + ";' title='" + player[playerIndex].name + "'></span>";
+	return "<span class='alert-badge' style='background-color: " + UIHtml.escapeHTML(player[playerIndex].color) + ";' title='" + UIHtml.escapeHTML(player[playerIndex].name) + "'></span>";
 }
 
 function addAlert(alertText, playerIndex, secondPlayerIndex) {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return;
+	}
+
 	$alert = $("#alert");
 	playerIndex = playerIndex || turn;
 	var alertElement = $(document.createElement("div"));
@@ -34,9 +41,9 @@ function formatTradeResult(label, tradeObj) {
 
 	for (var i = 0; i < 40; i++) {
 		if (tradeObj.getProperty(i) === 1) {
-			offered.push(square[i].name);
+			offered.push(UIHtml.escapeHTML(square[i].name));
 		} else if (tradeObj.getProperty(i) === -1) {
-			requested.push(square[i].name);
+			requested.push(UIHtml.escapeHTML(square[i].name));
 		}
 	}
 	if (tradeObj.getCommunityChestJailCard() === 1 || tradeObj.getChanceJailCard() === 1) {
@@ -46,10 +53,14 @@ function formatTradeResult(label, tradeObj) {
 		requested.push("Get Out of Jail Free card");
 	}
 
-	return label + ": <table class='trade-summary'><tr><th>" + initiator.name + " gives</th><th>" + recipient.name + " gives</th></tr><tr><td>" + (offered.join(", ") || "Nothing") + (money > 0 ? " and $" + money : "") + "</td><td>" + (requested.join(", ") || "Nothing") + (money < 0 ? " and $" + (-money) : "") + "</td></tr></table>";
+	return UIHtml.escapeHTML(label) + ": <table class='trade-summary'><tr><th>" + UIHtml.escapeHTML(initiator.name) + " gives</th><th>" + UIHtml.escapeHTML(recipient.name) + " gives</th></tr><tr><td>" + (offered.join(", ") || "Nothing") + (money > 0 ? " and $" + money : "") + "</td><td>" + (requested.join(", ") || "Nothing") + (money < 0 ? " and $" + (-money) : "") + "</td></tr></table>";
 }
 
 function updateMoney() {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return;
+	}
+
 	var p = player[turn];
 
 	document.getElementById("pmoney").innerHTML = "$" + p.money;
@@ -61,7 +72,7 @@ function updateMoney() {
 		$("#moneybarrow" + i).show();
 		document.getElementById("p" + i + "moneybar").style.border = "2px solid " + p_i.color;
 		document.getElementById("p" + i + "money").innerHTML = p_i.money;
-		document.getElementById("p" + i + "moneyname").innerHTML = p_i.name;
+		document.getElementById("p" + i + "moneyname").textContent = p_i.name;
 	}
 
 	if (document.getElementById("landed").innerHTML === "") {
@@ -80,6 +91,10 @@ function updateMoney() {
 }
 
 function updateDice() {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return;
+	}
+
 	var die0 = game.getDie(1);
 	var die1 = game.getDie(2);
 
@@ -123,6 +138,10 @@ function updateDice() {
 }
 
 function updateOwned() {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return;
+	}
+
 	var p = player[turn];
 	var checkedproperty = getCheckedProperty();
 	$("#option").show();
@@ -177,7 +196,7 @@ function updateOwned() {
 				HTML += " border: 1px solid grey; width: 18px;";
 			}
 
-			HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname' " + mortgagetext + ">" + sq.name + housetext + "</td></tr>";
+			HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.name) + housetext + "</td></tr>";
 		}
 	}
 
@@ -198,7 +217,7 @@ function updateOwned() {
 	}
 
 	if (HTML === "") {
-		HTML = p.name + ", you don't have any properties.";
+		HTML = UIHtml.escapeHTML(p.name) + ", you don't have any properties.";
 		$("#option").hide();
 	} else {
 		HTML += "</table>";
@@ -374,6 +393,10 @@ function updateOption() {
 }
 
 function updateFreeParkingDisplay() {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return;
+	}
+
 	var potDisplay = document.getElementById("freeparkingpot");
 	if (!potDisplay) {
 		return;
@@ -390,4 +413,8 @@ function getCheckedProperty() {
 		}
 	}
 	return -1; // No property is checked.
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = { playerBadge: playerBadge, formatTradeResult: formatTradeResult, updateMoney: updateMoney };
 }

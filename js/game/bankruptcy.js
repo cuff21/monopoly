@@ -5,9 +5,7 @@
 
 		// Remove the bankrupt player's on-board token now, before indices shift below - otherwise
 		// it gets recolored and animated into whichever remaining player takes over its slot.
-		if (playerOverlays[p.index] && playerOverlays[p.index].parentNode) {
-			playerOverlays[p.index].parentNode.removeChild(playerOverlays[p.index]);
-		}
+		if (game.ui) game.ui.removePlayerToken(p.index);
 
 		for (var i = p.index; i < pcount; i++) {
 			player[i] = player[i + 1];
@@ -30,38 +28,37 @@
 		pcount--;
 		turn--;
 
-		if (pcount === 2) {
-			document.getElementById("stats").style.width = "454px";
-		} else if (pcount === 3) {
-			document.getElementById("stats").style.width = "686px";
-		}
+		if (game.ui) game.ui.onPlayerCountChanged(pcount);
 
 		if (pcount === 1) {
 			var winnerName = player[1].name;
-			updateMoney();
-			$("#board, #control, #moneybar").show();
-			setTokenOverlaysVisible(true);
-			$("#refresh").hide();
-			$("#nextbutton").val("Restart Game").prop("title", "Return to the settings screen and start another game.").off("click").on("click", restartGame);
-
-			// Record the game results for AI player genetic evolution.
-			const gameResults = [];
-			console.log(playersGame);
-			for(let p of playersGame) {
-				if(p.AI.params) {
-					const pl = {
-						params: p.AI.params,
-						// Legacy entries with no aiType predate this tag and are all genetic3.
-						type: p.AI.aiType || 'genetic3',
-						result: (p === player[1]) ? "win" : "lose"
-					};
-					gameResults.push(pl);
+			if (typeof game !== 'undefined' && game) {
+				game.isOver = true;
+				if (typeof game.onGameCompleted === 'function') {
+					game.onGameCompleted();
 				}
 			}
-			console.log(gameResults);
-			GameStorage.appendResults(gameResults);
+			if (game.ui) game.ui.updateMoney();
+			// Record the game results for AI player genetic evolution.
+			const gameResults = [];
+			if (typeof playersGame !== 'undefined' && Array.isArray(playersGame)) {
+				for(let p of playersGame) {
+					if(p && p.AI && p.AI.params) {
+						const pl = {
+							params: p.AI.params,
+							// Legacy entries with no aiType predate this tag and are all genetic3.
+							type: p.AI.aiType || 'genetic3',
+							result: (p === player[1]) ? "win" : "lose"
+						};
+						gameResults.push(pl);
+					}
+				}
+				if (typeof GameStorage !== 'undefined' && typeof GameStorage.appendResults === 'function') {
+					GameStorage.appendResults(gameResults);
+				}
+			}
 
-			popup("<div class='winner-popup-title'>" + winnerName + " Wins!!</div>", null, 5);
+			if (game.ui) game.ui.onGameOver(winnerName);
 		} else {
 			play();
 		}
@@ -75,34 +72,27 @@
 			return;
 		}
 
-		var HTML = "<p>" + player[p.creditor].name + ", you may unmortgage any of the following properties, interest free, by clicking on them. Click OK when finished.</p><table>";
-		var price;
+		var properties = [];
 
 		for (var i = 0; i < 40; i++) {
-			sq = square[i];
+			var sq = square[i];
 			if (sq.owner == p.index && sq.mortgage) {
-				price = Math.round(sq.price * 0.5);
-
-				HTML += "<tr><td class='propertycellcolor' style='background: " + sq.color + ";";
-
-				if (sq.groupNumber == 1 || sq.groupNumber == 2) {
-					HTML += " border: 1px solid grey;";
-				} else {
-					HTML += " border: 1px solid " + sq.color + ";";
-				}
-
-				// Player already paid interest, so they can unmortgage for the mortgage price.
-				// Only hide the row if the unmortgage actually succeeded (i.e. they could afford it).
-				HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='propertycellname'><a href='javascript:void(0);' title='Unmortgage " + sq.name + " for $" + price + ".' onclick='if (game.confirmBankruptcyUnmortgage(" + i + ")) { this.parentElement.parentElement.style.display = \"none\"; }'>Unmortgage " + sq.name + " ($" + price + ")</a></td></tr>";
+				properties.push({
+					index: i,
+					name: sq.name,
+					color: sq.color,
+					groupNumber: sq.groupNumber,
+					price: Math.round(sq.price * 0.5)
+				});
 
 				sq.owner = p.creditor;
 
 			}
 		}
 
-		HTML += "</table>";
-
-		popup(HTML, game.eliminatePlayer, 0);
+		game.ui.showBankruptcyUnmortgage(player[p.creditor].name, properties, function(index) {
+			return game.confirmBankruptcyUnmortgage(index);
+		}, game.eliminatePlayer);
 	};
 
 	// Handles a single unmortgage click from the bankruptcyUnmortgage() popup, keeping the board's
@@ -113,16 +103,18 @@
 		var price = Math.round(sq.price * 0.5);
 
 		if (price > creditor.money) {
-			addAlert(creditor.name + " does not have enough money to unmortgage " + sq.name + ".");
+			if (game.ui) game.ui.alert(creditor.name + " does not have enough money to unmortgage " + sq.name + ".");
 			return false;
 		}
 
 		creditor.pay(price, 0);
 		sq.mortgage = false;
-		addAlert(creditor.name + " unmortgaged " + sq.name + " for $" + price + ".");
-		updateOwned();
-		updateMoney();
-		document.querySelector('#cell' + index).classList.remove('mortgaged');
+		if (game.ui) {
+			game.ui.alert(creditor.name + " unmortgaged " + sq.name + " for $" + price + ".");
+			game.ui.updateOwned();
+			game.ui.updateMoney();
+		}
+		if (game.ui) game.ui.onMortgageChanged(index, false);
 		return true;
 	};
 
@@ -141,14 +133,14 @@
 			if (!isDefensive && creditor.money - unmortgagePrice >= liquidityFloor) {
 				creditor.pay(unmortgagePrice, 0);
 				property.mortgage = false;
-				addAlert(creditor.name + " unmortgaged " + property.name + " for $" + unmortgagePrice + ".", creditor.index);
-				document.querySelector('#cell' + i).classList.remove('mortgaged');
+				if (game.ui) game.ui.alert(creditor.name + " unmortgaged " + property.name + " for $" + unmortgagePrice + ".", creditor.index);
+				if (game.ui) game.ui.onMortgageChanged(i, false);
 			}
 		}
 	};
 
 	Game.prototype.resign = function() {
-		popup("<p>Are you sure you want to resign?</p>", game.bankruptcy, "Yes/No");
+		game.ui.confirm("Are you sure you want to resign?", game.bankruptcy);
 	};
 
 	Game.prototype.bankruptcy = function() {
@@ -161,14 +153,17 @@
 			return;
 		}
 
-		addAlert(p.name + " is bankrupt.");
+		if (game.ui) game.ui.alert(p.name + " is bankrupt.");
+		if (typeof game !== 'undefined' && game && game.ui && typeof game.ui.onPlayerBankrupt === 'function') {
+			game.ui.onPlayerBankrupt(p, pcredit);
+		}
 
 		if (p.creditor !== 0) {
 			pcredit.money += p.money;
 		}
 
 		for (var i = 0; i < 40; i++) {
-			sq = square[i];
+			var sq = square[i];
 			if (sq.owner == p.index) {
 				// Mortgaged properties will be tranfered by bankruptcyUnmortgage();
 				if (!sq.mortgage) {
@@ -183,7 +178,7 @@
 					}
 					sq.hotel = 0;
 					sq.house = 0;
-					document.getElementById("cell" + i + "owner").innerHTML = "";
+					if (game.ui) game.ui.onHouseChanged(i, 0, 0);
 				}
 
 				if (p.creditor === 0) {
@@ -194,7 +189,7 @@
 			}
 		}
 
-		updateMoney();
+		if (game.ui) game.ui.updateMoney();
 
 		if (p.chanceJailCard) {
 			p.chanceJailCard = false;
@@ -209,14 +204,16 @@
 		if (pcount === 2 || bankruptcyUnmortgageFee === 0 || p.creditor === 0) {
 			game.eliminatePlayer();
 		} else {
-			addAlert(pcredit.name + " paid $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties received from " + p.name + ".");
+			if (game.ui) game.ui.alert(pcredit.name + " paid $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties received from " + p.name + ".");
 			if (pcredit.human) {
-				popup("<p>" + pcredit.name + ", you must pay $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties you received from " + p.name + ".</p>", function() {player[pcredit.index].pay(bankruptcyUnmortgageFee, 0); game.bankruptcyUnmortgage();}, 0);
+				game.ui.showMessage(pcredit.name + ", you must pay $" + bankruptcyUnmortgageFee + " interest on the mortgaged properties you received from " + p.name + ".", function() {player[pcredit.index].pay(bankruptcyUnmortgageFee, 0); game.bankruptcyUnmortgage();}, undefined, 0);
 			} else {
 				pcredit.pay(bankruptcyUnmortgageFee, 0);
 				game.botBankruptcyUnmortgage(p, pcredit);
-				updateMoney();
-				updateOwned();
+				if (game.ui) {
+					game.ui.updateMoney();
+					game.ui.updateOwned();
+				}
 				game.eliminatePlayer();
 			}
 		}

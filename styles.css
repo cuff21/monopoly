@@ -1262,6 +1262,55 @@ td {
 	background-color: #2449a8;
 }
 
+#training {
+	border: 4px solid #000;
+	border-radius: 50px;
+	background-color: #ccc;
+	width: max-content;
+	max-width: calc(100vw - 60px);
+	margin: 30px auto;
+	padding: 30px;
+	box-sizing: border-box;
+	font-size: 16px;
+}
+
+#training .training-controls > * {
+	margin-right: 8px;
+}
+
+#training input[type="button"] {
+	border: 2px ridge #999;
+	border-radius: 10px;
+	padding: 5px;
+	font-size: 16px;
+	background-color: #bbb;
+}
+
+#training input[type="button"]:disabled {
+	opacity: 0.5;
+}
+
+#training #stop-training-button:not(:disabled) {
+	color: white;
+	background-color: #c0392b;
+}
+
+#training-stats, #training-results {
+	margin-top: 15px;
+	border-collapse: collapse;
+}
+
+#training-stats th, #training-stats td, #training-results th, #training-results td {
+	border: 1px solid #888;
+	padding: 4px 10px;
+	text-align: left;
+}
+
+#gen6-training-status {
+	margin-top: 10px;
+	font-weight: bold;
+}
+
 #setup input.remove-player-button {
 	color: white;
 	border-color: #8b0000;

@@ -1,6 +1,10 @@
 // Board rendering: player token positions and the sliding-overlay move animation.
 
 async function updatePosition() {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return Promise.resolve();
+	}
+
 	var movers = [];
 
 	for (var i = 1; i <= pcount; i++) {

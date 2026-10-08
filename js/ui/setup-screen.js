@@ -1,15 +1,46 @@
 // Player setup screen: building player config rows and starting/restarting a game.
 
-// Common interface for AI types that support named profiles: each entry exposes PROFILE_LIBRARY and getRandomProfile().
-var PROFILED_AI_TYPES = {
-	"4": StrategicAI,
-	"5": Gen5AI
-};
+var setupService = null;
+var setupRegistry = null;
+
+function getSetupService() {
+	return setupService || (typeof GameSetupService !== 'undefined' ? GameSetupService : null);
+}
+
+function setSetupService(service) {
+	setupService = service;
+}
+
+function getAISetupRegistry() {
+	return setupRegistry || (typeof AISetupRegistry !== 'undefined' ? AISetupRegistry : null);
+}
+
+function setAISetupRegistry(registry) {
+	setupRegistry = registry;
+}
+
+function collectSetupConfiguration() {
+	var configuration = {
+		auctionEnabled: document.getElementById("auctionenabled").checked,
+		freeParkingTaxes: document.getElementById("freeparkingtaxes").checked,
+		players: []
+	};
+	for (var i = 1; i <= pcount; i++) {
+		configuration.players.push({
+			ai: document.getElementById("player" + i + "ai").value,
+			color: document.getElementById("player" + i + "color").value,
+			name: document.getElementById("player" + i + "name").value,
+			profile: document.getElementById("player" + i + "aiProfile").value
+		});
+	}
+	return configuration;
+}
 
 function setup() {
 	lastGamePlayerCount = pcount;
-	auctionEnabled = document.getElementById("auctionenabled").checked;
-	freeParkingTaxes = document.getElementById("freeparkingtaxes").checked;
+	var configuration = collectSetupConfiguration();
+	auctionEnabled = configuration.auctionEnabled;
+	freeParkingTaxes = configuration.freeParkingTaxes;
 	freeParkingPot = 0;
 	updateFreeParkingDisplay();
 	pendingAuction = -1;
@@ -21,42 +52,7 @@ function setup() {
         el.classList.remove('mortgaged');
     }
 
-	var playerArray = new Array(pcount);
-	var p;
-
-	playerArray.randomize();
-
-	for (var i = 1; i <= pcount; i++) {
-		p = player[playerArray[i - 1]];
-
-		p.color = document.getElementById("player" + i + "color").value.toLowerCase();
-
-		if (document.getElementById("player" + i + "ai").value === "0") {
-			p.name = document.getElementById("player" + i + "name").value;
-			p.human = true;
-		} else if (document.getElementById("player" + i + "ai").value === "1") {
-			p.human = false;
-			p.AI = new AITest(p);
-		} else if (document.getElementById("player" + i + "ai").value === "2"){
-			p.human = false;
-			p.AI = new AITest2(p);
-		} else if (document.getElementById("player" + i + "ai").value === "3"){
-			p.human = false;
-			p.AI = new AITest3(p, generateParameters());
-            playersGame.push(player[playerArray[i - 1]]);
-		} else if (PROFILED_AI_TYPES[document.getElementById("player" + i + "ai").value]) {
-			p.human = false;
-			var AIType = PROFILED_AI_TYPES[document.getElementById("player" + i + "ai").value];
-			var profileSelection = document.getElementById("player" + i + "aiProfile");
-			var profileName = profileSelection ? profileSelection.value : "Random";
-			p.AI = new AIType(p, profileName === "Random" ? AIType.getRandomProfile() : { name: profileName });
-		}
-
-		if (!p.human) {
-			var colorName = p.color.charAt(0).toUpperCase() + p.color.slice(1);
-			p.name = colorName + " Bot";
-		}
-	}
+	playersGame = getSetupService().createPlayers(configuration, player.slice(1, pcount + 1));
 
 	$("#board, #moneybar").show();
 	setTokenOverlaysVisible(true);
@@ -112,10 +108,11 @@ function restartGame() {
 	$("#setup").show();
 }
 
-function populateProfileOptions(profileSelect, AIType) {
+function populateProfileOptions(profileSelect) {
 	var previousValue = profileSelect.value;
 	profileSelect.innerHTML = "";
-	var profileNames = ["Random"].concat(AIType.PROFILE_LIBRARY.map(function(profile) { return profile.name; }));
+	var registry = getAISetupRegistry();
+	var profileNames = ["Random"].concat(registry ? registry.getProfiles(profileSelect.dataset.aiType) : []);
 	profileNames.forEach(function(profileName) {
 		var option = new Option(profileName, profileName);
 		if (profileName === previousValue || (previousValue === "" && profileName === "Random")) {
@@ -134,7 +131,8 @@ function updateAIProfileVisibility() {
 		var nameInput = document.getElementById(playerId + "name");
 		var isHuman = aiSelect.value === "0";
 		var wasHuman = aiSelect.dataset.previousValue === "0";
-		var AIType = PROFILED_AI_TYPES[aiSelect.value];
+		var registry = getAISetupRegistry();
+		var profileNames = registry ? registry.getProfiles(aiSelect.value) : [];
 
 		if (isHuman && !wasHuman) {
 			nameInput.value = getNextHumanName(parseInt(playerId.replace("player", ""), 10));
@@ -144,12 +142,22 @@ function updateAIProfileVisibility() {
 		}
 		nameInput.disabled = !isHuman;
 		nameInput.style.display = isHuman ? "inline-block" : "none";
-		if (AIType) {
-			populateProfileOptions(profileSelect, AIType);
+		if (profileNames.length) {
+			profileSelect.dataset.aiType = aiSelect.value;
+			populateProfileOptions(profileSelect);
 		}
-		profileSelect.style.display = AIType ? "inline-block" : "none";
+		profileSelect.style.display = profileNames.length ? "inline-block" : "none";
 		aiSelect.dataset.previousValue = aiSelect.value;
 	}
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = {
+		collectSetupConfiguration: collectSetupConfiguration,
+		setSetupService: setSetupService,
+			setAISetupRegistry: setAISetupRegistry,
+			createPlayerInputs: createPlayerInputs
+	};
 }
 
 function getNextHumanName(excludeIndex) {
@@ -199,9 +207,12 @@ function createPlayerInputs() {
 		var ai = document.createElement("select");
 		ai.id = "player" + i + "ai";
 		ai.title = "Choose whether this player is controlled by a human or by the computer.";
-		[["0", "Human"], ["3", "AI 3"], ["4", "Strategic AI"], ["5", "Gen5 AI"]].forEach(function(optionData) {
-			var option = new Option(optionData[1], optionData[0]);
-			if ((i === 1 && optionData[0] === "0") || (i > 1 && optionData[0] === "5")) {
+		var registry = getAISetupRegistry();
+		var aiOptions = [{ id: "0", label: "Human" }].concat(registry ? registry.list() : []);
+		var defaultAI = registry ? registry.getDefaultId() : null;
+		aiOptions.forEach(function(optionData) {
+			var option = new Option(optionData.label, optionData.id);
+			if ((i === 1 && optionData.id === "0") || (i > 1 && optionData.id === defaultAI)) {
 				option.selected = true;
 			}
 			ai.appendChild(option);
@@ -270,7 +281,8 @@ function addPlayer() {
 	var name = document.getElementById("player" + pcount + "name");
 	name.value = "Bot";
 	name.disabled = true;
-	document.getElementById("player" + pcount + "ai").value = "5";
+	var registry = getAISetupRegistry();
+	document.getElementById("player" + pcount + "ai").value = registry ? registry.getDefaultId() : "0";
 	document.getElementById("player" + pcount + "aiProfile").value = "Random";
 	playernumber_onchange();
 }

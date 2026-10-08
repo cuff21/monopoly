@@ -1,6 +1,9 @@
 // Bootstrapping: builds the board DOM, wires global event handlers, and starts on window load.
 
 function sleep(ms) {
+	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
+		return Promise.resolve();
+	}
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -24,6 +27,11 @@ Array.prototype.randomize = function(length) {
 };
 
 function onloadBehavior() {
+	GameSetupService.configure({
+		aiRegistry: AISetupRegistry,
+		gen6Trainer: Gen6Trainer,
+		createWorkerPool: Gen6Trainer.createBrowserWorkerPool
+	});
 	game = new Game();
 	redefineGame();
 	resetTokenOverlays();
@@ -58,8 +66,6 @@ function onloadBehavior() {
 		square[i].index = i;
 	}
 
-	AITest.count = 0;
-	AITest2.count = 0;
 	AITest3.count = 0;
 
 	player[1].human = true;
@@ -155,7 +161,7 @@ function onloadBehavior() {
 	document.getElementById("enlarge20price").innerHTML += "<img src='images/free_parking_icon.png' height='80' width='72' alt='' style='position: relative; top: -20px;' />";
 	document.getElementById("enlarge38token").innerHTML += '<img src="images/tax_icon.png" height="60" width="70" alt="" style="position: relative; top: -20px;" />';
 
-	Monopoly.Editions.getActive().corrections();
+	EditionRenderer.renderSquareDisplay(square);
 
 	// Jail corrections
 	$("<div>", {id: "jailpositionholder" }).appendTo("#jail");
@@ -176,7 +182,8 @@ function onloadBehavior() {
 		var s = isNaN(property) ? null : square[property];
 		var rent = isNaN(property) ? null : getCurrentRent(property);
 		if (s && rent !== null) {
-			document.getElementById(this.enlargeId + "price").innerHTML = "Price: " + s.pricetext + "<br />Rent: $" + rent;
+			var rentText = EditionRenderer.formatRentText(s, rent);
+			document.getElementById(this.enlargeId + "price").innerHTML = "Price: " + s.pricetext + "<br />Rent: " + rentText;
 		} else if (s) {
 			document.getElementById(this.enlargeId + "price").textContent = s.pricetext;
 		}
@@ -276,15 +283,15 @@ function onloadBehavior() {
 
 		if (s.mortgage) {
 			if (player[s.owner].money < Math.round(s.price * 0.55)) {
-				popup("<p>You need $" + (Math.round(s.price * 0.55) - player[s.owner].money) + " more to unmortgage " + s.name + ".</p>");
+				game.ui.showMessage("You need $" + (Math.round(s.price * 0.55) - player[s.owner].money) + " more to unmortgage " + s.name + ".");
 
 			} else {
-				popup("<p>" + player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.55) + "?</p>", function() {
+				game.ui.confirm(player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.55) + "?", function() {
 					unmortgage(checkedProperty);
 				}, "Yes/No");
 			}
 		} else {
-			popup("<p>" + player[s.owner].name + ", are you sure you want to mortgage " + s.name + " for $" + Math.round(s.price * 0.5) + "?</p>", function() {
+			game.ui.confirm(player[s.owner].name + ", are you sure you want to mortgage " + s.name + " for $" + Math.round(s.price * 0.5) + "?", function() {
 				mortgage(checkedProperty);
 			}, "Yes/No");
 		}

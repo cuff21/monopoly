@@ -1,5 +1,12 @@
 // Direct property actions: buying, mortgaging, and building houses/hotels.
 
+function notifyPropertyUI(method) {
+	if (typeof game === 'undefined' || !game || !game.ui || typeof game.ui[method] !== 'function') {
+		return;
+	}
+	return game.ui[method].apply(game.ui, Array.prototype.slice.call(arguments, 1));
+}
+
 function buy() {
 	var p = player[turn];
 	var property = square[p.position];
@@ -10,17 +17,14 @@ function buy() {
 
 		property.owner = turn;
 		pendingAuction = -1;
-		document.getElementById("nextbutton").value = "End turn";
-		document.getElementById("nextbutton").title = "End turn and advance to the next player.";
-		updateMoney();
-		addAlert(p.name + " bought " + property.name + " for " + property.pricetext + ".");
-
-		updateOwned();
-
-		$("#landed").hide();
+		notifyPropertyUI("updateButtonState", "End turn", "End turn and advance to the next player.");
+		notifyPropertyUI("updateMoney");
+		notifyPropertyUI("alert", p.name + " bought " + property.name + " for " + property.pricetext + ".");
+		notifyPropertyUI("updateOwned");
+		notifyPropertyUI("hideLanded");
 
 	} else {
-		popup("<p>" + p.name + ", you need $" + (property.price - p.money) + " more to buy " + property.name + ".</p>");
+		notifyPropertyUI("showMessage", p.name + ", you need $" + (property.price - p.money) + " more to buy " + property.name + ".");
 	}
 }
 
@@ -46,13 +50,13 @@ function mortgage(index) {
 	sq.mortgage = true;
 	p.money += mortgagePrice;
 
-	document.getElementById("mortgagebutton").value = "Unmortgage for $" + unmortgagePrice;
-	document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + unmortgagePrice + ".";
+	notifyPropertyUI("updateMortgageButton", "Unmortgage for $" + unmortgagePrice, "Unmortgage " + sq.name + " for $" + unmortgagePrice + ".");
 
-	addAlert(p.name + " mortgaged " + sq.name + " for $" + mortgagePrice + ".");
-	updateOwned();
-	updateMoney();
-    document.querySelector('#cell' + index).classList.add('mortgaged');
+	notifyPropertyUI("alert", p.name + " mortgaged " + sq.name + " for $" + mortgagePrice + ".");
+	notifyPropertyUI("updateOwned");
+	notifyPropertyUI("updateMoney");
+
+	notifyPropertyUI("onMortgageChanged", index, true);
 
 	return true;
 }
@@ -69,12 +73,14 @@ function unmortgage(index) {
 
 	p.pay(unmortgagePrice, 0);
 	sq.mortgage = false;
-	document.getElementById("mortgagebutton").value = "Mortgage for $" + mortgagePrice;
-	document.getElementById("mortgagebutton").title = "Mortgage " + sq.name + " for $" + mortgagePrice + ".";
 
-	addAlert(p.name + " unmortgaged " + sq.name + " for $" + unmortgagePrice + ".");
-	updateOwned();
-    document.querySelector('#cell' + index).classList.remove('mortgaged');
+	notifyPropertyUI("updateMortgageButton", "Mortgage for $" + mortgagePrice, "Mortgage " + sq.name + " for $" + mortgagePrice + ".");
+
+	notifyPropertyUI("alert", p.name + " unmortgaged " + sq.name + " for $" + unmortgagePrice + ".");
+	notifyPropertyUI("updateOwned");
+
+	notifyPropertyUI("onMortgageChanged", index, false);
+
 	return true;
 }
 
@@ -122,8 +128,8 @@ function buyHouse(index) {
 
 			} else {
 				sq.house++;
-				addAlert(p.name + " bought a house on " + sq.name + ".");
-				document.getElementById("cell" + index + "owner").innerHTML += '<div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
+				notifyPropertyUI("alert", p.name + " bought a house on " + sq.name + ".");
+				notifyPropertyUI("onHouseChanged", index, sq.house, sq.hotel);
 			}
 
 		} else {
@@ -133,15 +139,15 @@ function buyHouse(index) {
 			} else {
 				sq.house = 5;
 				sq.hotel = 1;
-					addAlert(p.name + " bought a hotel on " + sq.name + ".");
-				document.getElementById("cell" + index + "owner").innerHTML = '<div class="cell-position cell-hotel" title="house" style="display: inline-block;background-color: red; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
+				notifyPropertyUI("alert", p.name + " bought a hotel on " + sq.name + ".");
+				notifyPropertyUI("onHouseChanged", index, sq.house, sq.hotel);
 			}
 		}
 
 		p.pay(sq.houseprice, 0);
 
-		updateOwned();
-		updateMoney();
+		notifyPropertyUI("updateOwned");
+		notifyPropertyUI("updateMoney");
 
 		return true;
 	}
@@ -165,8 +171,8 @@ function canSellHouse(index) {
 }
 
 function sellHouse(index) {
-	sq = square[index];
-	p = player[sq.owner];
+	var sq = square[index];
+	var p = player[sq.owner];
 
 	if (!canSellHouse(index)) {
 		return false;
@@ -175,17 +181,37 @@ function sellHouse(index) {
 	if (sq.hotel === 1) {
 		sq.hotel = 0;
 		sq.house = 4;
-		addAlert(p.name + " sold the hotel on " + sq.name + ".");
-        document.getElementById("cell" + index + "owner").innerHTML = '<div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div><div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div><div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div><div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
-        p.money += sq.houseprice * 0.5;
+		notifyPropertyUI("alert", p.name + " sold the hotel on " + sq.name + ".");
+		notifyPropertyUI("onHouseChanged", index, sq.house, sq.hotel);
+		p.money += sq.houseprice * 0.5;
 	} else if(sq.house > 0) {
 		sq.house--;
-		addAlert(p.name + " sold a house on " + sq.name + ".");
-        let element = document.querySelector('#cell' + index + 'owner .cell-house');
-        element.parentElement.removeChild(element);
-        p.money += sq.houseprice * 0.5;
+		notifyPropertyUI("alert", p.name + " sold a house on " + sq.name + ".");
+		notifyPropertyUI("onHouseChanged", index, sq.house, sq.hotel);
+		p.money += sq.houseprice * 0.5;
 	}
-	updateOwned();
-	updateMoney();
+	notifyPropertyUI("updateOwned");
+	notifyPropertyUI("updateMoney");
 	return true;
+}
+
+var _global = typeof window !== 'undefined' ? window : globalThis;
+_global.buy = buy;
+_global.mortgage = mortgage;
+_global.unmortgage = unmortgage;
+_global.buyHouse = buyHouse;
+_global.sellHouse = sellHouse;
+_global.canSellHouse = canSellHouse;
+_global.getHouseHotelSupply = getHouseHotelSupply;
+
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = {
+		buy: buy,
+		mortgage: mortgage,
+		unmortgage: unmortgage,
+		buyHouse: buyHouse,
+		sellHouse: sellHouse,
+		canSellHouse: canSellHouse,
+		getHouseHotelSupply: getHouseHotelSupply
+	};
 }

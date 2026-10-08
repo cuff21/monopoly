@@ -1,66 +1,67 @@
-// Auction flow, mixed onto Game.prototype. Private state below is module-scoped closure state
-// rather than instance fields since only one Game instance (the global `game`) ever exists.
+// Auction flow, mixed onto Game.prototype. All auction progress belongs to its Game instance.
 (function() {
-	var auctionQueue = [];
-	var highestbidder;
-	var highestbid;
-	var currentbidder = 1;
-	var auctionproperty;
-	var auctionHistory = [];
+	var MAX_AI_BIDS_PER_AUCTION = 200;
 
-	var updateAuctionHistory = function(entry) {
-		auctionHistory.push(entry);
-		var history = document.getElementById("auctionhistory");
-		history.innerHTML = auctionHistory.map(function(item) {
-			return "<div>" + item + "</div>";
-		}).join("");
-		history.scrollTop = history.scrollHeight;
+	var updateAuctionHistory = function(gameInstance, entry) {
+		gameInstance.auctionState.history.push(entry);
+		if (gameInstance.ui) gameInstance.ui.onAuctionHistory(entry);
 	};
 
-	var updateAuctionParticipants = function() {
-		document.getElementById("auctionparticipants").innerHTML = player.slice(1, pcount + 1).map(function(p) {
-			var status = p.auctionStatus || (p.bidding ? "Bidding" : "Out");
-			return "<div class='auction-participant' data-player-index='" + p.index + "'><span class='auction-player-name'><span class='auction-player-swatch' style='background-color: " + p.color + ";'></span>" + p.name + "</span><span class='auction-status auction-status-" + status.toLowerCase() + "'>" + status + "</span></div>";
-		}).join("");
-		$(".auction-participant").off("mouseenter mouseleave mousemove").on("mouseenter", function(event) {
-			showAuctionPlayerStats(parseInt(this.getAttribute("data-player-index"), 10), event);
-		}).on("mousemove", function(event) {
-			positionAuctionPlayerStats(event);
-		}).on("mouseleave", hideAuctionPlayerStats);
+	var updateAuctionParticipants = function(gameInstance) {
+		if (gameInstance.ui) gameInstance.ui.onAuctionParticipants();
 	};
 
-	var finalizeAuction = function() {
-		var p = player[highestbidder];
-		var sq = square[auctionproperty];
+	var startAIBid = function(gameInstance) {
+		var state = gameInstance.auctionState;
+		var bidder = player[state.currentBidder];
+		state.aiBidCount++;
+		var bid = bidder.AI && typeof bidder.AI.bid === 'function'
+			? bidder.AI.bid(state.property, state.highestBid)
+			: 0;
 
-		if (highestbid > 0) {
-			p.pay(highestbid, 0);
-			sq.owner = highestbidder;
-			addAlert(p.name + " bought " + sq.name + " for $" + highestbid + ".", highestbidder);
-			updateAuctionHistory(p.name + " won for $" + highestbid + ".");
-			updateOwned();
+		if (bid === -1 || bid > bidder.money) {
+			bidder.bidding = false;
+			bidder.auctionStatus = "Out";
+			updateAuctionHistory(gameInstance, bidder.name + " exited.");
+		} else if (bid === 0 || !Number.isInteger(bid) || bid <= state.highestBid) {
+			bidder.bidding = false;
+			bidder.auctionStatus = "Passing";
+			updateAuctionHistory(gameInstance, bidder.name + " passed.");
 		} else {
-			updateAuctionHistory("No player bought " + sq.name + ".");
-			addAlert(sq.name + " remains on the market because there were no buyers at the auction.");
+			gameInstance.auctionBid(bid);
 		}
-		$("#buypropertybutton").hide();
+
+		gameInstance.auctionPass(true);
+	};
+
+	var finalizeAuction = function(gameInstance) {
+		var state = gameInstance.auctionState;
+		var p = player[state.highestBidder];
+		var sq = square[state.property];
+
+		if (state.highestBid > 0) {
+			p.pay(state.highestBid, 0);
+			sq.owner = state.highestBidder;
+			if (gameInstance.ui) gameInstance.ui.alert(p.name + " bought " + sq.name + " for $" + state.highestBid + ".", state.highestBidder);
+			updateAuctionHistory(gameInstance, p.name + " won for $" + state.highestBid + ".");
+			if (gameInstance.ui) gameInstance.ui.updateOwned();
+		} else {
+			updateAuctionHistory(gameInstance, "No player bought " + sq.name + ".");
+			if (gameInstance.ui) gameInstance.ui.alert(sq.name + " remains on the market because there were no buyers at the auction.");
+		}
+		if (gameInstance.ui) gameInstance.ui.closeAuction();
 
 		for (var i = 1; i <= pcount; i++) {
 			player[i].bidding = true;
 			player[i].auctionStatus = "Bidding";
 		}
 
-		$("#popupbackground").hide();
-		$("#popupwrap").hide();
-
-		if (!game.auction()) {
+		if (!gameInstance.auction()) {
 			if (player[turn].human) {
 				if (doublecount > 0) {
-					document.getElementById("nextbutton").value = "Roll again";
-					document.getElementById("nextbutton").title = "You threw doubles. Roll again.";
+					if (gameInstance.ui) gameInstance.ui.updateButtonState("Roll again", "You threw doubles. Roll again.");
 				} else {
-					document.getElementById("nextbutton").value = "End turn";
-					document.getElementById("nextbutton").title = "End turn and advance to the next player.";
+					if (gameInstance.ui) gameInstance.ui.updateButtonState("End turn", "End turn and advance to the next player.");
 				}
 			} else {
 				play();
@@ -69,135 +70,96 @@
 	};
 
 	Game.prototype.addPropertyToAuctionQueue = function(propertyIndex) {
-		auctionQueue.push(propertyIndex);
+		this.auctionState.queue.push(propertyIndex);
 	};
 
 	Game.prototype.auction = function() {
-		if (auctionQueue.length === 0) {
+		var state = this.auctionState;
+		if (state.queue.length === 0) {
 			return false;
 		}
 
-		index = auctionQueue.shift();
+		var index = state.queue.shift();
 
 		var s = square[index];
 
 		if (s.price === 0 || s.owner !== 0) {
-			return game.auction();
+			return this.auction();
 		}
 
-		auctionproperty = index;
-		highestbidder = 0;
-		highestbid = 0;
-		auctionHistory = [];
-		currentbidder = turn + 1;
+		state.property = index;
+		state.highestBidder = 0;
+		state.highestBid = 0;
+		state.aiBidCount = 0;
+		state.history = [];
+		state.currentBidder = turn >= 1 && turn <= pcount ? turn : turn + 1;
 
-		if (currentbidder > pcount) {
-			currentbidder -= pcount;
+		if (state.currentBidder > pcount) {
+			state.currentBidder -= pcount;
 		}
 
 		for (var i = 1; i <= pcount; i++) {
 			player[i].bidding = true;
 			player[i].auctionStatus = "Bidding";
 		}
-		popup("<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on " + s.name + ".' /></div><div class='auction-actions'><input type='button' value='Bid' onclick='game.auctionBid();' title='Place your bid.' /><input type='button' value='Pass' title='Skip bidding this time.' onclick='game.auctionPass();' /><input type='button' value='Exit Auction' title='Stop bidding on " + s.name + " altogether.' onclick='game.auctionExit();' /></div>", "blank");
 
-		document.getElementById("propertyname").innerHTML = "<a href='javascript:void(0);' onmouseover='showdeed(" + auctionproperty + ");' onmouseout='hidedeed();' class='statscellcolor'>" + s.name + "</a>";
-		document.getElementById("highestbid").innerHTML = "0";
-		document.getElementById("highestbidder").innerHTML = "N/A";
-		document.getElementById("currentbidder").innerHTML = "It is " + player[currentbidder].name + "'s turn to bid.";
-		updateAuctionParticipants();
-		document.getElementById("bid").onkeydown = function (e) {
-			var key = 0;
-			var isCtrl = false;
-			var isShift = false;
-
-			if (window.event) {
-				key = window.event.keyCode;
-				isCtrl = window.event.ctrlKey;
-				isShift = window.event.shiftKey;
-			} else if (e) {
-				key = e.keyCode;
-				isCtrl = e.ctrlKey;
-				isShift = e.shiftKey;
-			}
-
-			if (isNaN(key)) {
-				return true;
-			}
-
-			if (key === 13) {
-				game.auctionBid();
-				return false;
-			}
-
-			// Allow backspace, tab, delete, arrow keys, or if control was pressed, respectively.
-			if (key === 8 || key === 9 || key === 46 || (key >= 35 && key <= 40) || isCtrl) {
-				return true;
-			}
-
-			if (isShift) {
-				return false;
-			}
-
-			// Only allow number keys.
-			return (key >= 48 && key <= 57) || (key >= 96 && key <= 105);
-		};
-
-		document.getElementById("bid").onfocus = function () {
-			this.style.color = "black";
-			if (isNaN(this.value)) {
-				this.value = "";
-			}
-		};
-
-		updateMoney();
-
-		if (!player[currentbidder].human) {
-			currentbidder = turn; // auctionPass advances currentbidder.
-			this.auctionPass(true);
+		if (this.ui && this.ui.isHeadless) {
+			startAIBid(this);
+			return true;
 		}
+
+		if (this.ui) this.ui.openAuction(state.property, s, player[state.currentBidder]);
+
+		if (!player[state.currentBidder].human) startAIBid(this);
 		return true;
 	};
 
 	Game.prototype.auctionPass = function(isBid) {
-		if (!isBid && player[currentbidder].bidding) {
-			player[currentbidder].bidding = false;
-			player[currentbidder].auctionStatus = "Passing";
-			updateAuctionHistory(player[currentbidder].name + " passed.");
-			updateAuctionParticipants();
+		var state = this.auctionState;
+		if (!isBid && player[state.currentBidder].bidding) {
+			player[state.currentBidder].bidding = false;
+			player[state.currentBidder].auctionStatus = "Passing";
+			updateAuctionHistory(this, player[state.currentBidder].name + " passed.");
+			updateAuctionParticipants(this);
 		}
-		if (highestbidder === 0) {
-			highestbidder = currentbidder;
+		if (state.highestBidder === 0) {
+			state.highestBidder = state.currentBidder;
 		}
 
 		while (true) {
-			currentbidder++;
+			state.currentBidder++;
 
-			if (currentbidder > pcount) {
-				currentbidder -= pcount;
+			if (state.currentBidder > pcount) {
+				state.currentBidder -= pcount;
 			}
 
-			if (currentbidder == highestbidder) {
-				finalizeAuction();
+			if (state.currentBidder == state.highestBidder) {
+				finalizeAuction(this);
 				return;
-			} else if (player[currentbidder].bidding) {
-				var p = player[currentbidder];
+			} else if (player[state.currentBidder].bidding) {
+				var p = player[state.currentBidder];
 
 				if (!p.human) {
-					var bid = p.AI.bid(auctionproperty, highestbid);
+					if (state.aiBidCount >= MAX_AI_BIDS_PER_AUCTION) {
+						state.currentBidder = state.highestBidder;
+						finalizeAuction(this);
+						return;
+					}
+					state.aiBidCount++;
+					var bid = p.AI.bid(state.property, state.highestBid);
 
-					if (bid === -1 || highestbid >= p.money) {
+					if (bid === -1 || bid > p.money) {
 						p.bidding = false;
 						p.auctionStatus = "Out";
-						updateAuctionHistory(p.name + " exited.");
-						updateAuctionParticipants();
+						updateAuctionHistory(this, p.name + " exited.");
+						updateAuctionParticipants(this);
 						continue;
 
-					} else if (bid === 0) {
+					} else if (bid === 0 || !Number.isInteger(bid) || bid <= state.highestBid) {
 						p.bidding = false;
 						p.auctionStatus = "Passing";
-						updateAuctionHistory(p.name + " passed.");
-						updateAuctionParticipants();
+						updateAuctionHistory(this, p.name + " passed.");
+						updateAuctionParticipants(this);
 						continue;
 
 					} else if (bid > 0) {
@@ -212,49 +174,44 @@
 
 		}
 
-		document.getElementById("currentbidder").innerHTML = "It is " + player[currentbidder].name + "'s turn to bid.";
-		document.getElementById("bid").value = "";
-		document.getElementById("bid").style.color = "black";
+		if (this.ui) this.ui.updateAuctionTurn(player[state.currentBidder].name, true);
 	};
 
 	Game.prototype.auctionBid = function(bid) {
-		bid = bid || parseInt(document.getElementById("bid").value, 10);
+		var state = this.auctionState;
+		if (bid === undefined) bid = this.ui ? this.ui.readAuctionBid() : 0;
 
 		if (bid === "" || bid === null) {
-			document.getElementById("bid").value = "Please enter a bid.";
-			document.getElementById("bid").style.color = "red";
+			if (this.ui) this.ui.setAuctionBidError("Please enter a bid.");
 		} else if (isNaN(bid)) {
-			document.getElementById("bid").value = "Your bid must be a number.";
-			document.getElementById("bid").style.color = "red";
+			if (this.ui) this.ui.setAuctionBidError("Your bid must be a number.");
 		} else {
 
-			if (bid > player[currentbidder].money) {
-				document.getElementById("bid").value = "You don't have enough money to bid $" + bid + ".";
-				document.getElementById("bid").style.color = "red";
-			} else if (bid > highestbid) {
-				highestbid = bid;
-				document.getElementById("highestbid").innerHTML = parseInt(bid, 10);
-				highestbidder = currentbidder;
-				document.getElementById("highestbidder").innerHTML = player[highestbidder].name;
-				updateAuctionHistory(player[currentbidder].name + " bid $" + highestbid + ".");
+			if (bid > player[state.currentBidder].money) {
+				if (this.ui) this.ui.setAuctionBidError("You don't have enough money to bid $" + bid + ".");
+			} else if (bid > state.highestBid) {
+				state.highestBid = bid;
+				state.highestBidder = state.currentBidder;
+				if (this.ui) this.ui.updateAuctionBid(parseInt(bid, 10), player[state.highestBidder].name);
+				updateAuctionHistory(this, player[state.currentBidder].name + " bid $" + state.highestBid + ".");
 
-				document.getElementById("bid").focus();
+				if (this.ui) this.ui.focusAuctionBid();
 
-				if (player[currentbidder].human) {
+				if (player[state.currentBidder].human) {
 					this.auctionPass(true);
 				}
 			} else {
-				document.getElementById("bid").value = "Your bid must be greater than highest bid. ($" + highestbid + ")";
-				document.getElementById("bid").style.color = "red";
+				if (this.ui) this.ui.setAuctionBidError("Your bid must be greater than highest bid. ($" + state.highestBid + ")");
 			}
 		}
 	};
 
 	Game.prototype.auctionExit = function() {
-		player[currentbidder].bidding = false;
-		player[currentbidder].auctionStatus = "Out";
-		updateAuctionHistory(player[currentbidder].name + " exited.");
-		updateAuctionParticipants();
+		var state = this.auctionState;
+		player[state.currentBidder].bidding = false;
+		player[state.currentBidder].auctionStatus = "Out";
+		updateAuctionHistory(this, player[state.currentBidder].name + " exited.");
+		updateAuctionParticipants(this);
 		this.auctionPass();
 	};
 })();

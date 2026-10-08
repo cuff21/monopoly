@@ -6,54 +6,8 @@
 
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 
-	<!-- Core data model -->
-	<script type="text/javascript" src="js/core/storage.js"></script>
-	<script type="text/javascript" src="js/core/board.js"></script>
-	<script type="text/javascript" src="js/core/state.js"></script>
-	<script type="text/javascript" src="js/core/rent.js"></script>
-
-	<!-- Editions register themselves with js/editions/edition-registry.js; comment out the
-	     previous edition's script and uncomment another one to switch editions. -->
-	<script type="text/javascript" src="js/editions/edition-registry.js"></script>
-	<script type="text/javascript" src="js/editions/classic.js"></script>
-	<!-- <script type="text/javascript" src="js/editions/newyorkcity.js"></script> -->
-
-	<!-- AI players -->
-	<script type="text/javascript" src="js/ai/parameter-generator.js"></script>
-	<script type="text/javascript" src="js/ai/ai-basic-1.js"></script>
-	<script type="text/javascript" src="js/ai/ai-basic-2.js"></script>
-	<script type="text/javascript" src="js/ai/ai-genetic.js"></script>
-	<script type="text/javascript" src="js/ai/ai-strategic.js"></script>
-
-	<!-- Gen5 AI: split into dependency-ordered modules sharing the window.AIGen5 namespace -->
-	<script type="text/javascript" src="js/ai/ai-gen5/probability.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/game-analytics.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/valuation.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/liquidity.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/building.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/debt-manager.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/trade-memory.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/trade-evaluation.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/auction.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/parameter-generator.js"></script>
-	<script type="text/javascript" src="js/ai/ai-gen5/index.js"></script>
-
-	<!-- Game logic -->
-	<script type="text/javascript" src="js/game/game-core.js"></script>
-	<script type="text/javascript" src="js/game/auction.js"></script>
-	<script type="text/javascript" src="js/game/trade.js"></script>
-	<script type="text/javascript" src="js/game/bankruptcy.js"></script>
-	<script type="text/javascript" src="js/game/turn-flow.js"></script>
-	<script type="text/javascript" src="js/game/property-actions.js"></script>
-
-	<!-- UI rendering -->
-	<script type="text/javascript" src="js/ui/render-board.js"></script>
-	<script type="text/javascript" src="js/ui/render-panels.js"></script>
-	<script type="text/javascript" src="js/ui/popup.js"></script>
-	<script type="text/javascript" src="js/ui/setup-screen.js"></script>
-
-	<!-- Bootstrapping -->
-	<script type="text/javascript" src="js/main.js"></script>
+	<script type="text/javascript" src="js/script-manifest.js"></script>
+	<script type="text/javascript" src="js/script-loader.js"></script>
 	<link rel="stylesheet" type="text/css" href="styles.css" />
 </head>
 
@@ -315,6 +269,9 @@
 		<div style="margin: 20px 0px;">
 			<input type="button" id="startgamebutton" value="Start Game" onclick="setup();" title="Begin playing." />
 		</div>
+		<div style="margin: 20px 0px;">
+			<input type="button" id="open-training-button" value="AI Training" onclick="showTrainingScreen();" title="Open the AI training screen." />
+		</div>
 
 		<div id="noF5">Note: Refreshing this page or navigating away from it may end your game without warning.</div>
         
@@ -322,6 +279,32 @@
         <input type="button" value="Import" onclick="importData();" title="Import data" />
         <input type="button" value="Export" onclick="exportData();" title="Export data" />
         
+	</div>
+
+	<div id="training" style="display: none;">
+		<h2>Gen6 AI Training</h2>
+		<div class="training-controls">
+			<label for="gen6-generations">Generations</label>
+			<input type="number" id="gen6-generations" min="1" max="20" value="2" />
+			<input type="button" id="train-gen6-button" value="Start Training" onclick="trainGen6Population();" title="Train and save a Gen6 NEAT population." />
+			<input type="button" id="stop-training-button" value="Stop Training" onclick="stopTraining();" disabled="disabled" title="Stop all training and discard the generation in progress." />
+			<input type="button" id="training-back-button" value="Back" onclick="hideTrainingScreen();" title="Return to game setup." />
+		</div>
+		<div id="gen6-training-status" aria-live="polite">Idle.</div>
+		<table id="training-stats">
+			<tr><th>Threads</th><td><span id="training-threads-active">0</span> active / <span id="training-threads-total">0</span> total (<span id="training-queued">0</span> queued)</td></tr>
+			<tr><th>Generation</th><td><span id="training-generation">-</span> (<span id="training-generations-done">0</span>/<span id="training-generations-requested">0</span> this run)</td></tr>
+			<tr><th>Current tournament</th><td><span id="training-round">-</span></td></tr>
+			<tr><th>Current game setup</th><td><span id="training-setup">-</span></td></tr>
+			<tr><th>Matches in round</th><td><progress id="training-match-progress" value="0" max="1"></progress> <span id="training-match-text">0/0</span></td></tr>
+			<tr><th>Best score</th><td><span id="training-best-score">-</span></td></tr>
+			<tr><th>Held-out validation</th><td><span id="training-validation">-</span></td></tr>
+		</table>
+		<h3>Tournament results</h3>
+		<table id="training-results">
+			<thead><tr><th>Generation</th><th>Edition</th><th>Players</th><th>Rounds</th><th>Winner score</th><th>Best so far</th></tr></thead>
+			<tbody id="training-results-body"></tbody>
+		</table>
 	</div>
 
 	<div id="control">
