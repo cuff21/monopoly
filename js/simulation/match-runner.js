@@ -70,8 +70,10 @@
 				return;
 			}
 
+			var structuredBoard = registry.buildBoardForGame(editionName, simulation.options.boardRuleOverrides);
 			var state = global.GameStateContext.createState({
 				player: [],
+				editionId: editionName,
 				square: edition.buildSquares(edition.buildGroups()),
 				communityChestCards: edition.buildCommunityChestCards(),
 				chanceCards: edition.buildChanceCards(),
@@ -84,6 +86,7 @@
 				freeParkingTaxes: true,
 				freeParkingPot: 0
 			});
+			global.GameStateContext.initializeBoardState(state, structuredBoard, editionName);
 			var groupMembers = {};
 			state.square.forEach(function(square, index) {
 				square.index = index;
@@ -104,6 +107,7 @@
 			for (var seat = 1; seat <= playerCount; seat++) {
 				var player = new global.Player('Bot ' + seat, COLORS[(seat - 1) % COLORS.length], game);
 				player.index = seat;
+				global.GameStateContext.assignPlayerId(player, seat);
 				player.originalIndex = seat - 1;
 				player.human = false;
 				var contestant = simulation.contestants[seat - 1];

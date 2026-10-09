@@ -119,7 +119,7 @@ async function runTests() {
 	assert.strictEqual(UIHtml.escapeHTML(`&<>"'`), '&amp;&lt;&gt;&quot;&#39;');
 	assert.throws(function() {
 		global.Monopoly.Editions.register('Invalid Edition', {});
-	}, /must provide buildGroups/);
+	}, /must provide buildBoard/);
 	const defaultSquare = new global.Square({ name: 'Default', presentation: { color: 'white', priceText: '' } });
 	assert.strictEqual(defaultSquare.owner, 0);
 	assert.strictEqual(defaultSquare.groupNumber, 0);

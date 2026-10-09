@@ -247,15 +247,16 @@ This paragraph is normative and replaces the earlier persistence wording that sp
 
 ## Required Tests
 
-- Exact 51-feature tile records, seat/global shapes, normalization, `log1p(tileCount)` and optional tax-rate encoding, and named tensor/parameter counts.
-- Effective Board rule values encode correctly; valid per-game overrides are validated, reflected in Gen6 observations, isolated between Games, and never mutate or persist to the edition base rules.
-- Exact tensor initialization means/scales and golden-seed outputs, plus CPU attention logits, masked softmax, and weighted-pooling results under canonical reduction order.
-- Shared weights across tiles; identical output under storage reorder and ID relabeling with graph semantics preserved.
-- Fixed parameter count and finite outputs across 28/40/52/64/100-tile boards.
-- Candidate-action equivariance under candidate-list reorder; identical legal candidate distributions by semantic features and storage-order-independent tie handling.
-- Illegal actions are absent after masking; empty masks, jail fallbacks, bids, debt actions, and trade decoding fail closed.
-- Trade subset permutation invariance, no asset-count cap, duplicate prevention, integer cash bounds/conversion, jail-card ownership/receivability, property/building restrictions, empty-offer rejection, and counteroffer-depth limit.
-- Seeded ES perturbations, antithetic fitness scenarios, gradients/updates, fitness aggregation, league sampling, coverage cycles, and worker-order independence.
-- Evaluation-manifest ordering and hashing, training coverage of every in-budget built-in, disjoint synthetic holdouts, and evaluation-revision invalidation.
-- 52-tile/eight-player end-to-end CPU-only and optional WebGPU-inference performance and memory profiles on the reference hardware; report backend overhead, seeded repeatability, numeric output drift, and semantic action agreement against thresholds defined before enabling GPU training, with configurable resource rejection and a lower-cost CPU profile.
-- Persistence round trip preserves deterministic inference and the next seeded ES update; malformed and legacy data are rejected visibly.
+The cases below are mandatory conformance gates. The current pre-alpha NEAT runtime is not an implementation target and its tests do not satisfy these cases. Runtime-dependent cases remain pending until the Schema 1 runtime is implemented in Phase 6; pending cases must not be reported as passing.
+
+- **S1-01 Observation:** Exact 51-feature tile records, seat/global shapes, normalization, `log1p(tileCount)` and optional tax-rate encoding, and named tensor/parameter counts.
+- **S1-02 Effective rules:** Effective Board rule values encode correctly; valid per-game overrides are validated, reflected in Gen6 observations, isolated between Games, and never mutate or persist to the edition base rules.
+- **S1-03 Initialization and inference:** Exact tensor initialization means/scales and golden-seed outputs, plus CPU attention logits, masked softmax, and weighted-pooling results under canonical reduction order.
+- **S1-04 Invariance and variable boards:** Shared weights across tiles; identical output under storage reorder and ID relabeling with graph semantics preserved; fixed parameter count and finite outputs across 28/40/52/64/100-tile boards.
+- **S1-05 Candidate equivariance:** Candidate-action equivariance under candidate-list reorder; identical legal candidate distributions by semantic features and storage-order-independent tie handling.
+- **S1-06 Legality and fail-closed behavior:** Illegal actions are absent after masking; empty masks, jail fallbacks, bids, debt actions, and trade decoding fail closed.
+- **S1-07 Trade semantics:** Trade subset permutation invariance, no asset-count cap, duplicate prevention, integer cash bounds/conversion, jail-card ownership/receivability, property/building restrictions, empty-offer rejection, and counteroffer-depth limit.
+- **S1-08 Deterministic training:** Seeded ES perturbations, antithetic fitness scenarios, gradients/updates, fitness aggregation, league sampling, coverage cycles, and worker-order independence.
+- **S1-09 Board Evaluation Set:** Evaluation-manifest ordering and hashing, training coverage of every in-budget built-in, disjoint synthetic holdouts, and evaluation-revision invalidation.
+- **S1-10 Resource and backend profiles:** 52-tile/eight-player end-to-end CPU-only and optional WebGPU-inference performance and memory profiles on the reference hardware; report backend overhead, seeded repeatability, numeric output drift, and semantic action agreement against thresholds defined before enabling GPU training, with configurable resource rejection and a lower-cost CPU profile.
+- **S1-11 Persistence and rejection:** Persistence round trip preserves deterministic inference and the next seeded ES update; malformed and legacy data are rejected visibly.

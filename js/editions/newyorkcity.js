@@ -1,5 +1,8 @@
 // New York City edition with tax choices and card actions routed through the shared game/UI APIs.
-(function() {
+(function(global) {
+	if (!global.Board && typeof module !== 'undefined' && module.exports) require('../core/board');
+	var LegacyBoardAdapter = global.LegacyBoardAdapter || (typeof module !== 'undefined' && module.exports ? require('./legacy-board-adapter') : null);
+	var BoardIdCatalogs = global.BoardIdCatalogs || (typeof module !== 'undefined' && module.exports ? require('./board-id-catalogs') : null);
 	var utilityRentTiers = [4, 10];
 	var transitRentTiers = [25, 50, 100, 200];
 	var colorGroupRentRule = { mode: "colorGroup", monopolyMultiplier: 2 };
@@ -212,6 +215,14 @@
 		return Square.applyGroupDefinitions(squares, groups);
 	}
 
+	function buildBoard() {
+		var groups = buildGroups();
+		return LegacyBoardAdapter.buildBoard('NYC', groups, buildSquares(groups), BoardIdCatalogs.NYC, {
+			taxAmountById: { 'city-tax': 200, 'luxury-tax': 75 },
+			taxPercentById: { 'city-tax': 0.1 }
+		});
+	}
+
 	function buildCommunityChestCards() {
 		var cards = [];
 
@@ -259,9 +270,10 @@
 	}
 
 	Monopoly.Editions.register("NYC", {
+		buildBoard: buildBoard,
 		buildGroups: buildGroups,
 		buildSquares: buildSquares,
 		buildCommunityChestCards: buildCommunityChestCards,
 		buildChanceCards: buildChanceCards
 	});
-})();
+})(typeof window !== 'undefined' ? window : globalThis);

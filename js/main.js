@@ -57,9 +57,12 @@ function onloadBehavior() {
 		createWorkerPool: Gen6Trainer.createBrowserWorkerPool
 	});
 	var edition = Monopoly.Editions.getActive();
+	var editionId = Monopoly.Editions.getActiveName();
+	var structuredBoard = Monopoly.Editions.buildBoardForGame(editionId);
 	var boardGroups = edition.buildGroups();
 	var initialState = GameStateContext.createState({
 		player: [],
+		editionId: editionId,
 		square: edition.buildSquares(boardGroups),
 		communityChestCards: edition.buildCommunityChestCards(),
 		chanceCards: edition.buildChanceCards(),
@@ -77,6 +80,7 @@ function onloadBehavior() {
 		playerOverlays: [],
 		nextMoveDirection: 1
 	});
+	GameStateContext.initializeBoardState(initialState, structuredBoard, editionId);
 	game = new Game(undefined, initialState);
 	bindBrowserGameState(game);
 	resetTokenOverlays();
@@ -84,6 +88,7 @@ function onloadBehavior() {
 	for (var i = 0; i <= 8; i++) {
 		player[i] = new Player("", "", game);
 		player[i].index = i;
+		if (i > 0) GameStateContext.assignPlayerId(player[i], i);
 	}
 
 	var groupPropertyArray = [];

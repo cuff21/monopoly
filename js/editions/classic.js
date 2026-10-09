@@ -1,5 +1,8 @@
 // Classic US edition: standard board, deeds, and card decks.
 (function(global) {
+	if (!global.Board && typeof module !== 'undefined' && module.exports) require('../core/board');
+	var LegacyBoardAdapter = global.LegacyBoardAdapter || (typeof module !== 'undefined' && module.exports ? require('./legacy-board-adapter') : null);
+	var BoardIdCatalogs = global.BoardIdCatalogs || (typeof module !== 'undefined' && module.exports ? require('./board-id-catalogs') : null);
 	var utilityRentTiers = [4, 10];
 	var transitRentTiers = [25, 50, 100, 200];
 
@@ -198,6 +201,13 @@
 		return Square.applyGroupDefinitions(squares, groups);
 	}
 
+	function buildBoard() {
+		var groups = buildGroups();
+		return LegacyBoardAdapter.buildBoard('Classic', groups, buildSquares(groups), BoardIdCatalogs.Classic, {
+			taxAmountById: { 'city-tax': 200, 'luxury-tax': 100 }
+		});
+	}
+
 	function buildCommunityChestCards() {
 		var cards = [];
 
@@ -251,6 +261,7 @@
 	var _Monopoly = (typeof Monopoly !== 'undefined') ? Monopoly : global.Monopoly;
 	if (_Monopoly && _Monopoly.Editions) {
 		_Monopoly.Editions.register("Classic", {
+			buildBoard: buildBoard,
 			buildGroups: buildGroups,
 			buildSquares: buildSquares,
 			buildCommunityChestCards: buildCommunityChestCards,

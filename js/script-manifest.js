@@ -9,6 +9,8 @@
         { src: 'core/ui-bridge.js', page: true, worker: true },
         { src: 'core/rent.js', page: true, worker: true },
         { src: 'editions/edition-registry.js', page: true, worker: true },
+        { src: 'editions/board-id-catalogs.js', page: true, worker: true },
+        { src: 'editions/legacy-board-adapter.js', page: true, worker: true },
         { src: 'editions/classic.js', page: true, worker: true },
         { src: 'editions/newyorkcity.js', page: true, worker: true },
         { src: 'application/ai-setup-registry.js', page: true, worker: true },
