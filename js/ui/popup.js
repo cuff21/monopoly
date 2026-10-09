@@ -117,14 +117,12 @@ function popup(HTML, action, option, timer, gameInstance) {
 	}
 }
 
-function updateDrawnCard(cardType, cardIndex, gameInstance) {
+function updateDrawnCard(deckId, cardIndex, gameInstance) {
 	var gameState = gameInstance && gameInstance.state;
-	var cards = gameState
-		? (cardType === "chance" ? gameState.chanceCards : gameState.communityChestCards)
-		: (cardType === "chance" ? chanceCards : communityChestCards);
-	var card = cards[cardIndex];
-	var textElement = document.getElementById(cardType + "-card-text");
-	var groupElement = document.querySelector("#" + (cardType === "chance" ? "chance-display" : "community-chest-display"));
+	var deck = gameState && gameState.cardDecks && gameState.cardDecks[deckId];
+	var card = deck && deck.cards[cardIndex];
+	var textElement = document.getElementById('card-deck-' + deckId + '-text');
+	var groupElement = document.getElementById('card-deck-' + deckId);
 	var animationComplete = Promise.resolve();
 	if (textElement && card) {
 		textElement.textContent = card.text;
@@ -143,7 +141,7 @@ function updateDrawnCard(cardType, cardIndex, gameInstance) {
 			setTimeout(resolve, 300);
 		});
 		movingCard.className = "drawn-card-flip";
-		icon.src = cardType === "chance" ? "images/chance_icon.png" : "images/community_chest_icon.png";
+		icon.src = deck.icon;
 		icon.alt = "";
 		movingCard.appendChild(icon);
 		groupElement.appendChild(movingCard);
@@ -180,7 +178,7 @@ function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
 	}
 	var write = false;
 
-	for (var i = 0; i < 40; i++) {
+	for (var i = 0; i < squares.length; i++) {
 		var sq = squares[i];
 
 		if (sq.owner === playerIndex) {
@@ -206,17 +204,12 @@ function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
 		}
 	}
 
-	if (p.communityChestJailCard || p.chanceJailCard) {
+	if (p.heldCards && p.heldCards.length) {
 		if (!write) {
 			write = true;
 			HTML += "<table>";
 		}
-		if (p.communityChestJailCard) {
-			HTML += "<tr><td class='statscellcolor'></td><td class='statscellname'>Get Out of Jail Free Card</td></tr>";
-		}
-		if (p.chanceJailCard) {
-			HTML += "<tr><td class='statscellcolor'></td><td class='statscellname'>Get Out of Jail Free Card</td></tr>";
-		}
+		p.heldCards.forEach(function() { HTML += "<tr><td class='statscellcolor'></td><td class='statscellname'>Get Out of Jail Free Card</td></tr>"; });
 	}
 
 	return write ? HTML + "</table>" : HTML + UIHtml.escapeHTML(p.name) + " dosen't have any properties.";

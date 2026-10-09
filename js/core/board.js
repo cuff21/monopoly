@@ -7,88 +7,111 @@
 // searches forward for one full circuit, returning the matching ID or null. The origin is
 // eligible only after the full wrap. A missing group or unknown origin throws RangeError.
 
+// Declarative form, used by editions:
+//   new Board({ editionId, rules?, neutralColor?, groups: [...], squares: [...] })
+// groups: { id, label, color, rent?, monopolyMultiplier?, presentation? }
+//   rent = five rent tiers shared by railroad/utility members; streets use monopolyMultiplier (default 2).
+// squares (in board order): { id, kind, group?, label, price?, rent?, houseCost?, tax?, taxPercentOfNetWorth?,
+//   text?, onLand?, presentation? }
+//   street rent = [base, 1 house, 2, 3, 4, hotel]; railroad/utility rent is inherited from the group.
+//   mortgage defaults to half the price. Links, coordinates and group membership are derived, and the
+//   resulting Board is validated. The structured form (squaresById/groupsById) is also accepted.
 function Board(spec) {
+	var declarative = Array.isArray(spec.squares);
+	if (declarative) spec = expandBoardDefinition(spec);
 	this.editionId = spec.editionId;
 	this.startSquareId = spec.startSquareId;
 	this.squaresById = Object.assign({}, spec.squaresById || {});
 	this.groupsById = Object.assign({}, spec.groupsById || {});
 	this.rules = Object.assign({}, spec.rules || {});
+	if (declarative) validateBoard(this);
 }
 
-function Square(spec, priceText, color, price, groupNumber, baseRent, rent1, rent2, rent3, rent4, rent5) {
-	if (typeof spec === 'string') {
-		this.name = spec;
-		this.pricetext = priceText || '';
-		this.color = color;
-		this.owner = 0;
-		this.mortgage = false;
-		this.house = 0;
-		this.hotel = 0;
-		this.groupNumber = groupNumber || 0;
-		this.price = price || 0;
-		this.baserent = baseRent || 0;
-		this.rent1 = rent1 || 0;
-		this.rent2 = rent2 || 0;
-		this.rent3 = rent3 || 0;
-		this.rent4 = rent4 || 0;
-		this.rent5 = rent5 || 0;
-		this.landcount = 0;
-		this.groupName = null;
-		this.display = {};
-		this.groupProfile = null;
-		this.onLand = null;
-		this.houseprice = this.groupNumber === 3 || this.groupNumber === 4 ? 50
-			: this.groupNumber === 5 || this.groupNumber === 6 ? 100
-				: this.groupNumber === 7 || this.groupNumber === 8 ? 150
-					: this.groupNumber === 9 || this.groupNumber === 10 ? 200 : 0;
-		return;
-	}
+function perimeterCoordinates(index, count, squareId) {
+	if (count !== 40) throw new TypeError('Square ' + squareId + ' needs explicit presentation x/y for a non-40-square Board.');
+	if (index === 0) return { x: 94, y: 94, rotationDegrees: 0 };
+	if (index < 10) return { x: 94 - index * 8.5, y: 94, rotationDegrees: 0 };
+	if (index === 10) return { x: 6, y: 94, rotationDegrees: 0 };
+	if (index < 20) return { x: 6, y: 94 - (index - 10) * 8.5, rotationDegrees: 90 };
+	if (index === 20) return { x: 6, y: 6, rotationDegrees: 0 };
+	if (index < 30) return { x: 6 + (index - 20) * 8.5, y: 6, rotationDegrees: 180 };
+	if (index === 30) return { x: 94, y: 6, rotationDegrees: 0 };
+	return { x: 94, y: 6 + (index - 30) * 8.5, rotationDegrees: 270 };
+}
 
-	if (spec && typeof spec === 'object' && spec.id && spec.kind) {
-		Object.assign(this, spec);
-		return;
-	}
+function expandBoardDefinition(def) {
+	var neutralColor = def.neutralColor || '#FFFFFF';
+	var groupDefs = {};
+	var groupsById = {};
+	var squaresById = {};
+	var squares = def.squares;
 
-	var rules = spec.rules || {};
-	var presentation = spec.presentation || {};
-	var behavior = spec.behavior || {};
-	var rentTiers = rules.rentTiers || [];
-	this.name = spec.name;
-	this.pricetext = presentation.priceText || "";
-	this.color = presentation.color;
-	this.owner = 0;
-	this.mortgage = false;
-	this.house = 0;
-	this.hotel = 0;
-	this.groupNumber = rules.groupNumber || 0;
-	this.price = rules.price || 0;
-	this.baserent = rules.baseRent || 0;
-	this.rent1 = rentTiers[0] || 0;
-	this.rent2 = rentTiers[1] || 0;
-	this.rent3 = rentTiers[2] || 0;
-	this.rent4 = rentTiers[3] || 0;
-	this.rent5 = rentTiers[4] || 0;
-	this.landcount = 0;
-	this.groupName = spec.groupName || null;
-	this.display = {
-		boardName: presentation.boardName,
-		tokenImage: presentation.tokenImage,
-		rentText: presentation.rentText
+	(def.groups || []).forEach(function(group) { groupDefs[group.id] = group; });
+
+	squares.forEach(function(square, index) {
+		var group = null;
+		if (square.group !== undefined) {
+			group = groupDefs[square.group];
+			if (!group) throw new TypeError('Board ' + def.editionId + ' square ' + square.id + ' references unknown group ' + square.group);
+		}
+		var rent = square.rent || (group && group.rent) || [];
+		var isStreet = square.kind === 'street';
+		var price = square.price || 0;
+		var rules = {
+			purchasePrice: price,
+			baseRent: isStreet ? rent[0] : 0,
+			rentTiers: isStreet ? rent.slice(1) : rent.slice(),
+			mortgageValue: Math.floor(price / 2),
+			houseCost: square.houseCost || 0,
+			taxAmount: square.tax || 0
+		};
+		if (square.taxPercentOfNetWorth !== undefined) rules.taxPercentOfNetWorth = square.taxPercentOfNetWorth;
+
+	var presentation = Object.assign({ label: square.label, color: group ? group.color : neutralColor }, square.presentation);
+	if (presentation.x === undefined || presentation.y === undefined) Object.assign(presentation, perimeterCoordinates(index, squares.length, square.id));
+		if (square.text !== undefined) presentation.priceText = square.text;
+		else if (!group) presentation.priceText = '';
+
+		var spec = {
+			id: square.id,
+			kind: square.kind,
+			nextId: squares[(index + 1) % squares.length].id,
+			previousId: squares[(index + squares.length - 1) % squares.length].id,
+			rules: rules,
+			presentation: presentation,
+			behavior: square.onLand ? { onLand: square.onLand } : {}
+		};
+		if (group) spec.groupId = group.id;
+		if (square.deckId !== undefined) spec.deckId = square.deckId;
+		squaresById[spec.id] = new Square(spec);
+	});
+
+	(def.groups || []).forEach(function(group) {
+		groupsById[group.id] = new Group({
+			groupId: group.id,
+			label: group.label,
+			presentation: Object.assign({ color: group.color }, group.presentation),
+			rules: group.rent
+				? { rentTiers: group.rent.slice() }
+				: { monopolyMultiplier: group.monopolyMultiplier === undefined ? 2 : group.monopolyMultiplier },
+			squareIds: squares.filter(function(square) { return square.group === group.id; }).map(function(square) { return square.id; })
+		});
+	});
+
+	return {
+		editionId: def.editionId,
+		startSquareId: 'go',
+		squaresById: squaresById,
+		groupsById: groupsById,
+		rules: Object.assign({ startSalary: 200, houseTotal: 32, hotelTotal: 12, bailAmount: 50 }, def.rules)
 	};
-	this.groupProfile = behavior.groupProfile || null;
-	this.onLand = behavior.onLand || null;
+}
 
-	if (this.groupNumber === 3 || this.groupNumber === 4) {
-		this.houseprice = 50;
-	} else if (this.groupNumber === 5 || this.groupNumber === 6) {
-		this.houseprice = 100;
-	} else if (this.groupNumber === 7 || this.groupNumber === 8) {
-		this.houseprice = 150;
-	} else if (this.groupNumber === 9 || this.groupNumber === 10) {
-		this.houseprice = 200;
-	} else {
-		this.houseprice = 0;
+function Square(spec) {
+	if (!spec || typeof spec !== 'object' || typeof spec.id !== 'string' || typeof spec.kind !== 'string') {
+		throw new TypeError('Square requires a structured specification with id and kind.');
 	}
+	Object.assign(this, spec);
 }
 
 function Group(spec) {
@@ -147,7 +170,7 @@ function findNext(board, squareId, predicate) {
 }
 
 function validateBoard(board) {
-	var allowedKinds = ['street', 'railroad', 'utility', 'tax', 'chance', 'community-chest', 'jail', 'go-to-jail', 'free-parking', 'go'];
+	var allowedKinds = ['street', 'railroad', 'utility', 'tax', 'card', 'jail', 'go-to-jail', 'free-parking', 'go'];
 	var idPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 	var editionId = board && board.editionId ? board.editionId : 'unknown';
 
@@ -215,6 +238,7 @@ function validateBoard(board) {
 		if (!isObject(square)) fail('square', squareId, 'square', 'expected an object');
 		if (square.id !== squareId) fail('square', squareId, 'id', 'must match its squaresById key');
 		if (allowedKinds.indexOf(square.kind) === -1) fail('square', squareId, 'kind', 'unknown square kind');
+		if (square.kind === 'card' && (typeof square.deckId !== 'string' || !square.deckId)) fail('square', squareId, 'deckId', 'card squares must identify a deck');
 		if (typeof square.nextId !== 'string' || !Object.prototype.hasOwnProperty.call(board.squaresById, square.nextId)) {
 			fail('square', squareId, 'nextId', 'must identify a square on the Board');
 		}
@@ -348,28 +372,6 @@ function validateBoard(board) {
 
 	return board;
 }
-
-Square.applyGroupDefinitions = function(squares, groups) {
-	squares.forEach(function(square) {
-		var group = groups[square.groupNumber];
-		if (!group) return;
-		var squareDisplay = {};
-		Object.keys(square.display).forEach(function(key) {
-			if (typeof square.display[key] !== "undefined") squareDisplay[key] = square.display[key];
-		});
-
-		square.groupName = square.groupName || group.groupName;
-		square.color = square.color || group.groupColor;
-		if (!square.pricetext) {
-			var priceText = group.presentation.priceText;
-			square.pricetext = typeof priceText === "function" ? priceText(square.price) : priceText;
-		}
-		square.display = Object.assign({}, group.presentation, squareDisplay);
-		delete square.display.priceText;
-		square.groupProfile = square.groupProfile || group.rules;
-	});
-	return squares;
-};
 
 function Card(text, action) {
 	this.text = text;

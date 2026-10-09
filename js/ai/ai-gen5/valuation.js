@@ -218,7 +218,7 @@
     function groupOwnershipSummary(ownerIndex, subject) {
         var square = AIGen5.getSquares(subject);
         var summary = [];
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (s && typeof s.group !== 'undefined' && s.group && s.group.length > 0) {
                 var owned = 0;
@@ -299,7 +299,7 @@
         var maxTempo = 0;
         var seenGroups = {};
 
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || !s.group || s.group.length < 2 || !s.houseprice || s.houseprice <= 0) {
                 continue;

@@ -83,7 +83,9 @@
                     contestants: job.contestants,
                     maxTurns: job.maxTurns,
                     edition: job.setup.edition,
-                    playerCount: job.setup.playerCount
+                    playerCount: job.setup.playerCount,
+                    boardRuleOverrides: job.setup.boardRuleOverrides,
+                    seed: job.setup.seed
                 }]
             });
             slot.timeoutId = setTimeout(function() {

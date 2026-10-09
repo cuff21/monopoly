@@ -36,6 +36,7 @@
     var SimulationAdapters = {
         register: register,
         get: function(kind) { return adapters[kind] || null; },
+        getKind: function(contestant) { return resolve(contestant).kind; },
         createPlayerAI: function(contestant, player) {
             return resolve(contestant).createPlayerAI(contestant, player);
         },

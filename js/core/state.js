@@ -4,13 +4,38 @@ function Player(name, color, game) {
 	this.name = name;
 	this.color = color;
 	this.game = game || null;
-	this.position = 0;
+	this.squareId = 'go';
+	this._position = 0;
+	Object.defineProperty(this, 'position', {
+		enumerable: false,
+		configurable: false,
+		get: function() {
+			var board = this.game && this.game.state && this.game.state.board;
+			if (!board) return this._position;
+			var currentId = board.startSquareId;
+			for (var index = 0; index < Object.keys(board.squaresById).length; index++) {
+				if (currentId === this.squareId) { this._position = index; return index; }
+				currentId = board.squaresById[currentId].nextId;
+			}
+			return this._position;
+		},
+		set: function(value) {
+			if (!Number.isInteger(value)) throw new RangeError('Position must be a board index.');
+			var board = this.game && this.game.state && this.game.state.board;
+			if (!board) { this._position = value; return; }
+			var count = Object.keys(board.squaresById).length;
+			var target = ((value % count) + count) % count;
+			var currentId = board.startSquareId;
+			for (var index = 0; index < target; index++) currentId = board.squaresById[currentId].nextId;
+			this.squareId = currentId;
+			this._position = target;
+		}
+	});
 	this.money = 1500;
 	this.creditor = -1;
 	this.jail = false;
 	this.jailroll = 0;
-	this.communityChestJailCard = false;
-	this.chanceJailCard = false;
+	this.heldCards = [];
 	this.bidding = true;
 	this.human = true;
 	// this.AI = null;
@@ -26,7 +51,9 @@ function Player(name, color, game) {
 			return true;
 		} else {
 			this.money -= amount;
-			this.creditor = creditor;
+			if (creditor === 0 || creditor === 'bank' || creditor === undefined || creditor === null) this.creditor = 'bank';
+			else if (typeof creditor === 'number' && this.game && this.game.state.player[creditor]) this.creditor = this.game.state.player[creditor].playerId;
+			else this.creditor = creditor;
 
 			if (this.game && this.game.ui && typeof this.game.ui.updateMoney === 'function') {
 				this.game.ui.updateMoney();
@@ -38,39 +65,31 @@ function Player(name, color, game) {
 }
 
 // paramaters:
-// initiator: object Player
-// recipient: object Player
-// money: integer, positive for offered, negative for requested
-// property: array of integers, length: 40
-// communityChestJailCard: integer, 1 means offered, -1 means requested, 0 means neither
-// chanceJailCard: integer, 1 means offered, -1 means requested, 0 means neither
-function Trade(initiator, recipient, money, property, communityChestJailCard, chanceJailCard) {
-	// For each property and get out of jail free cards, 1 means offered, -1 means requested, 0 means neither.
-	money = Math.round(money);
+// Offers use stable participant IDs and explicit square ID transfer lists.
+function Trade(initiatorId, recipientId, money, offeredSquareIds, requestedSquareIds, heldCards) {
+	this.initiatorId = initiatorId;
+	this.recipientId = recipientId;
+	this.offeredSquareIds = (offeredSquareIds || []).slice();
+	this.requestedSquareIds = (requestedSquareIds || []).slice();
+	this.heldCards = (heldCards || []).map(function(card) { return Object.assign({}, card); });
+	money = Math.round(money || 0);
 
 	this.getInitiator = function() {
-		return initiator;
+		return initiatorId;
 	};
 
 	this.getRecipient = function() {
-		return recipient;
+		return recipientId;
 	};
 
-	this.getProperty = function(index) {
-		return property[index];
-	};
+	this.getOfferedSquareIds = function() { return this.offeredSquareIds.slice(); };
+	this.getRequestedSquareIds = function() { return this.requestedSquareIds.slice(); };
 
 	this.getMoney = function() {
 		return money;
 	};
 
-	this.getCommunityChestJailCard = function() {
-		return communityChestJailCard;
-	};
-
-	this.getChanceJailCard = function() {
-		return chanceJailCard;
-	};
+	this.getHeldCards = function() { return this.heldCards.map(function(card) { return Object.assign({}, card); }); };
 }
 
 var _global = typeof window !== 'undefined' ? window : globalThis;

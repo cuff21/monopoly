@@ -18,7 +18,7 @@
 		require('../game/auction');
 		require('../game/trade');
 		require('../game/bankruptcy');
-		require('../game/turn-flow-explicit');
+		require('../game/turn-flow');
 	}
 
 	var HeadlessUI = global.UIBridge.HeadlessUI;
@@ -33,13 +33,14 @@
 	function calculateNetWorth(player) {
 		if (!player || player.money < 0) return 0;
 		var worth = player.money;
-		var squares = player.game.state.square;
-		for (var i = 0; i < squares.length; i++) {
-			var square = squares[i];
-			if (square.owner !== player.index) continue;
-			if (square.mortgage) worth += Math.round(square.price * 0.5);
-			else worth += square.price + (square.house || 0) * (square.houseprice || 0);
-		}
+		var state = player.game.state;
+		Object.keys(state.board.squaresById).forEach(function(squareId) {
+			var squareState = global.GameStateContext.getSquareState(state, squareId);
+			if (squareState.ownerId !== player.playerId) return;
+			var rules = global.getSquare(state.board, squareId).rules;
+			worth += squareState.mortgage ? rules.mortgageValue : rules.purchasePrice;
+			worth += squareState.house * rules.houseCost;
+		});
 		return worth;
 	}
 
@@ -70,13 +71,18 @@
 				return;
 			}
 
-			var structuredBoard = registry.buildBoardForGame(editionName, simulation.options.boardRuleOverrides);
+			var editionSetup = registry.buildGameSetup(editionName, simulation.options.boardRuleOverrides);
+			var structuredBoard = editionSetup.board;
+			if (Object.keys(structuredBoard.squaresById).length !== 40 && simulation.contestants.some(function(contestant) {
+				return contestant && SimulationAdapters.getKind(contestant) === 'gen6';
+			})) {
+				reject(new RangeError('Gen6 supports exactly 40 board squares; edition ' + editionName + ' has ' + Object.keys(structuredBoard.squaresById).length + '.'));
+				return;
+			}
 			var state = global.GameStateContext.createState({
 				player: [],
 				editionId: editionName,
-				square: edition.buildSquares(edition.buildGroups()),
-				communityChestCards: edition.buildCommunityChestCards(),
-				chanceCards: edition.buildChanceCards(),
+				cardDecks: editionSetup.cardDecks,
 				playersGame: [],
 				pcount: playerCount,
 				turn: 0,
@@ -87,17 +93,6 @@
 				freeParkingPot: 0
 			});
 			global.GameStateContext.initializeBoardState(state, structuredBoard, editionName);
-			var groupMembers = {};
-			state.square.forEach(function(square, index) {
-				square.index = index;
-				if (square.groupNumber > 0) {
-					groupMembers[square.groupNumber] = groupMembers[square.groupNumber] || [];
-					groupMembers[square.groupNumber].push(index);
-				}
-			});
-			state.square.forEach(function(square) {
-				if (square.groupNumber > 0) square.group = groupMembers[square.groupNumber];
-			});
 			var game = new global.Game(new HeadlessUI(), state);
 			var bankruptPlayers = [];
 			var completed = false;
@@ -115,13 +110,10 @@
 				state.player[seat] = player;
 			}
 
-			function shuffle(deck) {
-				deck.index = 0;
-				deck.deck = Array.from({ length: deck.length }, function(_, index) { return index; });
-				deck.deck.sort(function() { return Math.random() - 0.5; });
-			}
-			shuffle(state.communityChestCards);
-			shuffle(state.chanceCards);
+			Object.keys(state.cardDecks).forEach(function(deckId) {
+				state.cardDecks[deckId].index = 0;
+				state.cardDecks[deckId].order.sort(function() { return Math.random() - 0.5; });
+			});
 			game.maxTurns = simulation.maxTurns;
 			game.turnCount = 0;
 			game.isOver = false;

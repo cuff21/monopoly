@@ -45,7 +45,7 @@ function Game(ui, state) {
 			await self.ui.waitForPopupClose();
 		}
 		var p = state.player[state.turn];
-		if (state.pendingAuction !== -1 && state.auctionEnabled) {
+		if (state.pendingAuction !== -1 && state.pendingAuction !== null && state.auctionEnabled) {
 			self.addPropertyToAuctionQueue(state.pendingAuction);
 			state.pendingAuction = -1;
 		}
@@ -59,7 +59,8 @@ function Game(ui, state) {
 				if (self.ui && self.ui.isHeadless) {
 					self.bankruptcy();
 				} else if (self.ui && typeof self.ui.showMessage === 'function') {
-					self.ui.showMessage(p.name + " is bankrupt. All of its assets will be turned over to " + state.player[p.creditor].name + ".", self.bankruptcy.bind(self));
+					var creditor = p.creditor === 'bank' ? 'the bank' : (global.GameStateContext && global.GameStateContext.getPlayerById(state, p.creditor).name);
+					self.ui.showMessage(p.name + " is bankrupt. All of its assets will be turned over to " + creditor + ".", self.bankruptcy.bind(self));
 				} else {
 					self.bankruptcy();
 				}

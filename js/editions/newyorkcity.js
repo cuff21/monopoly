@@ -1,232 +1,124 @@
 // New York City edition with tax choices and card actions routed through the shared game/UI APIs.
 (function(global) {
 	if (!global.Board && typeof module !== 'undefined' && module.exports) require('../core/board');
-	var LegacyBoardAdapter = global.LegacyBoardAdapter || (typeof module !== 'undefined' && module.exports ? require('./legacy-board-adapter') : null);
-	var BoardIdCatalogs = global.BoardIdCatalogs || (typeof module !== 'undefined' && module.exports ? require('./board-id-catalogs') : null);
-	var utilityRentTiers = [4, 10];
-	var transitRentTiers = [25, 50, 100, 200];
-	var colorGroupRentRule = { mode: "colorGroup", monopolyMultiplier: 2 };
+	var GameStateContext = global.GameStateContext || (typeof module !== 'undefined' && module.exports ? require('../core/game-state-context') : null);
 
-	function formatPrice(price) {
-		return "$" + price;
+	function Card(text, effect) {
+		this.text = text;
+		this.action = function(context) {
+			var player = GameStateContext.getPlayerById(context.state, context.playerId);
+			return effect(context.game, player, context);
+		};
 	}
 
 	function formatUtilityRent(rent) {
 		return rent.multiplier + "x dice";
 	}
 
-	function colorGroup(groupName, groupColor) {
-		return {
-			groupName: groupName,
-			groupColor: groupColor,
-			presentation: { priceText: formatPrice },
-			rules: { kind: "color", rentRule: colorGroupRentRule }
-		};
-	}
-
-	function buildGroups() {
-		var groups = [];
-		groups[1] = {
-			groupName: "railroads",
-			groupColor: "white",
-			presentation: { priceText: formatPrice },
-			rules: { kind: "transit", deed: { groupName: "Transportations", rents: transitRentTiers }, rentRule: { mode: "fixed", tiers: transitRentTiers } }
-		};
-		groups[2] = {
-			groupName: "utilities",
-			groupColor: "white",
-			presentation: { priceText: formatPrice, rentText: formatUtilityRent },
-			rules: { kind: "utility", deed: { multipliers: utilityRentTiers }, rentRule: { mode: "diceMultiplier", tiers: utilityRentTiers } }
-		};
-		groups[3] = colorGroup("dark purple", "#4B0082");
-		groups[4] = colorGroup("light blue", "#AACCFF");
-		groups[5] = colorGroup("purple", "purple");
-		groups[6] = colorGroup("orange", "orange");
-		groups[7] = colorGroup("red", "red");
-		groups[8] = colorGroup("yellow", "yellow");
-		groups[9] = colorGroup("green", "green");
-		groups[10] = colorGroup("blue", "blue");
-		return groups;
-	}
-
 	function cityTax(context) {
-		var p = context.player;
-		var percentageCost = p.money;
-		for (var i = 0; i < context.squares.length; i++) {
-			var property = context.squares[i];
-			if (property.owner === p.index) {
-				percentageCost += property.mortgage ? property.price * 0.5 : property.price;
-				percentageCost += property.house * property.houseprice;
-			}
-		}
-		percentageCost = Math.round(percentageCost * 0.1);
+		var game = context.game;
+		var state = context.state;
+		var player = GameStateContext.getPlayerById(state, context.playerId);
+		var taxSquare = global.getSquare(state.board, context.squareId);
+		var netWorth = player.money;
+		Object.keys(state.board.squaresById).forEach(function(squareId) {
+			var propertyState = GameStateContext.getSquareState(state, squareId);
+			if (propertyState.ownerId !== player.playerId) return;
+			var rules = global.getSquare(state.board, squareId).rules;
+			netWorth += propertyState.mortgage ? rules.mortgageValue : rules.purchasePrice;
+			netWorth += propertyState.house * rules.houseCost;
+		});
+		var fixedAmount = taxSquare.rules.taxAmount;
+		var percentageAmount = Math.round(netWorth * taxSquare.rules.taxPercentOfNetWorth);
 
 		function payTax(amount) {
-			if (context.freeParkingTaxes) context.addTaxToFreeParking(amount);
-			p.pay(amount, 0);
-			context.ui.alert(p.name + " paid $" + amount + " for landing on City Tax.");
+			if (state.freeParkingTaxes) game.addTaxToFreeParking(amount);
+			player.pay(amount, 0);
+			context.ui.alert(player.name + " paid $" + amount + " for landing on City Tax.");
 		}
 
-		if (p.human && typeof context.ui.chooseTax === 'function') {
-			context.ui.chooseTax(200, percentageCost, payTax);
+		if (player.human && typeof context.ui.chooseTax === 'function') {
+			context.ui.chooseTax(fixedAmount, percentageAmount, payTax);
 		} else {
-			payTax(200);
+			payTax(fixedAmount);
 		}
-		context.ui.displayLanded("You landed on City Tax. Pay $200 or 10% of total worth.");
+		context.ui.displayLanded("You landed on City Tax. Pay $" + fixedAmount + " or " + (taxSquare.rules.taxPercentOfNetWorth * 100) + "% of total worth.");
 	}
 
 	function luxuryTax(context) {
-		var p = context.player;
-		context.ui.alert(p.name + " paid $75 for landing on Luxury Tax.");
-		p.pay(75, 0);
-		context.ui.displayLanded("You landed on Luxury Tax. Pay $75.");
-	}
-
-	function buildSquares(groups) {
-		groups = groups || buildGroups();
-		var squares = [];
-
-		squares[0] = new Square({ name: "GO", presentation: { priceText: "COLLECT $200 SALARY AS YOU PASS.", color: "white" } });
-		squares[1] = new Square({
-			name: "Port Authority Bus Terminal",
-			rules: { price: 60, groupNumber: 3, baseRent: 2, rentTiers: [10, 30, 90, 160, 250] }
-		});
-		squares[2] = new Square({ name: "Community Chest", presentation: { priceText: "FOLLOW INSTRUCTIONS ON TOP CARD", color: "white" } });
-		squares[3] = new Square({
-			name: "Lincoln Tunnel",
-			rules: { price: 60, groupNumber: 3, baseRent: 4, rentTiers: [20, 60, 180, 320, 450] }
-		});
-		squares[4] = new Square({ name: "City Tax", presentation: { priceText: "PAY 10% OR $200", color: "white" }, behavior: { onLand: cityTax } });
-		squares[5] = new Square({
-			name: "LOMTO",
-			rules: { price: 200, groupNumber: 1 }
-		});
-		squares[6] = new Square({
-			name: "Statue of Liberty",
-			rules: { price: 100, groupNumber: 4, baseRent: 6, rentTiers: [30, 90, 270, 400, 550] }
-		});
-		squares[7] = new Square({ name: "Chance", presentation: { priceText: "NEW YORK LOTTERY GAMES", color: "white" } });
-		squares[8] = new Square({
-			name: "Empire State Building",
-			rules: { price: 100, groupNumber: 4, baseRent: 6, rentTiers: [30, 90, 270, 400, 550] }
-		});
-		squares[9] = new Square({
-			name: "Central Park",
-			rules: { price: 120, groupNumber: 4, baseRent: 8, rentTiers: [40, 100, 300, 450, 600] }
-		});
-		squares[10] = new Square({ name: "Just Visiting", presentation: { priceText: "", color: "white" } });
-		squares[11] = new Square({
-			name: "98.7 Kiss FM",
-			rules: { price: 140, groupNumber: 5, baseRent: 10, rentTiers: [50, 150, 450, 625, 750] }
-		});
-		squares[12] = new Square({
-			name: "Con Edison Electric",
-			rules: { price: 150, groupNumber: 2 }
-		});
-		squares[13] = new Square({
-			name: "Thirteen WNET",
-			rules: { price: 140, groupNumber: 5, baseRent: 10, rentTiers: [50, 150, 450, 625, 750] }
-		});
-		squares[14] = new Square({
-			name: "The New York Times",
-			rules: { price: 160, groupNumber: 5, baseRent: 12, rentTiers: [60, 180, 500, 700, 900] }
-		});
-		squares[15] = new Square({
-			name: "New York City Transit",
-			rules: { price: 200, groupNumber: 1 }
-		});
-		squares[16] = new Square({
-			name: "New York Rangers",
-			rules: { price: 180, groupNumber: 6, baseRent: 14, rentTiers: [70, 200, 550, 750, 950] }
-		});
-		squares[17] = new Square({ name: "Community Chest", presentation: { priceText: "FOLLOW INSTRUCTIONS ON TOP CARD", color: "white" } });
-		squares[18] = new Square({
-			name: "New York Knicks",
-			rules: { price: 180, groupNumber: 6, baseRent: 14, rentTiers: [70, 200, 550, 750, 950] }
-		});
-		squares[19] = new Square({
-			name: "Madison Square Garden",
-			rules: { price: 200, groupNumber: 6, baseRent: 16, rentTiers: [80, 220, 600, 800, 1000] }
-		});
-		squares[20] = new Square({ name: "Free Parking", presentation: { priceText: "", color: "white" } });
-		squares[21] = new Square({
-			name: "macy*s",
-			rules: { price: 220, groupNumber: 7, baseRent: 18, rentTiers: [90, 250, 700, 875, 1050] }
-		});
-		squares[22] = new Square({ name: "Chance", presentation: { priceText: "NEW YORK LOTTERY GAMES", color: "white" } });
-		squares[23] = new Square({
-			name: "FAO Schwarz",
-			rules: { price: 220, groupNumber: 7, baseRent: 18, rentTiers: [90, 250, 700, 875, 1050] }
-		});
-		squares[24] = new Square({
-			name: "bloomingdale's",
-			presentation: { boardName: "blooming..." },
-			rules: { price: 240, groupNumber: 7, baseRent: 20, rentTiers: [100, 300, 750, 925, 1100] }
-		});
-		squares[25] = new Square({
-			name: "Metro-North Railroad",
-			rules: { price: 200, groupNumber: 1 }
-		});
-		squares[26] = new Square({
-			name: "Deloitte & Touche LLP",
-			rules: { price: 260, groupNumber: 8, baseRent: 22, rentTiers: [110, 330, 800, 975, 1150] }
-		});
-		squares[27] = new Square({
-			name: "SmithBarney",
-			rules: { price: 260, groupNumber: 8, baseRent: 22, rentTiers: [110, 330, 800, 975, 1150] }
-		});
-		squares[28] = new Square({
-			name: "Con Edison Gas",
-			rules: { price: 150, groupNumber: 2 }
-		});
-		squares[29] = new Square({
-			name: "CITIBANK",
-			rules: { price: 280, groupNumber: 8, baseRent: 24, rentTiers: [120, 360, 850, 1025, 1200] }
-		});
-		squares[30] = new Square({ name: "Go to Jail", presentation: { priceText: "Go directly to Jail. Do not pass GO. Do not collect $200.", color: "white" } });
-		squares[31] = new Square({
-			name: "The Regency Hotel",
-			rules: { price: 300, groupNumber: 9, baseRent: 26, rentTiers: [130, 390, 900, 1100, 1275] }
-		});
-		squares[32] = new Square({
-			name: "Essex House",
-			rules: { price: 300, groupNumber: 9, baseRent: 26, rentTiers: [130, 390, 900, 1100, 1275] }
-		});
-		squares[33] = new Square({ name: "Community Chest", presentation: { priceText: "FOLLOW INSTRUCTIONS ON TOP CARD", color: "white" } });
-		squares[34] = new Square({
-			name: "The Plaza",
-			rules: { price: 320, groupNumber: 9, baseRent: 28, rentTiers: [150, 450, 1000, 1200, 1400] }
-		});
-		squares[35] = new Square({
-			name: "United Airlines",
-			rules: { price: 200, groupNumber: 1 }
-		});
-		squares[36] = new Square({ name: "Chance", presentation: { priceText: "NEW YORK LOTTERY GAMES", color: "white" } });
-		squares[37] = new Square({
-			name: "Tiffany & CO.",
-			rules: { price: 350, groupNumber: 10, baseRent: 35, rentTiers: [175, 500, 1100, 1300, 1500] }
-		});
-		squares[38] = new Square({ name: "LUXURY TAX", presentation: { priceText: "Pay $75", color: "white" }, behavior: { onLand: luxuryTax } });
-		squares[39] = new Square({
-			name: "TRUMP TOWER",
-			rules: { price: 400, groupNumber: 10, baseRent: 50, rentTiers: [200, 600, 1400, 1700, 2000] }
-		});
-
-		return Square.applyGroupDefinitions(squares, groups);
+		var state = context.state;
+		var player = GameStateContext.getPlayerById(state, context.playerId);
+		var amount = global.getSquare(state.board, context.squareId).rules.taxAmount;
+		context.ui.alert(player.name + " paid $" + amount + " for landing on Luxury Tax.");
+		player.pay(amount, 0);
+		context.ui.displayLanded("You landed on Luxury Tax. Pay $" + amount + ".");
 	}
 
 	function buildBoard() {
-		var groups = buildGroups();
-		return LegacyBoardAdapter.buildBoard('NYC', groups, buildSquares(groups), BoardIdCatalogs.NYC, {
-			taxAmountById: { 'city-tax': 200, 'luxury-tax': 75 },
-			taxPercentById: { 'city-tax': 0.1 }
+		return new Board({
+			editionId: 'NYC',
+			neutralColor: 'white',
+			groups: [
+				{ id: 'railroads', label: 'Transportations', color: 'white', rent: [25, 50, 100, 200, 400] },
+				{ id: 'utilities', label: 'Utilities', color: 'white', rent: [4, 10, 10, 10, 10], presentation: { rentText: formatUtilityRent } },
+				{ id: 'dark-purple', label: 'Dark Purple', color: '#4B0082' },
+				{ id: 'light-blue', label: 'Light Blue', color: '#AACCFF' },
+				{ id: 'purple', label: 'Purple', color: 'purple' },
+				{ id: 'orange', label: 'Orange', color: 'orange' },
+				{ id: 'red', label: 'Red', color: 'red' },
+				{ id: 'yellow', label: 'Yellow', color: 'yellow' },
+				{ id: 'green', label: 'Green', color: 'green' },
+				{ id: 'blue', label: 'Blue', color: 'blue' }
+			],
+			squares: [
+				{ id: 'go', kind: 'go', label: 'GO', text: 'COLLECT $200 SALARY AS YOU PASS.' },
+				{ id: 'port-authority-bus-terminal', kind: 'street', group: 'dark-purple', label: 'Port Authority Bus Terminal', price: 60, rent: [2, 10, 30, 90, 160, 250], houseCost: 50 },
+				{ id: 'community-chest-south', kind: 'card', deckId: 'community-chest', label: 'Community Chest', text: 'FOLLOW INSTRUCTIONS ON TOP CARD' },
+				{ id: 'lincoln-tunnel', kind: 'street', group: 'dark-purple', label: 'Lincoln Tunnel', price: 60, rent: [4, 20, 60, 180, 320, 450], houseCost: 50 },
+				{ id: 'city-tax', kind: 'tax', label: 'City Tax', text: 'PAY 10% OR $200', tax: 200, taxPercentOfNetWorth: 0.1, onLand: cityTax },
+				{ id: 'lomto', kind: 'railroad', group: 'railroads', label: 'LOMTO', price: 200 },
+				{ id: 'statue-of-liberty', kind: 'street', group: 'light-blue', label: 'Statue of Liberty', price: 100, rent: [6, 30, 90, 270, 400, 550], houseCost: 50 },
+				{ id: 'chance-south', kind: 'card', deckId: 'chance', label: 'Chance', text: 'NEW YORK LOTTERY GAMES' },
+				{ id: 'empire-state-building', kind: 'street', group: 'light-blue', label: 'Empire State Building', price: 100, rent: [6, 30, 90, 270, 400, 550], houseCost: 50 },
+				{ id: 'central-park', kind: 'street', group: 'light-blue', label: 'Central Park', price: 120, rent: [8, 40, 100, 300, 450, 600], houseCost: 50 },
+				{ id: 'jail', kind: 'jail', label: 'Just Visiting' },
+				{ id: '98-7-kiss-fm', kind: 'street', group: 'purple', label: '98.7 Kiss FM', price: 140, rent: [10, 50, 150, 450, 625, 750], houseCost: 100 },
+				{ id: 'con-edison-electric', kind: 'utility', group: 'utilities', label: 'Con Edison Electric', price: 150 },
+				{ id: 'thirteen-wnet', kind: 'street', group: 'purple', label: 'Thirteen WNET', price: 140, rent: [10, 50, 150, 450, 625, 750], houseCost: 100 },
+				{ id: 'the-new-york-times', kind: 'street', group: 'purple', label: 'The New York Times', price: 160, rent: [12, 60, 180, 500, 700, 900], houseCost: 100 },
+				{ id: 'new-york-city-transit', kind: 'railroad', group: 'railroads', label: 'New York City Transit', price: 200 },
+				{ id: 'new-york-rangers', kind: 'street', group: 'orange', label: 'New York Rangers', price: 180, rent: [14, 70, 200, 550, 750, 950], houseCost: 100 },
+				{ id: 'community-chest-west', kind: 'card', deckId: 'community-chest', label: 'Community Chest', text: 'FOLLOW INSTRUCTIONS ON TOP CARD' },
+				{ id: 'new-york-knicks', kind: 'street', group: 'orange', label: 'New York Knicks', price: 180, rent: [14, 70, 200, 550, 750, 950], houseCost: 100 },
+				{ id: 'madison-square-garden', kind: 'street', group: 'orange', label: 'Madison Square Garden', price: 200, rent: [16, 80, 220, 600, 800, 1000], houseCost: 100 },
+				{ id: 'free-parking', kind: 'free-parking', label: 'Free Parking' },
+				{ id: 'macy-s', kind: 'street', group: 'red', label: 'macy*s', price: 220, rent: [18, 90, 250, 700, 875, 1050], houseCost: 150 },
+				{ id: 'chance-east', kind: 'card', deckId: 'chance', label: 'Chance', text: 'NEW YORK LOTTERY GAMES' },
+				{ id: 'fao-schwarz', kind: 'street', group: 'red', label: 'FAO Schwarz', price: 220, rent: [18, 90, 250, 700, 875, 1050], houseCost: 150 },
+				{ id: 'bloomingdale-s', kind: 'street', group: 'red', label: "bloomingdale's", price: 240, rent: [20, 100, 300, 750, 925, 1100], houseCost: 150, presentation: { boardName: 'blooming...' } },
+				{ id: 'metro-north-railroad', kind: 'railroad', group: 'railroads', label: 'Metro-North Railroad', price: 200 },
+				{ id: 'deloitte-touche-llp', kind: 'street', group: 'yellow', label: 'Deloitte & Touche LLP', price: 260, rent: [22, 110, 330, 800, 975, 1150], houseCost: 150 },
+				{ id: 'smithbarney', kind: 'street', group: 'yellow', label: 'SmithBarney', price: 260, rent: [22, 110, 330, 800, 975, 1150], houseCost: 150 },
+				{ id: 'con-edison-gas', kind: 'utility', group: 'utilities', label: 'Con Edison Gas', price: 150 },
+				{ id: 'citibank', kind: 'street', group: 'yellow', label: 'CITIBANK', price: 280, rent: [24, 120, 360, 850, 1025, 1200], houseCost: 150 },
+				{ id: 'go-to-jail', kind: 'go-to-jail', label: 'Go to Jail', text: 'Go directly to Jail. Do not pass GO. Do not collect $200.' },
+				{ id: 'the-regency-hotel', kind: 'street', group: 'green', label: 'The Regency Hotel', price: 300, rent: [26, 130, 390, 900, 1100, 1275], houseCost: 200 },
+				{ id: 'essex-house', kind: 'street', group: 'green', label: 'Essex House', price: 300, rent: [26, 130, 390, 900, 1100, 1275], houseCost: 200 },
+				{ id: 'community-chest-east', kind: 'card', deckId: 'community-chest', label: 'Community Chest', text: 'FOLLOW INSTRUCTIONS ON TOP CARD' },
+				{ id: 'the-plaza', kind: 'street', group: 'green', label: 'The Plaza', price: 320, rent: [28, 150, 450, 1000, 1200, 1400], houseCost: 200 },
+				{ id: 'united-airlines', kind: 'railroad', group: 'railroads', label: 'United Airlines', price: 200 },
+				{ id: 'chance-north', kind: 'card', deckId: 'chance', label: 'Chance', text: 'NEW YORK LOTTERY GAMES' },
+				{ id: 'tiffany-co', kind: 'street', group: 'blue', label: 'Tiffany & CO.', price: 350, rent: [35, 175, 500, 1100, 1300, 1500], houseCost: 200 },
+				{ id: 'luxury-tax', kind: 'tax', label: 'LUXURY TAX', text: 'Pay $75', tax: 75, onLand: luxuryTax },
+				{ id: 'trump-tower', kind: 'street', group: 'blue', label: 'TRUMP TOWER', price: 400, rent: [50, 200, 600, 1400, 1700, 2000], houseCost: 200 }
+			]
 		});
 	}
 
 	function buildCommunityChestCards() {
 		var cards = [];
 
-		cards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(game, p) { p.communityChestJailCard = true; });
+		cards[0] = new Card("Get out of Jail, Free. This card may be kept until needed or sold.", function(game, p, context) { p.heldCards.push(context.cardId); });
 		cards[1] = new Card("You have won lifetime home delivery of the New York Times. Collect $10", function(game) { game.addAmount(10, 'Community Chest');});
 		cards[2] = new Card("From sale of Macy's stock, you get $45", function(game) { game.addAmount(45, 'Community Chest');});
 		cards[3] = new Card("Life insurance matures. Collect $100", function(game) { game.addAmount(100, 'Community Chest');});
@@ -239,8 +131,8 @@
 		cards[10] = new Card("Pay school tax of $150", function(game) { game.subtractAmount(150, 'Community Chest');});
 		cards[11] = new Card("Doctor's fee. Pay $50", function(game) { game.subtractAmount(50, 'Community Chest');});
 		cards[12] = new Card("Madison Square Garden opening tonight. Collect $50 from every player for opening night seats.", function(game) { game.collectFromEachPlayer(50, 'Community Chest');});
-		cards[13] = new Card("You have won kiss cash! Advance to GO (Collect $200)", function(game) { game.advance(0);});
-		cards[14] = new Card("You are assessed for street repairs. $40 per house. $115 per hotel.", function(game) { game.streetRepairs(40, 115);});
+		cards[13] = new Card("You have won kiss cash! Advance to GO (Collect $200)", function(game) { game.advanceToSquare('go', 'always');});
+		cards[14] = new Card("You are assessed for street repairs. $40 per house. $115 per hotel.", function(game) { game.streetRepairs(40, 115, 'Community Chest');});
 		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass GO. Do not collect $200.", function(game) { game.goToJail();});
 
 		return cards;
@@ -249,21 +141,21 @@
 	function buildChanceCards() {
 		var cards = [];
 
-		cards[0] = new Card("Get out of Jail free. This card may be kept until needed or sold.", function(game, p) { p.chanceJailCard = true; });
-		cards[1] = new Card("Make general repairs on all your property. For each house pay $25. For each hotel $100.", function(game) { game.streetRepairs(25, 100);});
+		cards[0] = new Card("Get out of Jail free. This card may be kept until needed or sold.", function(game, p, context) { p.heldCards.push(context.cardId); });
+		cards[1] = new Card("Make general repairs on all your property. For each house pay $25. For each hotel $100.", function(game) { game.streetRepairs(25, 100, 'Chance');});
 		cards[2] = new Card("Pay poor tax of $15.", function(game) { game.subtractAmount(15, 'Chance');});
 		cards[3] = new Card("You have been elected chairman of Con Edison. Pay each player $50.", function(game) { game.payEachPlayer(50, 'Chance');});
-		cards[4] = new Card("Go back 3 spaces.", function(game) { game.goBackThreeSpaces();});
-		cards[5] = new Card("Advance token to the nearest Con Edison utility. If UNOWNED you may buy it from the bank. If OWNED, throw dice and pay owner a total of ten times the amount thrown.", function(game) { game.advanceToNearestUtility();});
+		cards[4] = new Card("Go back 3 spaces.", function(game) { game.moveRelative(-3);});
+		cards[5] = new Card("Advance token to the nearest Con Edison utility. If UNOWNED you may buy it from the bank. If OWNED, throw dice and pay owner a total of ten times the amount thrown.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.utilities.groupId);});
 		cards[6] = new Card("Citibank pays you interest of $50.", function(game) { game.addAmount(50, 'Chance');});
-		cards[7] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled. If Transportation is unowned, you may buy it from the Bank.", function(game) { game.advanceToNearestRailroad();});
-		cards[8] = new Card("Take a walk past The Essex House. Advance to GO. Collect $200.", function(game) { game.advance(0, 32);});
-		cards[9] = new Card("Take a ride to the Regency Hotel! If you pass GO collect $200.", function(game) { game.advance(31);});
-		cards[10] = new Card("Take a walk on fifth avenue. Advance token to Trump Tower.", function(game) { game.advance(39);});
-		cards[11] = new Card("Advance to thirteen.", function(game) { game.advance(13);});
+		cards[7] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled. If Transportation is unowned, you may buy it from the Bank.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
+		cards[8] = new Card("Take a walk past The Essex House. Advance to GO. Collect $200.", function(game) { game.advanceToSquare('go', 'always');});
+		cards[9] = new Card("Take a ride to the Regency Hotel! If you pass GO collect $200.", function(game) { game.advanceToSquare('the-regency-hotel', 'onCrossing');});
+		cards[10] = new Card("Take a walk on fifth avenue. Advance token to Trump Tower.", function(game) { game.advanceToSquare('trump-tower', 'never');});
+		cards[11] = new Card("Advance to thirteen.", function(game) { game.advanceToSquare('thirteen-wnet', 'never');});
 		cards[12] = new Card("Your Smith Barney mutual fund pays dividend. Collect $150.", function(game) { game.addAmount(150, 'Chance');});
-		cards[13] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled.\n\nIf Transportation is unowned, you may buy it from the Bank.", function(game) { game.advanceToNearestRailroad();});
-		cards[14] = new Card("Catch a bus to Central Park. If you pass GO, collect $200.", function(game) { game.advance(9);});
+		cards[13] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled.\n\nIf Transportation is unowned, you may buy it from the Bank.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
+		cards[14] = new Card("Catch a bus to Central Park. If you pass GO, collect $200.", function(game) { game.advanceToSquare('central-park', 'onCrossing');});
 		cards[15] = new Card("Go directly to Jail. Do not pass GO, do not collect $200.", function(game) { game.goToJail();});
 
 		return cards;
@@ -271,9 +163,11 @@
 
 	Monopoly.Editions.register("NYC", {
 		buildBoard: buildBoard,
-		buildGroups: buildGroups,
-		buildSquares: buildSquares,
-		buildCommunityChestCards: buildCommunityChestCards,
-		buildChanceCards: buildChanceCards
+		buildCardDecks: function() {
+			return {
+				'community-chest': { label: 'Community Chest', icon: 'images/community_chest_icon.png', cards: buildCommunityChestCards(), keepable: [0], continueTurn: [13, 15] },
+				chance: { label: 'Chance', icon: 'images/chance_icon.png', cards: buildChanceCards(), keepable: [0], continueTurn: [4, 5, 7, 8, 9, 10, 11, 13, 14, 15] }
+			};
+		}
 	});
 })(typeof window !== 'undefined' ? window : globalThis);

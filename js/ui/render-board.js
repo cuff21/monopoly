@@ -8,6 +8,17 @@ async function updatePosition(gameInstance) {
 	var players = gameState ? gameState.player : player;
 	var playerCount = gameState ? gameState.pcount : pcount;
 	var currentTurn = gameState ? gameState.turn : turn;
+	var board = gameState && gameState.board;
+	var boardIds = [];
+	if (board) {
+		var cursor = board.startSquareId;
+		for (var boardIndex = 0; boardIndex < Object.keys(board.squaresById).length; boardIndex++) {
+			boardIds.push(cursor);
+			cursor = board.squaresById[cursor].nextId;
+		}
+	}
+	var squareIndexById = Object.create(null);
+	boardIds.forEach(function(squareId, index) { squareIndexById[squareId] = index; });
 	var previousPositions = gameState ? (gameState.lastKnownPosition || (gameState.lastKnownPosition = [])) : lastKnownPosition;
 	var previousJails = gameState ? (gameState.lastKnownJail || (gameState.lastKnownJail = [])) : lastKnownJail;
 	var moveDirection = gameState ? (gameState.nextMoveDirection || 1) : nextMoveDirection;
@@ -19,8 +30,8 @@ async function updatePosition(gameInstance) {
 		var wasJailed = previousJails[i];
 		if (previousPosition !== undefined && !wasJailed && currentPlayer.jail) {
 			movers.push({ index: i, toJail: true });
-		} else if (previousPosition !== undefined && !wasJailed && !currentPlayer.jail && previousPosition !== currentPlayer.position) {
-			movers.push({ index: i, fromIndex: previousPosition, toIndex: currentPlayer.position, direction: moveDirection });
+		} else if (previousPosition !== undefined && !wasJailed && !currentPlayer.jail && previousPosition !== squareIndexById[currentPlayer.squareId]) {
+			movers.push({ index: i, fromIndex: previousPosition, toIndex: squareIndexById[currentPlayer.squareId], direction: moveDirection });
 			if (gameState) gameState.nextMoveDirection = 1;
 			else nextMoveDirection = 1;
 			moveDirection = 1;
@@ -29,23 +40,25 @@ async function updatePosition(gameInstance) {
 
 	document.getElementById("jail").style.border = "1px solid black";
 	document.getElementById("jailpositionholder").innerHTML = "";
-	for (var i = 0; i < 40; i++) {
-		document.getElementById("cell" + i).style.border = "1px solid black";
-		document.getElementById("cell" + i + "positionholder").innerHTML = "";
+	for (var i = 0; i < boardIds.length; i++) {
+		var cell = document.getElementById("cell" + i);
+		var holder = document.getElementById("cell" + i + "positionholder");
+		if (cell) cell.style.border = "1px solid black";
+		if (holder) holder.innerHTML = "";
 	}
 
 	var left, top;
-	for (var x = 0; x < 40; x++) {
+	for (var x = 0; x < boardIds.length; x++) {
 		left = 0;
 		top = 0;
 		for (var y = currentTurn; y <= playerCount; y++) {
-			if (players[y].position == x && !players[y].jail) {
+			if (squareIndexById[players[y].squareId] === x && !players[y].jail) {
 				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + players[y].name + "' style='background-color: " + players[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
 				if (left == 36) { left = 0; top = 12; } else left += 12;
 			}
 		}
 		for (var y = 1; y < currentTurn; y++) {
-			if (players[y].position == x && !players[y].jail) {
+			if (squareIndexById[players[y].squareId] === x && !players[y].jail) {
 				document.getElementById("cell" + x + "positionholder").innerHTML += "<div class='cell-position player-token' id='playertoken" + y + "' title='" + players[y].name + "' style='background-color: " + players[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
 				if (left == 36) { left = 0; top = 12; } else left += 12;
 			}
@@ -69,7 +82,7 @@ async function updatePosition(gameInstance) {
 
 	var currentPlayer = players[currentTurn];
 	if (currentPlayer.jail) document.getElementById("jail").style.border = "1px solid " + currentPlayer.color;
-	else document.getElementById("cell" + currentPlayer.position).style.border = "1px solid " + currentPlayer.color;
+	else if (document.getElementById("cell" + squareIndexById[currentPlayer.squareId])) document.getElementById("cell" + squareIndexById[currentPlayer.squareId]).style.border = "1px solid " + currentPlayer.color;
 
 	var movingIndexes = movers.map(function(move) { return move.index; });
 	for (var i = 1; i <= playerCount; i++) {
@@ -78,11 +91,11 @@ async function updatePosition(gameInstance) {
 	var animations = movers.map(function(move) {
 		return move.toJail
 			? animateOverlayToJail(move.index, gameState)
-			: animateOverlayMove(move.index, move.fromIndex, move.toIndex, move.direction, gameState);
+			: animateOverlayMove(move.index, move.fromIndex, move.toIndex, move.direction, gameState, boardIds.length);
 	});
 	if (animations.length > 0) await Promise.all(animations);
 	for (var i = 1; i <= playerCount; i++) {
-		previousPositions[i] = players[i].position;
+		previousPositions[i] = squareIndexById[players[i].squareId];
 		previousJails[i] = players[i].jail;
 	}
 }
@@ -94,14 +107,14 @@ function getCellRect(index) {
 var boardCorners = [0, 10, 20, 30];
 
 // Include crossed corners so long moves follow the board path rather than cutting across it.
-function buildWaypointIndexes(fromIndex, toIndex, direction) {
+function buildWaypointIndexes(fromIndex, toIndex, direction, count) {
+	count = count || 40;
 	var distance = direction === 1
-		? ((toIndex - fromIndex) % 40 + 40) % 40
-		: ((fromIndex - toIndex) % 40 + 40) % 40;
+		? ((toIndex - fromIndex) % count + count) % count
+		: ((fromIndex - toIndex) % count + count) % count;
 	var waypoints = [];
 	for (var step = 1; step < distance; step++) {
-		var index = ((fromIndex + direction * step) % 40 + 40) % 40;
-		if (boardCorners.indexOf(index) !== -1) waypoints.push(index);
+		waypoints.push(((fromIndex + direction * step) % count + count) % count);
 	}
 	waypoints.push(toIndex);
 	return waypoints;
@@ -161,7 +174,14 @@ function getFallbackRect(i, gameState) {
 	var players = gameState ? gameState.player : player;
 	var p = players[i];
 	if (!p) return null;
-	return p.jail ? document.getElementById("jail").getBoundingClientRect() : getCellRect(p.position);
+	if (p.jail) return document.getElementById("jail").getBoundingClientRect();
+	var board = gameState && gameState.board;
+	var cursor = board && board.startSquareId;
+	for (var index = 0; board && index < Object.keys(board.squaresById).length; index++) {
+		if (cursor === p.squareId) return getCellRect(index);
+		cursor = board.squaresById[cursor].nextId;
+	}
+	return null;
 }
 
 function slideOverlay(overlay, changes, duration) {
@@ -175,9 +195,9 @@ function slideOverlay(overlay, changes, duration) {
 	});
 }
 
-async function animateOverlayMove(i, fromIndex, toIndex, direction, gameState) {
+async function animateOverlayMove(i, fromIndex, toIndex, direction, gameState, boardSize) {
 	var overlay = getOrCreateOverlay(i, gameState);
-	var waypoints = buildWaypointIndexes(fromIndex, toIndex, direction);
+	var waypoints = buildWaypointIndexes(fromIndex, toIndex, direction, boardSize);
 	var currentRect = getCellRect(fromIndex);
 	var currentPos = toPagePosition(currentRect);
 	overlay.style.transition = "none";

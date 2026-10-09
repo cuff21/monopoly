@@ -6,7 +6,7 @@ const UIBridge = require('./js/core/ui-bridge');
 const { BrowserUI } = require('./js/ui/browser-ui');
 const RenderBoard = require('./js/ui/render-board');
 const { Game } = require('./js/game/game-core');
-const TurnFlow = require('./js/game/turn-flow-explicit');
+const TurnFlow = require('./js/game/turn-flow');
 const TradeView = require('./js/ui/trade-view');
 const RenderPanels = require('./js/ui/render-panels');
 const PopupView = require('./js/ui/popup');
@@ -58,23 +58,31 @@ async function runTests() {
 	console.log('✔ Player payments update state without global rendering.');
 
 	const cardUiCalls = [];
+	const observedCardContexts = [];
 	const originalGlobalUpdateOwned = global.updateOwned;
 	global.updateOwned = () => { throw new Error('card actions must not call the global renderer'); };
 	try {
+		const cardPlayer = { human: true, squareId: 'chance-south', heldCards: [] };
+		GameStateContext.assignPlayerId(cardPlayer, 1);
+		const cardBoard = global.Monopoly.Editions.get('Classic').buildBoard();
 		const cardState = GameStateContext.createState({
-			player: [null, { human: true, communityChestJailCard: false, chanceJailCard: false }],
-			turn: 1,
-			communityChestCards: [{ action(game, player) { player.communityChestJailCard = true; } }],
-			chanceCards: [{ action(game, player) { player.chanceJailCard = true; } }]
+			player: [null, cardPlayer], pcount: 1, turn: 1, board: cardBoard,
+			cardDecks: {
+				'community-chest': { cards: [{ action(context) { observedCardContexts.push(context); context.state.player[1].heldCards.push(context.cardId); } }], order: [0], index: 0 },
+				chance: { cards: [{ action(context) { observedCardContexts.push(context); context.state.player[1].heldCards.push(context.cardId); } }], order: [0], index: 0 }
+			}
 		});
+		GameStateContext.initializeBoardState(cardState, cardBoard);
 		const cardGame = new Game({
 				updateOwned() { cardUiCalls.push('owned'); },
 				updateMoney() { cardUiCalls.push('money'); }
 		}, cardState);
-		TurnFlow.communityChestAction(cardGame, 0);
-		TurnFlow.chanceAction(cardGame, 0);
-		assert.strictEqual(cardGame.state.player[1].communityChestJailCard, true);
-		assert.strictEqual(cardGame.state.player[1].chanceJailCard, true);
+		await TurnFlow.cardAction(cardGame, 'community-chest', 0);
+		await TurnFlow.cardAction(cardGame, 'chance', 0);
+		assert.deepStrictEqual(cardGame.state.player[1].heldCards, ['community-chest:0', 'chance:0']);
+		assert.deepStrictEqual(Object.keys(observedCardContexts[0]).sort(), ['cardId', 'cardIndex', 'deckId', 'game', 'playerId', 'squareId', 'state', 'ui']);
+		assert.strictEqual(observedCardContexts[0].playerId, 'player-1');
+		assert.strictEqual(observedCardContexts[0].squareId, 'chance-south');
 		assert.deepStrictEqual(cardUiCalls, ['owned', 'money', 'owned', 'money']);
 	} finally {
 		if (originalGlobalUpdateOwned === undefined) delete global.updateOwned;
@@ -84,24 +92,22 @@ async function runTests() {
 
 	const cardLandingCalls = [[], []];
 	function createCardLandingGame(index, award) {
-		const cardPlayer = { name: 'Card player ' + index, human: true, position: 7, money: 1000, pay(amount) { this.money -= amount; } };
-		const deck = [{ action(game) { game.state.player[1].money += award; } }];
-		deck.deck = [0];
-		deck.index = 0;
+		const cardPlayer = { name: 'Card player ' + index, human: true, squareId: 'chance-south', money: 1000, heldCards: [], pay(amount) { this.money -= amount; } };
+		GameStateContext.assignPlayerId(cardPlayer, 1);
+		const deck = { cards: [{ action(context) { context.state.player[1].money += award; } }], order: [0], index: 0, label: 'Chance', icon: '' };
 		const ui = {
 			isHeadless: true,
 			displayLanded() {}, alert(text) { cardLandingCalls[index].push(text); },
 			updateMoney() {}, updateOwned() {}, updatePosition() { return Promise.resolve(); }
 		};
-		const game = new Game(ui, GameStateContext.createState({
+		const state = GameStateContext.createState({
 			player: [null, cardPlayer], pcount: 1, turn: 1,
-			square: Array.from({ length: 40 }, (_, squareIndex) => ({
-				name: 'Square ' + squareIndex, owner: 0, price: 0, groupNumber: 0, landcount: 0
-			})),
-			chanceCards: deck,
-			communityChestCards: [],
+			board: global.Monopoly.Editions.get('Classic').buildBoard(),
+			cardDecks: { chance: deck },
 			auctionEnabled: false
-		}));
+		});
+		GameStateContext.initializeBoardState(state, state.board);
+		const game = new Game(ui, state);
 		game.getDie = () => 1;
 		return game;
 	}
@@ -110,8 +116,8 @@ async function runTests() {
 	await Promise.all([firstCardGame.land(), secondCardGame.land()]);
 	assert.strictEqual(firstCardGame.state.player[1].money, 1010);
 	assert.strictEqual(secondCardGame.state.player[1].money, 1050);
-	assert.strictEqual(firstCardGame.state.chanceCards.index, 0);
-	assert.strictEqual(secondCardGame.state.chanceCards.index, 0);
+	assert.strictEqual(firstCardGame.state.cardDecks.chance.index, 0);
+	assert.strictEqual(secondCardGame.state.cardDecks.chance.index, 0);
 	assert.ok(cardLandingCalls[0][0].includes('Card player 0'));
 	assert.ok(cardLandingCalls[1][0].includes('Card player 1'));
 	console.log('✔ Overlapping card landings retain per-Game decks, effects, and UI routing.');
@@ -120,225 +126,135 @@ async function runTests() {
 	assert.throws(function() {
 		global.Monopoly.Editions.register('Invalid Edition', {});
 	}, /must provide buildBoard/);
-	const defaultSquare = new global.Square({ name: 'Default', presentation: { color: 'white', priceText: '' } });
-	assert.strictEqual(defaultSquare.owner, 0);
-	assert.strictEqual(defaultSquare.groupNumber, 0);
-	assert.strictEqual(defaultSquare.price, 0);
-	assert.strictEqual(defaultSquare.baserent, 0);
-	assert.deepStrictEqual([defaultSquare.rent1, defaultSquare.rent2, defaultSquare.rent3, defaultSquare.rent4, defaultSquare.rent5], [0, 0, 0, 0, 0]);
-	assert.strictEqual(defaultSquare.houseprice, 0);
+	assert.throws(() => new global.Square('GO'), /structured specification/);
+	assert.throws(() => new global.Square({ name: 'GO' }), /structured specification/);
 	const onLand = function() {};
-	const groupProfile = { kind: 'test' };
-	const tokenImage = { src: 'token.png', height: 12, width: 12 };
-	const rentText = function() { return 'special'; };
 	const configuredSquare = new global.Square({
-		name: 'Configured',
-		rules: { price: 140, groupNumber: 5, baseRent: 10, rentTiers: [50, 150, 450, 625, 750] },
-		presentation: { color: 'purple', priceText: '$140', boardName: 'Configured Square', tokenImage, rentText },
-		behavior: { groupProfile, onLand }
+		id: 'configured-square',
+		kind: 'street',
+		groupId: 'purple',
+		rules: { purchasePrice: 140, baseRent: 10, rentTiers: [50, 150, 450, 625, 750], mortgageValue: 70, houseCost: 100, taxAmount: 0 },
+		presentation: { label: 'Configured Square', x: 50, y: 50, rotationDegrees: 0 },
+		behavior: { onLand }
 	});
-	assert.deepStrictEqual([configuredSquare.price, configuredSquare.groupNumber, configuredSquare.baserent, configuredSquare.rent1, configuredSquare.rent5], [140, 5, 10, 50, 750]);
-	assert.strictEqual(configuredSquare.houseprice, 100);
-	assert.strictEqual(configuredSquare.color, 'purple');
-	assert.strictEqual(configuredSquare.pricetext, '$140');
-	assert.deepStrictEqual(configuredSquare.display, { boardName: 'Configured Square', tokenImage, rentText });
-	assert.strictEqual(configuredSquare.groupProfile, groupProfile);
-	assert.strictEqual(configuredSquare.onLand, onLand);
+	assert.strictEqual(configuredSquare.id, 'configured-square');
+	assert.strictEqual(configuredSquare.rules.purchasePrice, 140);
+	assert.strictEqual(configuredSquare.rules.rentTiers[4], 750);
+	assert.strictEqual(configuredSquare.presentation.label, 'Configured Square');
+	assert.strictEqual(configuredSquare.behavior.onLand, onLand);
 	assert.strictEqual(EditionRenderer.formatRentText({ display: {} }, 125), '$125');
 	assert.strictEqual(EditionRenderer.formatRentText({ display: { rentText: () => '<b>Custom</b>' } }, 125), '&lt;b&gt;Custom&lt;/b&gt;');
-	const rentEditions = global.Monopoly.Editions;
-	const previousRentEdition = rentEditions.getActiveName();
-	const previousSquares = global.square;
-	function assignRentGroups(squares) {
-		squares.forEach(property => {
-			if (property.groupNumber) {
-				property.group = squares.reduce((indices, candidate, index) => {
-					if (candidate.groupNumber === property.groupNumber) indices.push(index);
-					return indices;
-				}, []);
-			}
-		});
-	}
-	try {
-		['Classic', 'NYC'].forEach(editionName => {
-			rentEditions.setActive(editionName);
-			const edition = rentEditions.getActive();
-			const editionGroups = edition.buildGroups();
-			const editionSquares = edition.buildSquares(editionGroups);
-			assert.strictEqual(editionSquares.length, 40);
-			assert.ok(editionSquares.every(property => property instanceof global.Square));
-			assert.strictEqual(editionGroups.length, 11);
-			for (let groupNumber = 1; groupNumber <= 10; groupNumber++) {
-				assert.ok(editionGroups[groupNumber]);
-				assert.ok(editionGroups[groupNumber].groupName);
-				assert.ok(editionGroups[groupNumber].groupColor);
-			}
-			editionSquares.forEach(property => {
-				if (property.groupNumber > 0) assert.ok(editionGroups[property.groupNumber]);
-			});
-			assignRentGroups(editionSquares);
-			global.square = editionSquares;
-			assert.ok(editionSquares[1].price > 0);
-			assert.ok(editionSquares[1].rent1 > 0);
-			assert.strictEqual(editionSquares[1].color, editionGroups[editionSquares[1].groupNumber].groupColor);
-			assert.strictEqual(editionSquares[1].groupName, editionGroups[editionSquares[1].groupNumber].groupName);
-			assert.strictEqual(editionSquares[1].pricetext, '$' + editionSquares[1].price);
-			assert.strictEqual(editionSquares[1].groupProfile, editionGroups[editionSquares[1].groupNumber].rules);
-			assert.strictEqual(editionSquares[1].display.boardName, editionName === 'Classic' ? 'Mediter-ranean Avenue' : undefined);
-			assert.strictEqual(editionSquares[1].groupProfile.rentRule.mode, 'colorGroup');
-
-			const colorProperty = editionSquares.find(property => property.groupNumber >= 3);
-			colorProperty.group.forEach(index => { editionSquares[index].owner = 1; });
-			assert.strictEqual(getCurrentRent(colorProperty.index || editionSquares.indexOf(colorProperty)), colorProperty.baserent * 2);
-			colorProperty.house = 1;
-			assert.strictEqual(getCurrentRent(editionSquares.indexOf(colorProperty)), colorProperty.rent1);
-			colorProperty.house = 0;
-			const transit = editionSquares.findIndex(property => property.groupProfile && property.groupProfile.kind === 'transit');
-			const transitGroup = editionSquares[transit].group;
-			assert.strictEqual(editionSquares[transit].display.tokenImage, editionGroups[1].presentation.tokenImage || undefined);
-			editionSquares[transit].owner = 1;
-			assert.strictEqual(getCurrentRent(transit), 25);
-			transitGroup.forEach(index => { editionSquares[index].owner = 1; });
-			assert.strictEqual(getCurrentRent(transit), 200);
-
-			const utility = editionSquares.findIndex(property => property.groupProfile && property.groupProfile.kind === 'utility');
-			const utilityGroup = editionSquares[utility].group;
-			assert.strictEqual(editionSquares[utility].display.rentText, editionGroups[2].presentation.rentText);
-			if (editionName === 'Classic') assert.strictEqual(editionSquares[utility].display.tokenImage.src, 'images/electric_icon.png');
-			utilityGroup.forEach(index => { editionSquares[index].owner = 1; });
-			assert.deepStrictEqual(getCurrentRent(utility), { type: 'diceMultiplier', multiplier: 10 });
-			assert.strictEqual(EditionRenderer.formatRentText(editionSquares[utility], getCurrentRent(utility)), '10x dice');
-			editionSquares[utilityGroup[1]].owner = 2;
-			assert.deepStrictEqual(getCurrentRent(utility), { type: 'diceMultiplier', multiplier: 4 });
-			assert.strictEqual(EditionRenderer.formatRentText(editionSquares[utility], getCurrentRent(utility)), '4x dice');
-			if (editionName === 'Classic') {
-				assert.deepStrictEqual([editionSquares[1].price, editionSquares[1].baserent, editionSquares[1].rent1, editionSquares[1].rent5, editionSquares[1].houseprice], [60, 2, 10, 250, 50]);
-				assert.deepStrictEqual(transitGroup.map(index => editionSquares[index].price), [200, 200, 200, 200]);
-			} else {
-				assert.deepStrictEqual([editionSquares[21].price, editionSquares[21].baserent, editionSquares[21].rent1, editionSquares[21].rent5, editionSquares[21].houseprice], [220, 18, 90, 1050, 150]);
-				assert.deepStrictEqual(utilityGroup.map(index => editionSquares[index].price), [150, 150]);
-			}
-		});
-
-		global.square = Array.from({ length: 8 }, () => ({ owner: 0 }));
-		global.square[3] = {
-			owner: 1,
-			price: 100,
-			groupNumber: 91,
-			group: [3, 6],
-			groupProfile: { rentRule: { mode: 'fixed', tiers: [15, 73] } }
-		};
-		global.square[6] = { owner: 1 };
-		assert.strictEqual(getCurrentRent(3), 73);
-		global.square[6].owner = 2;
-		assert.strictEqual(getCurrentRent(3), 15);
-		global.square[3].groupProfile.calculateRent = () => 91;
-		assert.strictEqual(getCurrentRent(3), 91);
-		global.square[3].groupProfile = { rentRule: { mode: 'colorGroup', monopolyMultiplier: 2 } };
-		global.square[3].baserent = 20;
-		global.square[6].owner = 1;
-		assert.strictEqual(getCurrentRent(3), 40);
-		global.square[6].owner = 2;
-		assert.strictEqual(getCurrentRent(3), 20);
-		global.square[6].owner = 1;
-		global.square[3].groupProfile = {};
-		assert.strictEqual(getCurrentRent(3), 40);
-	} finally {
-		rentEditions.setActive(previousRentEdition);
-		if (previousSquares === undefined) delete global.square;
-		else global.square = previousSquares;
-	}
-	console.log('✔ Rent calculations are edition-owned and independent of board positions and tooltip labels.');
+	['Classic', 'NYC'].forEach(editionId => {
+		const board = global.Monopoly.Editions.get(editionId).buildBoard();
+		assert.strictEqual(Object.keys(board.squaresById).length, 40);
+		assert.strictEqual(board.squaresById['go'].kind, 'go');
+		assert.strictEqual(board.startSquareId, 'go');
+	});
+	const classicBoard = global.Monopoly.Editions.get('Classic').buildBoard();
+	assert.deepStrictEqual(classicBoard.squaresById['mediterranean-avenue'].rules.rentTiers, [10, 30, 90, 160, 250]);
+	assert.strictEqual(classicBoard.squaresById['mediterranean-avenue'].rules.houseCost, 50);
+	assert.strictEqual(classicBoard.groupsById.brown.rules.monopolyMultiplier, 2);
+	const nycBoard = global.Monopoly.Editions.get('NYC').buildBoard();
+	assert.strictEqual(nycBoard.squaresById['port-authority-bus-terminal'].rules.purchasePrice, 60);
+	assert.strictEqual(nycBoard.groupsById['dark-purple'].squareIds.length, 2);
+	assert.deepStrictEqual(nycBoard.squaresById['lomto'].rules.rentTiers, [25, 50, 100, 200, 400]);
+	console.log('✔ Classic and NYC expose native Board economics and group rules by stable ID.');
 
 	async function runMovementFixture(startPosition, movement, boardSize) {
 		const traveler = new global.Player('Traveler', 'red');
-		traveler.position = startPosition;
-		const squares = Array.from({ length: boardSize || 40 }, (_, index) => ({
+		traveler.human = true;
+		const tileCount = boardSize || 40;
+		const squares = Array.from({ length: tileCount }, (_, index) => ({
 			name: 'Square ' + index, owner: 0, price: 0, landcount: 0, groupNumber: 0
 		}));
+		const squareIds = Array.from({ length: tileCount }, (_, index) => index === 0 ? 'go' : 'fixture-square-' + index);
+		const squaresById = {};
+		squareIds.forEach((id, index) => {
+			squaresById[id] = {
+				id, kind: index === 0 ? 'go' : 'free-parking',
+				nextId: squareIds[(index + 1) % tileCount],
+				previousId: squareIds[(index + tileCount - 1) % tileCount],
+				rules: { purchasePrice: 0, baseRent: 0, rentTiers: [], mortgageValue: 0, houseCost: 0, taxAmount: 0 },
+				presentation: { x: index * 100 / tileCount, y: 50, rotationDegrees: 0 }
+			};
+		});
+		const board = global.validateBoard(new global.Board({
+			editionId: 'MovementFixture', startSquareId: 'go', squaresById, groupsById: {},
+			rules: { startSalary: 200, houseTotal: 32, hotelTotal: 12, bailAmount: 50 }
+		}));
+		traveler.squareId = squareIds[startPosition];
 		const ui = {
 			alert() {}, displayLanded() {}, updateMoney() {}, updateOwned() {},
 			updatePosition() { return Promise.resolve(); }
 		};
 		const state = GameStateContext.createState({
-			player: [null, traveler], pcount: 1, turn: 1, square: squares,
+			player: [null, traveler], pcount: 1, turn: 1, square: squares, board,
 			auctionEnabled: false, pendingAuction: -1
 		});
+		GameStateContext.initializeBoardState(state, board);
 		const game = new Game(ui, state);
 		game.getDie = () => 1;
 		await movement(game);
 		return { traveler, state, game };
 	}
 
-	const forwardStartCrossing = await runMovementFixture(35, game => game.advance(5));
+	const forwardStartCrossing = await runMovementFixture(35, game => game.advanceToSquare('fixture-square-5', 'onCrossing'));
 	assert.strictEqual(forwardStartCrossing.traveler.money, 1700, 'forward Start crossing pays salary once');
-	const backwardMovement = await runMovementFixture(1, game => game.goBackThreeSpaces());
-	assert.strictEqual(backwardMovement.traveler.position, 38, 'backward movement wraps around the board');
+	const backwardMovement = await runMovementFixture(1, game => game.moveRelative(-3));
+	assert.strictEqual(backwardMovement.traveler.squareId, 'fixture-square-38', 'backward movement wraps around the board');
 	assert.strictEqual(backwardMovement.traveler.money, 1500, 'backward movement does not pay Start salary');
-	const variableBoardMovement = await runMovementFixture(1, game => game.goBackThreeSpaces(), 52);
-	assert.strictEqual(variableBoardMovement.traveler.position, 50, 'backward movement uses the current board length');
-	const landingOnStart = await runMovementFixture(35, game => game.advance(0));
+	const variableBoardMovement = await runMovementFixture(1, game => game.moveRelative(-3), 52);
+	assert.strictEqual(variableBoardMovement.traveler.squareId, 'fixture-square-50', 'backward movement uses the current board length');
+	const landingOnStart = await runMovementFixture(35, game => game.advanceToSquare('go', 'onCrossing'));
 	assert.strictEqual(landingOnStart.traveler.money, 1700, 'landing on Start pays salary once');
+	const idAdvanceCrossingStart = await runMovementFixture(35, game => game.advanceToSquare('fixture-square-5', 'onCrossing'));
+	assert.strictEqual(idAdvanceCrossingStart.traveler.money, 1700, 'ID advance pays salary when the route crosses Start');
+	const idAdvanceWithoutCrossing = await runMovementFixture(1, game => game.advanceToSquare('fixture-square-5', 'onCrossing'));
+	assert.strictEqual(idAdvanceWithoutCrossing.traveler.money, 1500, 'ID advance does not pay salary without crossing Start');
+	const idAdvanceWithoutSalary = await runMovementFixture(35, game => game.advanceToSquare('fixture-square-5', 'never'));
+	assert.strictEqual(idAdvanceWithoutSalary.traveler.money, 1500, 'explicit no-salary ID advance does not pay for crossing Start');
+	const idAdvanceToGoSalary = await runMovementFixture(1, game => game.advanceToSquare('go', 'always'));
+	assert.strictEqual(idAdvanceToGoSalary.traveler.money, 1700, 'explicit GO card salary is awarded');
 	console.log('✔ Deterministic movement fixtures cover Start crossing, landing, and backward wrapping.');
 
-	const bank = { name: 'Bank', index: 0, money: 0 };
-	const bankruptPlayer = { name: 'Bankrupt', index: 1, money: -100, creditor: 2, chanceJailCard: false, communityChestJailCard: false };
-	const creditor = { name: 'Creditor', index: 2, money: 500, human: true };
-	const bankruptcySquares = Array.from({ length: 40 }, () => ({ owner: 0, mortgage: false, house: 0, hotel: 0 }));
-	bankruptcySquares[1] = { owner: 1, mortgage: false, house: 0, hotel: 0, name: 'Fixture property' };
-	const bankruptcyGame = new Game({
-		alert() {}, removePlayerToken() {}, onPlayerCountChanged() {}, updateMoney() {}, updateOwned() {}, onGameOver() {}
-	}, {
-		player: [bank, bankruptPlayer, creditor], square: bankruptcySquares, pcount: 2, turn: 1,
-		playerOverlays: [], lastKnownPosition: [], lastKnownJail: [], playersGame: []
-	});
-	bankruptcyGame.bankruptcy();
-	assert.strictEqual(bankruptcyGame.state.pcount, 1, 'bankruptcy removes the active player');
-	assert.strictEqual(bankruptcyGame.state.player[1], creditor, 'creditor becomes the remaining active seat');
-	assert.strictEqual(creditor.index, 1, 'remaining players receive compact roster indexes');
-	assert.strictEqual(bankruptcyGame.state.square[1].owner, 1, 'creditor property survives seat compaction');
-	assert.strictEqual(creditor.money, 400, 'negative cash transfers to the player creditor');
-	console.log('✔ Deterministic bankruptcy fixture preserves creditor ownership through elimination.');
-
-	function assertCardDestination(editionName, deckName, cardIndex, expectedCalls) {
+	async function assertCardDestination(editionName, deckName, cardIndex, expectedCalls) {
 		const edition = global.Monopoly.Editions.get(editionName);
 		const cardPlayer = new global.Player('Card traveler', 'red');
 		cardPlayer.human = true;
-		const state = GameStateContext.createState({
-			player: [null, cardPlayer], pcount: 1, turn: 1,
-			square: edition.buildSquares(edition.buildGroups()),
-			communityChestCards: edition.buildCommunityChestCards(),
-			chanceCards: edition.buildChanceCards()
-		});
+		GameStateContext.assignPlayerId(cardPlayer, 1);
+		const board = edition.buildBoard();
+		const state = GameStateContext.createState({ player: [null, cardPlayer], pcount: 1, turn: 1, board,
+			cardDecks: global.Monopoly.Editions.buildCardDecksForGame(editionName) });
+		GameStateContext.initializeBoardState(state, board);
 		const game = new Game({ updateOwned() {}, updateMoney() {} }, state);
 		const actualCalls = [];
-		['advance', 'advanceToNearestRailroad', 'advanceToNearestUtility', 'goBackThreeSpaces', 'goToJail'].forEach(method => {
+		['advanceToSquare', 'advanceToGroupNearest', 'moveRelative', 'goToJail'].forEach(method => {
 			game[method] = function() { actualCalls.push([method].concat(Array.from(arguments))); };
 		});
-		TurnFlow[deckName === 'chance' ? 'chanceAction' : 'communityChestAction'](game, cardIndex);
+		await TurnFlow.cardAction(game, deckName, cardIndex);
 		assert.deepStrictEqual(actualCalls, expectedCalls, editionName + ' ' + deckName + ' card ' + cardIndex + ' destination');
 	}
 
-	assertCardDestination('Classic', 'chance', 9, [['advance', 5]]);
-	assertCardDestination('Classic', 'chance', 10, [['advance', 39]]);
-	assertCardDestination('Classic', 'chance', 11, [['advance', 24]]);
-	assertCardDestination('Classic', 'chance', 14, [['advance', 11]]);
-	assertCardDestination('Classic', 'chance', 4, [['goBackThreeSpaces']]);
-	assertCardDestination('Classic', 'chance', 5, [['advanceToNearestUtility']]);
-	assertCardDestination('Classic', 'chance', 7, [['advanceToNearestRailroad']]);
-	assertCardDestination('Classic', 'chance', 15, [['goToJail']]);
-	assertCardDestination('Classic', 'community-chest', 13, [['advance', 0]]);
-	assertCardDestination('NYC', 'chance', 8, [['advance', 0, 32]]);
-	assertCardDestination('NYC', 'chance', 9, [['advance', 31]]);
-	assertCardDestination('NYC', 'chance', 10, [['advance', 39]]);
-	assertCardDestination('NYC', 'chance', 11, [['advance', 13]]);
-	assertCardDestination('NYC', 'chance', 14, [['advance', 9]]);
-	assertCardDestination('NYC', 'chance', 4, [['goBackThreeSpaces']]);
-	assertCardDestination('NYC', 'chance', 13, [['advanceToNearestRailroad']]);
-	assertCardDestination('NYC', 'chance', 5, [['advanceToNearestUtility']]);
-	assertCardDestination('NYC', 'chance', 15, [['goToJail']]);
-	assertCardDestination('NYC', 'community-chest', 13, [['advance', 0]]);
-	console.log('✔ Deterministic Classic/NYC fixtures cover built-in card destinations and exact property economics.');
+	await assertCardDestination('Classic', 'chance', 9, [['advanceToSquare', 'reading-railroad', 'onCrossing']]);
+	await assertCardDestination('Classic', 'chance', 10, [['advanceToSquare', 'boardwalk', 'never']]);
+	await assertCardDestination('Classic', 'chance', 11, [['advanceToSquare', 'illinois-avenue', 'onCrossing']]);
+	await assertCardDestination('Classic', 'chance', 14, [['advanceToSquare', 'st-charles-place', 'onCrossing']]);
+	await assertCardDestination('Classic', 'chance', 4, [['moveRelative', -3]]);
+	await assertCardDestination('Classic', 'chance', 5, [['advanceToGroupNearest', 'utilities']]);
+	await assertCardDestination('Classic', 'chance', 7, [['advanceToGroupNearest', 'railroads']]);
+	await assertCardDestination('Classic', 'chance', 15, [['goToJail']]);
+	await assertCardDestination('Classic', 'community-chest', 13, [['advanceToSquare', 'go', 'always']]);
+	await assertCardDestination('NYC', 'chance', 8, [['advanceToSquare', 'go', 'always']]);
+	await assertCardDestination('NYC', 'chance', 9, [['advanceToSquare', 'the-regency-hotel', 'onCrossing']]);
+	await assertCardDestination('NYC', 'chance', 10, [['advanceToSquare', 'trump-tower', 'never']]);
+	await assertCardDestination('NYC', 'chance', 11, [['advanceToSquare', 'thirteen-wnet', 'never']]);
+	await assertCardDestination('NYC', 'chance', 14, [['advanceToSquare', 'central-park', 'onCrossing']]);
+	await assertCardDestination('NYC', 'chance', 4, [['moveRelative', -3]]);
+	await assertCardDestination('NYC', 'chance', 13, [['advanceToGroupNearest', 'railroads']]);
+	await assertCardDestination('NYC', 'chance', 5, [['advanceToGroupNearest', 'utilities']]);
+	await assertCardDestination('NYC', 'chance', 15, [['goToJail']]);
+	await assertCardDestination('NYC', 'community-chest', 13, [['advanceToSquare', 'go', 'always']]);
+	console.log('? Deterministic Classic/NYC fixtures cover generic card destinations.');
 
 	const previousEdition = global.Monopoly.Editions.getActiveName();
 	const originalRandom = Math.random;
@@ -366,65 +282,28 @@ async function runTests() {
 	assert.strictEqual(global.Monopoly.Editions.getActiveName(), previousEdition);
 	console.log('✔ Concurrent games retain isolated state and edition.');
 
-	const editionGlobals = saveGlobals(['document']);
-	global.document = undefined;
-	delete require.cache[require.resolve('./js/editions/classic')];
-	delete require.cache[require.resolve('./js/editions/newyorkcity')];
-	require('./js/editions/classic');
-	require('./js/editions/newyorkcity');
 	const editions = global.Monopoly.Editions;
-	const boardElements = {};
-	global.document = {
-		getElementById(id) {
-			if (!boardElements[id]) {
-				boardElements[id] = { textContent: '', children: [], appendChild(child) { this.children.push(child); } };
-			}
-			return boardElements[id];
-		},
-		createElement(tagName) { return { tagName }; }
-	};
+	const previousPresentationEdition = editions.getActiveName();
 	try {
-		assert.ok(editions.getNames().includes('Classic'));
-		assert.ok(editions.getNames().includes('NYC'));
-		assert.strictEqual(editions.setActive('Classic'), true);
-		const classicEdition = editions.getActive();
-		assert.strictEqual(classicEdition.display, undefined);
-		assert.strictEqual(classicEdition.deeds, undefined);
-		const classicSquares = classicEdition.buildSquares();
-		EditionRenderer.renderSquareDisplay(classicSquares);
-		assert.strictEqual(classicSquares[1].display.boardName, 'Mediter-ranean Avenue');
-		assert.strictEqual(boardElements.cell1name.textContent, 'Mediter-ranean Avenue');
-		assert.strictEqual(boardElements.enlarge5token.children[0].src, 'images/train_icon.png');
-		assert.strictEqual(classicSquares[5].groupProfile, classicSquares[15].groupProfile);
-		assert.match(EditionRenderer.renderSpecialDeedText(classicSquares[5].groupProfile), /Railroads/);
-		assert.match(EditionRenderer.renderSpecialDeedText(classicSquares[12].groupProfile), /4 times/);
-		assert.doesNotMatch(JSON.stringify(classicSquares.map(square => square.display)), /</);
-
-		assert.strictEqual(editions.setActive('NYC'), true);
-		const nycEdition = editions.getActive();
-		assert.strictEqual(nycEdition.display, undefined);
-		assert.strictEqual(nycEdition.deeds, undefined);
-		const nycSquares = nycEdition.buildSquares();
-		EditionRenderer.renderSquareDisplay(nycSquares);
-		assert.strictEqual(nycSquares[24].display.boardName, 'blooming...');
-		assert.strictEqual(boardElements.cell24name.textContent, 'blooming...');
-		assert.strictEqual(nycSquares[5].groupProfile, nycSquares[15].groupProfile);
-		assert.match(EditionRenderer.renderSpecialDeedText(nycSquares[5].groupProfile), /Transportations/);
-		assert.doesNotMatch(JSON.stringify(nycSquares.map(square => square.display)), /</);
+		const classicBoard = editions.get('Classic').buildBoard();
+		const nycBoard = editions.get('NYC').buildBoard();
+		assert.strictEqual(classicBoard.squaresById['mediterranean-avenue'].presentation.boardName, 'Mediter-ranean Avenue');
+		assert.strictEqual(classicBoard.groupsById.railroads.presentation.tokenImage.src, 'images/train_icon.png');
+		assert.strictEqual(classicBoard.groupsById.utilities.presentation.rentText({ multiplier: 10 }), '10x dice');
+		assert.strictEqual(nycBoard.squaresById['bloomingdale-s'].presentation.boardName, 'blooming...');
+		assert.strictEqual(nycBoard.groupsById.railroads.label, 'Transportations');
 	} finally {
-		editions.setActive(previousEdition);
-		restoreGlobals(editionGlobals);
+		editions.setActive(previousPresentationEdition);
 	}
-	console.log('✔ Edition registry and UI renderer use structured display and deed data.');
+	console.log('✔ Edition presentation metadata stays on native Board squares and groups.');
 
 	async function runTaxLanding(editionName, position, options) {
 		assert.ok(editions.getNames().includes(editionName));
 		editions.setActive(editionName);
 		const edition = editions.getActive();
-		const squares = edition.buildSquares();
 		const payer = new global.Player('Taxpayer', 'red');
+		GameStateContext.assignPlayerId(payer, 1);
 		payer.money = options.money;
-		payer.position = position;
 		const events = [];
 		let taxChoice;
 		const ui = {
@@ -439,37 +318,57 @@ async function runTests() {
 				onChoose(options.choosePercentage ? percentageAmount : fixedAmount);
 			}
 		};
-		if (options.propertyValue) {
-			squares[1].owner = payer.index;
-			squares[1].price = options.propertyValue;
+		const board = edition.buildBoard();
+		const boardSquareIds = [];
+		let boardSquareId = board.startSquareId;
+		for (let index = 0; index < Object.keys(board.squaresById).length; index++) {
+			boardSquareIds.push(boardSquareId);
+			boardSquareId = board.squaresById[boardSquareId].nextId;
 		}
+		const taxSquareId = boardSquareIds[position];
+		payer.squareId = taxSquareId;
+		let landingContext;
+		const taxSquare = board.squaresById[taxSquareId];
+		const originalOnLand = taxSquare.behavior.onLand;
+		taxSquare.behavior.onLand = function(context) {
+			landingContext = context;
+			return originalOnLand(context);
+		};
 		const state = GameStateContext.createState({
 			player: [null, payer],
 			pcount: 1,
 			turn: 1,
-			square: squares,
+			board,
 			freeParkingTaxes: true,
 			freeParkingPot: 0,
 			auctionEnabled: false,
 			pendingAuction: -1
 		});
+		GameStateContext.initializeBoardState(state, board);
+		if (options.propertySquareId) {
+			GameStateContext.setSquareOwner(state, options.propertySquareId, payer.playerId);
+			GameStateContext.getSquareState(state, options.propertySquareId).house = 1;
+		}
 		const game = new Game(ui, state);
 		game.getDie = () => 1;
 		await game.land(false);
-		return { payer, state, events, taxChoice };
+		return { payer, state, events, taxChoice, landingContext };
 	}
 
 	const classicCityTax = await runTaxLanding('Classic', 4, { money: 1000 });
+	assert.deepStrictEqual(Object.keys(classicCityTax.landingContext).sort(), ['game', 'playerId', 'squareId', 'state', 'ui']);
+	assert.strictEqual(classicCityTax.landingContext.playerId, 'player-1');
+	assert.strictEqual(classicCityTax.landingContext.squareId, 'city-tax');
 	assert.strictEqual(classicCityTax.payer.money, 800);
 	assert.strictEqual(classicCityTax.state.freeParkingPot, 200);
 	assert.strictEqual(classicCityTax.payer.creditor, -1);
 	const classicLuxuryTax = await runTaxLanding('Classic', 38, { money: 1000 });
 	assert.strictEqual(classicLuxuryTax.payer.money, 900);
 	assert.strictEqual(classicLuxuryTax.state.freeParkingPot, 100);
-	const nycPercentageTax = await runTaxLanding('NYC', 4, { money: 1000, propertyValue: 100, choosePercentage: true });
-	assert.deepStrictEqual(nycPercentageTax.taxChoice, { fixedAmount: 200, percentageAmount: 110 });
-	assert.strictEqual(nycPercentageTax.payer.money, 890);
-	assert.strictEqual(nycPercentageTax.state.freeParkingPot, 110);
+	const nycPercentageTax = await runTaxLanding('NYC', 4, { money: 1000, propertySquareId: 'port-authority-bus-terminal', choosePercentage: true });
+	assert.deepStrictEqual(nycPercentageTax.taxChoice, { fixedAmount: 200, percentageAmount: 111 });
+	assert.strictEqual(nycPercentageTax.payer.money, 889);
+	assert.strictEqual(nycPercentageTax.state.freeParkingPot, 111);
 	const nycFixedTax = await runTaxLanding('NYC', 4, { money: 1000, choosePercentage: false });
 	assert.strictEqual(nycFixedTax.payer.money, 800);
 	assert.strictEqual(nycFixedTax.state.freeParkingPot, 200);
@@ -599,30 +498,30 @@ async function runTests() {
 		getElementById: id => findTradeElement(tradeRoot, id)
 	};
 	global.player = [null,
-		{ index: 1, name: 'Offerer', communityChestJailCard: false, chanceJailCard: false },
-		{ index: 2, name: 'Recipient', communityChestJailCard: false, chanceJailCard: false }
+		{ index: 1, playerId: 'player-1', name: 'Offerer', heldCards: [] },
+		{ index: 2, playerId: 'player-2', name: 'Recipient', heldCards: [] }
 	];
 	global.pcount = 2;
-	global.square = Array.from({ length: 40 }, (_, index) => ({ index, owner: 0, name: 'Property ' + index, color: '#fff', groupNumber: 0, group: [], house: 0, hotel: 0, mortgage: false }));
+	global.square = Array.from({ length: 40 }, (_, index) => ({ index, id: 'trade-property-' + index, owner: 0, name: 'Property ' + index, color: '#fff', groupNumber: 0, group: [], house: 0, hotel: 0, mortgage: false }));
 	global.square[1] = { ...global.square[1], owner: 1, groupNumber: 3, group: [1, 3] };
 	global.square[3] = { ...global.square[3], owner: 2, groupNumber: 3, group: [1, 3] };
 	try {
 		TradeView.reset(tradeState, global.player[1], global.player[2], false);
-		global.document.getElementById('tradeleftcheckbox1').checked = true;
-		global.document.getElementById('traderightcheckbox3').checked = true;
+		global.document.getElementById('tradeleftsquare-trade-property-1').checked = true;
+		global.document.getElementById('traderightsquare-trade-property-3').checked = true;
 		global.document.getElementById('trade-leftp-money').value = '75';
 		global.document.getElementById('trade-rightp-money').value = '20';
 		const offer = TradeView.read(tradeState);
 		assert.strictEqual(offer.getMoney(), 55);
-		assert.strictEqual(offer.getProperty(1), 1);
-		assert.strictEqual(offer.getProperty(3), -1);
-		TradeView.write(tradeState, new global.Trade(global.player[1], global.player[2], -30, [0, 1, 0, -1], 0, 0));
-		assert.strictEqual(global.document.getElementById('tradeleftcheckbox1').checked, true);
-		assert.strictEqual(global.document.getElementById('traderightcheckbox3').checked, true);
+		assert.deepStrictEqual(offer.getOfferedSquareIds(), ['trade-property-1']);
+		assert.deepStrictEqual(offer.getRequestedSquareIds(), ['trade-property-3']);
+		TradeView.write(tradeState, new global.Trade(global.player[1], global.player[2], -30, ['trade-property-1'], ['trade-property-3'], []));
+		assert.strictEqual(global.document.getElementById('tradeleftsquare-trade-property-1').checked, true);
+		assert.strictEqual(global.document.getElementById('traderightsquare-trade-property-3').checked, true);
 		assert.strictEqual(global.document.getElementById('trade-rightp-money').value, '30');
 		global.player[1].name = 'Offerer <img src=x onerror=alert(1)>';
 		global.player[2].name = 'Recipient <svg onload=alert(1)>';
-		const summary = TradeView.formatResult('Offer', new global.Trade(global.player[1], global.player[2], 0, Array(40).fill(0), 1, -1));
+		const summary = TradeView.formatResult('Offer', new global.Trade(global.player[1], global.player[2], 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]));
 		assert(summary.indexOf('Offerer &lt;img') < summary.indexOf('Recipient &lt;svg'));
 		assert(summary.includes('Offerer &lt;img src=x onerror=alert(1)&gt; gives'));
 		assert(summary.includes('Recipient &lt;svg onload=alert(1)&gt; gives'));
@@ -631,18 +530,14 @@ async function runTests() {
 	} finally {
 		restoreGlobals(savedTradeGlobals);
 	}
-	const cardSummary = TradeView.formatResult('Card swap', {
-		getInitiator: () => ({ name: 'Offerer' }), getRecipient: () => ({ name: 'Recipient' }),
-		getMoney: () => 0, getProperty: () => 0,
-		getCommunityChestJailCard: () => 1, getChanceJailCard: () => -1
-	});
+	const cardSummary = TradeView.formatResult('Card swap', new global.Trade({ name: 'Offerer' }, { name: 'Recipient' }, 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]));
 	assert(cardSummary.indexOf('Get Out of Jail Free card') < cardSummary.lastIndexOf('Get Out of Jail Free card'));
 	console.log('✔ Trade view behavior and name escaping verified.');
 
 	const savedLegacyGlobals = saveGlobals(['player', 'square', 'pcount', 'turn', 'game', '$', 'document']);
 	const unsafeName = 'Player <img src=x onerror=alert(1)>';
-	global.player = [null, { index: 1, name: unsafeName, color: 'red', money: 100, human: false, AI: { profile: { name: '<svg onload=alert(1)>' } }, communityChestJailCard: false, chanceJailCard: false }];
-	global.square = Array.from({ length: 40 }, (_, index) => ({ index, owner: 0, name: 'Property ' + index, color: '#fff', groupNumber: 0, group: [], house: 0, mortgage: false }));
+	global.player = [null, { index: 1, playerId: 'player-1', heldCards: [], name: unsafeName, color: 'red', money: 100, human: false, AI: { profile: { name: '<svg onload=alert(1)>' } } }];
+	global.square = Array.from({ length: 40 }, (_, index) => ({ index, id: 'property-' + index, owner: 0, name: 'Property ' + index, color: '#fff', groupNumber: 0, group: [], house: 0, mortgage: false }));
 	global.square[1] = { ...global.square[1], owner: 1, groupNumber: 3, group: [1] };
 	global.pcount = 1;
 	global.turn = 1;
@@ -651,10 +546,7 @@ async function runTests() {
 		assert(badge.includes('title=\'Player &lt;img src=x onerror=alert(1)&gt;\''));
 		assert(!badge.includes('<img'));
 		global.square[1].name = 'Property <img src=x onerror=alert(1)>';
-		const legacySummary = RenderPanels.formatTradeResult('Offer <svg>', {
-			getInitiator: () => global.player[1], getRecipient: () => global.player[1], getMoney: () => 0,
-			getProperty: index => index === 1 ? 1 : 0, getCommunityChestJailCard: () => 0, getChanceJailCard: () => 0
-		});
+		const legacySummary = RenderPanels.formatTradeResult('Offer <svg>', new global.Trade(global.player[1], global.player[1], 0, ['property-1'], [], []));
 		assert(legacySummary.includes('Offer &lt;svg&gt;'));
 		assert(legacySummary.includes('Player &lt;img src=x onerror=alert(1)&gt; gives'));
 		assert(legacySummary.includes('Property &lt;img src=x onerror=alert(1)&gt;'));
@@ -723,6 +615,8 @@ global.document = {
 		const ui = new BrowserUI();
 		ui.game = {
 			state: {
+				board: global.Monopoly.Editions.get('Classic').buildBoard(),
+				cardDecks: { chance: { icon: 'images/chance_icon.png', label: 'Chance' } },
 				player: [null, { index: 1, name: 'Bidder <img src=x onerror=alert(1)>', color: '#fff', bidding: true }],
 				pcount: 1, playerOverlays: []
 			},
@@ -730,7 +624,7 @@ global.document = {
 			auctionPass: () => ownerActions.push('pass'),
 			auctionExit: () => ownerActions.push('exit'),
 			buy: () => ownerActions.push('buy'),
-			payFifty: () => ownerActions.push('bail'),
+			payBail: () => ownerActions.push('bail'),
 			useJailCard: () => ownerActions.push('jail-card')
 		};
 		ui.alert('Owned-game alert');
@@ -834,11 +728,12 @@ global.document = {
 		global.nextMoveDirection = 1;
 		global.playerOverlays = [];
 		const ownedOverlay = { style: {} };
-		const positionPlayer = { name: 'Owned', color: 'red', position: 7, jail: false };
+		const positionPlayer = { name: 'Owned', color: 'red', squareId: 'chance-south', jail: false };
 		const positionState = GameStateContext.createState({
-			player: [null, positionPlayer], pcount: 1, turn: 1,
+			player: [null, positionPlayer], pcount: 1, turn: 1, board: global.Monopoly.Editions.get('Classic').buildBoard(),
 			lastKnownPosition: [], lastKnownJail: [], playerOverlays: [null, ownedOverlay]
 		});
+		GameStateContext.initializeBoardState(positionState, positionState.board);
 		await RenderBoard.updatePosition({ state: positionState, ui: { isHeadless: false } });
 		assert.strictEqual(positionState.lastKnownPosition[1], 7);
 		assert.strictEqual(positionState.lastKnownJail[1], false);

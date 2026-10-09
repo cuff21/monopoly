@@ -29,7 +29,7 @@
         var square = AIGen5.getSquares(p);
         var seenGroups = {};
         var houseBuffer = 0;
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || !s.group || s.group.length < 2 || !s.houseprice || s.houseprice <= 0) {
                 continue;
@@ -74,7 +74,7 @@
 
         if (square && p.position !== undefined) {
             var rolls = AIGen5.Probability ? AIGen5.Probability.turnsToRolls(1) : 1;
-            for (var i = 0; i < 40; i++) {
+            for (var i = 0; i < square.length; i++) {
                 var s = square[i];
                 if (!s) {
                     continue;
@@ -123,7 +123,7 @@
         var propertyEquity = 0;
         var cash = p.money || 0;
 
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || s.owner !== p.index) {
                 continue;

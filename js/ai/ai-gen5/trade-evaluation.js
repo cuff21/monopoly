@@ -14,7 +14,7 @@
         var incomingValue = 0;
         var outgoingValue = 0;
 
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             property[i] = tradeObj.getProperty(i) || 0;
             if (property[i] > 0) {
                 ownership[i] = p.index;
@@ -23,7 +23,7 @@
             }
         }
 
-        for (var j = 0; j < 40; j++) {
+        for (var j = 0; j < square.length; j++) {
             if (property[j] > 0) {
                 incomingValue += AIGen5.Valuation.assetValue(j, p.index, ownership, p);
             }
@@ -40,7 +40,7 @@
         var blockingValue = 0;
         var groupsTouched = {};
         var boardMonopolies = AIGen5.Analytics && typeof AIGen5.Analytics.countBoardMonopolies === 'function' ? AIGen5.Analytics.countBoardMonopolies(true, state) : 0;
-        for (var k = 0; k < 40; k++) {
+        for (var k = 0; k < square.length; k++) {
             var s = square[k];
             if (!s || !s.group || property[k] === 0) {
                 continue;
@@ -144,7 +144,7 @@
 
         // Strategic lane blocking (railroads, utilities, and color sets)
         if (AIGen5.Valuation && typeof AIGen5.Valuation.strategicBlockingValue === 'function') {
-            for (var bi = 0; bi < 40; bi++) {
+            for (var bi = 0; bi < square.length; bi++) {
                 if (property[bi] < 0) { // AI gives away bi to initiator
                     monopolyEnablementRisk += AIGen5.Valuation.strategicBlockingValue(bi, p.index, initiator.index, p) * 0.5;
                 } else if (property[bi] > 0) { // AI receives bi
@@ -223,7 +223,7 @@
         var aiCompletesColorMonopoly = false;
 
         var seenGroups = {};
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var propVal = tradeObj.getProperty(i) || 0;
             var s = square[i];
             if (!s || !s.group || s.group.length < 2 || propVal === 0) {
@@ -323,7 +323,7 @@
                 if (squeezeBonus >= 15) {
                     var squeezeMoney = (tradeObj.getMoney() || 0) + squeezeBonus;
                     var squeezeProperty = [];
-                    for (var spIdx = 0; spIdx < 40; spIdx++) {
+                    for (var spIdx = 0; spIdx < square.length; spIdx++) {
                         squeezeProperty[spIdx] = tradeObj.getProperty(spIdx) || 0;
                     }
                     console.log("[Gen5AI " + p.name + "] Offer is acceptable, attempting one final squeeze counter (+$" + squeezeBonus + ") with " + initiator.name + ".");
@@ -344,7 +344,7 @@
         var opponentTradeablePropertyVal = 0;
         var eligibleProperties = [];
 
-        for (var ei = 0; ei < 40; ei++) {
+        for (var ei = 0; ei < square.length; ei++) {
             var esq = square[ei];
             if (esq && esq.owner === initiator.index && !esq.mortgage && (!esq.house || esq.house === 0) && (!esq.hotel || esq.hotel === 0)) {
                 // Ensure no houses in this color group
@@ -399,7 +399,7 @@
         var targetValueGap = deficit + overshootAmount;
 
         var counterProperty = [];
-        for (var cp = 0; cp < 40; cp++) {
+        for (var cp = 0; cp < square.length; cp++) {
             counterProperty[cp] = tradeObj.getProperty(cp) || 0;
         }
 
@@ -479,7 +479,7 @@
         var deadlock = AIGen5.Analytics && typeof AIGen5.Analytics.getDeadlockState === 'function' ? AIGen5.Analytics.getDeadlockState(p, null, turnNumber) : { mode: 'Normal', factor: 0 };
         var stagnation = deadlock.factor;
 
-        for (var targetIndex = 0; targetIndex < 40; targetIndex++) {
+        for (var targetIndex = 0; targetIndex < square.length; targetIndex++) {
             var targetSquare = square[targetIndex];
             if (!targetSquare || !targetSquare.group || targetSquare.group.length < 2) {
                 continue;
@@ -510,7 +510,7 @@
                 continue;
             }
 
-            for (var offerIndex = 0; offerIndex < 40; offerIndex++) {
+            for (var offerIndex = 0; offerIndex < square.length; offerIndex++) {
                 var offerSquare = square[offerIndex];
                 if (!offerSquare || offerSquare.owner !== p.index || offerIndex === missingIndex || offerSquare.mortgage) {
                     continue;
@@ -592,8 +592,9 @@
             return false;
         }
 
+        var square = AIGen5.getSquares(p);
         var property = [];
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             property[i] = 0;
         }
         property[opportunity.missingIndex] = -1;

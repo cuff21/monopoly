@@ -100,18 +100,17 @@
             return 0;
         }
 
-        if (index === 5 || index === 15 || index === 25 || index === 35) {
-            var railroadCount = 0;
-            for (var railroad = 0; railroad < 4; railroad++) {
-                if (propertyOwner([5, 15, 25, 35][railroad], ownership, state) === ownerIndex) {
-                    railroadCount++;
-                }
-            }
+        if (s.groupProfile && s.groupProfile.kind === 'railroad') {
+            var railroadCount = s.group.reduce(function(count, memberIndex) {
+                return count + (propertyOwner(memberIndex, ownership, state) === ownerIndex ? 1 : 0);
+            }, 0);
             return [0, 25, 50, 100, 200][railroadCount];
         }
 
-        if (index === 12 || index === 28) {
-            var utilityCount = (propertyOwner(12, ownership, state) === ownerIndex ? 1 : 0) + (propertyOwner(28, ownership, state) === ownerIndex ? 1 : 0);
+        if (s.groupProfile && s.groupProfile.kind === 'utility') {
+            var utilityCount = s.group.reduce(function(count, memberIndex) {
+                return count + (propertyOwner(memberIndex, ownership, state) === ownerIndex ? 1 : 0);
+            }, 0);
             return (s.baserent || 4) * (utilityCount === 2 ? 2.5 : utilityCount === 1 ? 1 : 0);
         }
 
@@ -130,7 +129,7 @@
         for (var i = 1; i < occupants.length; i++) {
             var opponent = occupants[i];
             if (opponent && opponent.index !== ownerIndex && opponent.position !== undefined && !opponent.jail) {
-                var distance = (index - opponent.position + 40) % 40;
+                var distance = (index - opponent.position + square.length) % square.length;
                 if (distance >= 2 && distance <= 12) {
                     landingWeight += (13 - distance) * 0.01;
                 }
@@ -233,7 +232,7 @@
     function groupOwnershipSummary(ownerIndex, state) {
         var square = state && state.square || [];
         var summary = [];
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (s && typeof s.group !== 'undefined' && s.group && s.group.length > 0) {
                 var owned = 0;
@@ -393,7 +392,7 @@
             var incomingValue = 0;
             var outgoingValue = 0;
 
-            for (var i = 0; i < 40; i++) {
+            for (var i = 0; i < square.length; i++) {
                 property[i] = tradeObj.getProperty(i) || 0;
                 if (property[i] > 0) {
                     ownership[i] = p.index;
@@ -402,7 +401,7 @@
                 }
             }
 
-            for (var j = 0; j < 40; j++) {
+            for (var j = 0; j < square.length; j++) {
                 if (property[j] > 0) {
                     incomingValue += propertyAssetValue(j, p.index, ownership, state);
                 }
@@ -481,7 +480,7 @@
 
             if (this.profile.name !== 'Defensive') {
                 var unmortgageCandidates = [];
-                for (var i = 0; i < 40; i++) {
+                for (var i = 0; i < square.length; i++) {
                     s = square[i];
                     if (s && s.owner === p.index && s.mortgage) {
                         unmortgageCandidates.push({
@@ -515,8 +514,8 @@
         this.onLand = function() {
             var proposedTrade;
             var property = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-            var railroadIndexes = [5, 15, 25, 35];
-            var utilityIndexes = [12, 28];
+            var railroadIndexes = square.map(function(sq, index) { return sq.groupProfile && sq.groupProfile.kind === 'railroad' ? index : -1; }).filter(function(index) { return index >= 0; });
+            var utilityIndexes = square.map(function(sq, index) { return sq.groupProfile && sq.groupProfile.kind === 'utility' ? index : -1; }).filter(function(index) { return index >= 0; });
             var requestedRailroad = null;
             var offeredUtility = null;
 
@@ -547,7 +546,7 @@
                 return 85 * tradeBias / opponentBias;
             };
 
-            for (var targetIndex = 0; targetIndex < 40; targetIndex++) {
+            for (var targetIndex = 0; targetIndex < square.length; targetIndex++) {
                 var targetSquare = square[targetIndex];
                 if (!targetSquare || !targetSquare.group || targetSquare.group.length < 2) {
                     continue;
@@ -580,7 +579,7 @@
                 }
 
                 var validOffers = [];
-                for (var offerIndex = 0; offerIndex < 40; offerIndex++) {
+                for (var offerIndex = 0; offerIndex < square.length; offerIndex++) {
                     var offerSquare = square[offerIndex];
                     if (!offerSquare || offerSquare.owner !== p.index || offerIndex === missingIndex || offerSquare.mortgage) {
                         continue;
@@ -693,14 +692,14 @@
             var developedDanger = 0;
             var opponents = players;
 
-            for (var i = 0; i < 40; i++) {
+            for (var i = 0; i < square.length; i++) {
                 var property = square[i];
                 if (property && property.owner !== 0 && property.owner !== p.index && (property.house > 0 || property.hotel === 1)) {
                     developedDanger = Math.max(developedDanger, expectedRentValue(i, property.owner, null, state));
                 }
             }
 
-            var hasFreeCard = p.communityChestJailCard || p.chanceJailCard;
+            var hasFreeCard = p.heldCards && p.heldCards.length > 0;
             var reserveAfterFine = p.money - 50 >= this.getLiquidityFloor() * 0.75;
             var endgamePressure = Math.max(0, (estimateRemainingPlayers(state) - 2) * 0.25);
 
@@ -725,7 +724,7 @@
         this.payDebt = function() {
             var mortgageCandidates = [];
 
-            for (var i = 0; i < 40; i++) {
+            for (var i = 0; i < square.length; i++) {
                 var s = square[i];
                 if (s.owner !== p.index) {
                     continue;
@@ -743,7 +742,7 @@
                 sold = false;
                 var houseCandidates = [];
 
-                for (var j = 0; j < 40; j++) {
+                for (var j = 0; j < square.length; j++) {
                     var candidate = square[j];
                     if (candidate.owner === p.index && (candidate.house > 0 || candidate.hotel === 1) && p.game && p.game.canSellHouse(j)) {
                         var saleValue = candidate.houseprice * 0.5;

@@ -1,0 +1,2396 @@
+{
+  "Classic": {
+    "rules": {
+      "startSalary": 200,
+      "houseTotal": 32,
+      "hotelTotal": 12,
+      "bailAmount": 50
+    },
+    "squares": [
+      {
+        "id": "go",
+        "kind": "go",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "GO",
+          "color": "#FFFFFF",
+          "x": 94,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "COLLECT $200 SALARY AS YOU PASS."
+        }
+      },
+      {
+        "id": "mediterranean-avenue",
+        "kind": "street",
+        "groupId": "brown",
+        "rules": {
+          "purchasePrice": 60,
+          "baseRent": 2,
+          "rentTiers": [
+            10,
+            30,
+            90,
+            160,
+            250
+          ],
+          "mortgageValue": 30,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Mediterranean Avenue",
+          "color": "#8B4513",
+          "boardName": "Mediter-ranean Avenue",
+          "x": 85.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "community-chest-south",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Community Chest",
+          "color": "#FFFFFF",
+          "x": 77,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "baltic-avenue",
+        "kind": "street",
+        "groupId": "brown",
+        "rules": {
+          "purchasePrice": 60,
+          "baseRent": 4,
+          "rentTiers": [
+            20,
+            60,
+            180,
+            320,
+            450
+          ],
+          "mortgageValue": 30,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Baltic Avenue",
+          "color": "#8B4513",
+          "x": 68.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "city-tax",
+        "kind": "tax",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 200
+        },
+        "presentation": {
+          "label": "City Tax",
+          "color": "#FFFFFF",
+          "x": 60,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "Pay $200"
+        }
+      },
+      {
+        "id": "reading-railroad",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Reading Railroad",
+          "color": "#FFFFFF",
+          "x": 51.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "oriental-avenue",
+        "kind": "street",
+        "groupId": "light-blue",
+        "rules": {
+          "purchasePrice": 100,
+          "baseRent": 6,
+          "rentTiers": [
+            30,
+            90,
+            270,
+            400,
+            550
+          ],
+          "mortgageValue": 50,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Oriental Avenue",
+          "color": "#87CEEB",
+          "x": 43,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "chance-south",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Chance",
+          "color": "#FFFFFF",
+          "x": 34.5,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "vermont-avenue",
+        "kind": "street",
+        "groupId": "light-blue",
+        "rules": {
+          "purchasePrice": 100,
+          "baseRent": 6,
+          "rentTiers": [
+            30,
+            90,
+            270,
+            400,
+            550
+          ],
+          "mortgageValue": 50,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Vermont Avenue",
+          "color": "#87CEEB",
+          "x": 26,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "connecticut-avenue",
+        "kind": "street",
+        "groupId": "light-blue",
+        "rules": {
+          "purchasePrice": 120,
+          "baseRent": 8,
+          "rentTiers": [
+            40,
+            100,
+            300,
+            450,
+            600
+          ],
+          "mortgageValue": 60,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Connecticut Avenue",
+          "color": "#87CEEB",
+          "x": 17.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "jail",
+        "kind": "jail",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Just Visiting",
+          "color": "#FFFFFF",
+          "x": 6,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": ""
+        }
+      },
+      {
+        "id": "st-charles-place",
+        "kind": "street",
+        "groupId": "pink",
+        "rules": {
+          "purchasePrice": 140,
+          "baseRent": 10,
+          "rentTiers": [
+            50,
+            150,
+            450,
+            625,
+            750
+          ],
+          "mortgageValue": 70,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "St. Charles Place",
+          "color": "#D63384",
+          "x": 6,
+          "y": 85.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "electric-company",
+        "kind": "utility",
+        "groupId": "utilities",
+        "rules": {
+          "purchasePrice": 150,
+          "baseRent": 0,
+          "rentTiers": [
+            4,
+            10,
+            10,
+            10,
+            10
+          ],
+          "mortgageValue": 75,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Electric Company",
+          "color": "#FFFFFF",
+          "tokenImage": {
+            "src": "images/electric_icon.png",
+            "height": 60,
+            "width": 48
+          },
+          "x": 6,
+          "y": 77,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "states-avenue",
+        "kind": "street",
+        "groupId": "pink",
+        "rules": {
+          "purchasePrice": 140,
+          "baseRent": 10,
+          "rentTiers": [
+            50,
+            150,
+            450,
+            625,
+            750
+          ],
+          "mortgageValue": 70,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "States Avenue",
+          "color": "#D63384",
+          "x": 6,
+          "y": 68.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "virginia-avenue",
+        "kind": "street",
+        "groupId": "pink",
+        "rules": {
+          "purchasePrice": 160,
+          "baseRent": 12,
+          "rentTiers": [
+            60,
+            180,
+            500,
+            700,
+            900
+          ],
+          "mortgageValue": 80,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Virginia Avenue",
+          "color": "#D63384",
+          "x": 6,
+          "y": 60,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "pennsylvania-railroad",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Pennsylvania Railroad",
+          "color": "#FFFFFF",
+          "x": 6,
+          "y": 51.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "st-james-place",
+        "kind": "street",
+        "groupId": "orange",
+        "rules": {
+          "purchasePrice": 180,
+          "baseRent": 14,
+          "rentTiers": [
+            70,
+            200,
+            550,
+            750,
+            950
+          ],
+          "mortgageValue": 90,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "St. James Place",
+          "color": "#FFA500",
+          "x": 6,
+          "y": 43,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "community-chest-west",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Community Chest",
+          "color": "#FFFFFF",
+          "x": 6,
+          "y": 34.5,
+          "rotationDegrees": 90,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "tennessee-avenue",
+        "kind": "street",
+        "groupId": "orange",
+        "rules": {
+          "purchasePrice": 180,
+          "baseRent": 14,
+          "rentTiers": [
+            70,
+            200,
+            550,
+            750,
+            950
+          ],
+          "mortgageValue": 90,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Tennessee Avenue",
+          "color": "#FFA500",
+          "x": 6,
+          "y": 26,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "new-york-avenue",
+        "kind": "street",
+        "groupId": "orange",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 16,
+          "rentTiers": [
+            80,
+            220,
+            600,
+            800,
+            1000
+          ],
+          "mortgageValue": 100,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "New York Avenue",
+          "color": "#FFA500",
+          "x": 6,
+          "y": 17.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "free-parking",
+        "kind": "free-parking",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Free Parking",
+          "color": "#FFFFFF",
+          "x": 6,
+          "y": 6,
+          "rotationDegrees": 0,
+          "priceText": ""
+        }
+      },
+      {
+        "id": "kentucky-avenue",
+        "kind": "street",
+        "groupId": "red",
+        "rules": {
+          "purchasePrice": 220,
+          "baseRent": 18,
+          "rentTiers": [
+            90,
+            250,
+            700,
+            875,
+            1050
+          ],
+          "mortgageValue": 110,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Kentucky Avenue",
+          "color": "#FF0000",
+          "x": 14.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "chance-east",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Chance",
+          "color": "#FFFFFF",
+          "x": 23,
+          "y": 6,
+          "rotationDegrees": 180,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "indiana-avenue",
+        "kind": "street",
+        "groupId": "red",
+        "rules": {
+          "purchasePrice": 220,
+          "baseRent": 18,
+          "rentTiers": [
+            90,
+            250,
+            700,
+            875,
+            1050
+          ],
+          "mortgageValue": 110,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Indiana Avenue",
+          "color": "#FF0000",
+          "x": 31.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "illinois-avenue",
+        "kind": "street",
+        "groupId": "red",
+        "rules": {
+          "purchasePrice": 240,
+          "baseRent": 20,
+          "rentTiers": [
+            100,
+            300,
+            750,
+            925,
+            1100
+          ],
+          "mortgageValue": 120,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Illinois Avenue",
+          "color": "#FF0000",
+          "x": 40,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "b-o-railroad",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "B&O Railroad",
+          "color": "#FFFFFF",
+          "x": 48.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "atlantic-avenue",
+        "kind": "street",
+        "groupId": "yellow",
+        "rules": {
+          "purchasePrice": 260,
+          "baseRent": 22,
+          "rentTiers": [
+            110,
+            330,
+            800,
+            975,
+            1150
+          ],
+          "mortgageValue": 130,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Atlantic Avenue",
+          "color": "#FFFF00",
+          "x": 57,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "ventnor-avenue",
+        "kind": "street",
+        "groupId": "yellow",
+        "rules": {
+          "purchasePrice": 260,
+          "baseRent": 22,
+          "rentTiers": [
+            110,
+            330,
+            800,
+            975,
+            1150
+          ],
+          "mortgageValue": 130,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Ventnor Avenue",
+          "color": "#FFFF00",
+          "x": 65.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "water-works",
+        "kind": "utility",
+        "groupId": "utilities",
+        "rules": {
+          "purchasePrice": 150,
+          "baseRent": 0,
+          "rentTiers": [
+            4,
+            10,
+            10,
+            10,
+            10
+          ],
+          "mortgageValue": 75,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Water Works",
+          "color": "#FFFFFF",
+          "tokenImage": {
+            "src": "images/water_icon.png",
+            "height": 60,
+            "width": 78
+          },
+          "x": 74,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "marvin-gardens",
+        "kind": "street",
+        "groupId": "yellow",
+        "rules": {
+          "purchasePrice": 280,
+          "baseRent": 24,
+          "rentTiers": [
+            120,
+            360,
+            850,
+            1025,
+            1200
+          ],
+          "mortgageValue": 140,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Marvin Gardens",
+          "color": "#FFFF00",
+          "x": 82.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "go-to-jail",
+        "kind": "go-to-jail",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Go to Jail",
+          "color": "#FFFFFF",
+          "x": 94,
+          "y": 6,
+          "rotationDegrees": 0,
+          "priceText": "Go directly to Jail. Do not pass GO. Do not collect $200."
+        }
+      },
+      {
+        "id": "pacific-avenue",
+        "kind": "street",
+        "groupId": "green",
+        "rules": {
+          "purchasePrice": 300,
+          "baseRent": 26,
+          "rentTiers": [
+            130,
+            390,
+            900,
+            1100,
+            1275
+          ],
+          "mortgageValue": 150,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Pacific Avenue",
+          "color": "#008000",
+          "x": 94,
+          "y": 14.5,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "north-carolina-avenue",
+        "kind": "street",
+        "groupId": "green",
+        "rules": {
+          "purchasePrice": 300,
+          "baseRent": 26,
+          "rentTiers": [
+            130,
+            390,
+            900,
+            1100,
+            1275
+          ],
+          "mortgageValue": 150,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "North Carolina Avenue",
+          "color": "#008000",
+          "x": 94,
+          "y": 23,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "community-chest-east",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Community Chest",
+          "color": "#FFFFFF",
+          "x": 94,
+          "y": 31.5,
+          "rotationDegrees": 270,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "pennsylvania-avenue",
+        "kind": "street",
+        "groupId": "green",
+        "rules": {
+          "purchasePrice": 320,
+          "baseRent": 28,
+          "rentTiers": [
+            150,
+            450,
+            1000,
+            1200,
+            1400
+          ],
+          "mortgageValue": 160,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Pennsylvania Avenue",
+          "color": "#008000",
+          "x": 94,
+          "y": 40,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "short-line",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Short Line",
+          "color": "#FFFFFF",
+          "x": 94,
+          "y": 48.5,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "chance-north",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Chance",
+          "color": "#FFFFFF",
+          "x": 94,
+          "y": 57,
+          "rotationDegrees": 270,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "park-place",
+        "kind": "street",
+        "groupId": "blue",
+        "rules": {
+          "purchasePrice": 350,
+          "baseRent": 35,
+          "rentTiers": [
+            175,
+            500,
+            1100,
+            1300,
+            1500
+          ],
+          "mortgageValue": 175,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Park Place",
+          "color": "#0000FF",
+          "x": 94,
+          "y": 65.5,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "luxury-tax",
+        "kind": "tax",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 100
+        },
+        "presentation": {
+          "label": "LUXURY TAX",
+          "color": "#FFFFFF",
+          "x": 94,
+          "y": 74,
+          "rotationDegrees": 270,
+          "priceText": "Pay $100"
+        }
+      },
+      {
+        "id": "boardwalk",
+        "kind": "street",
+        "groupId": "blue",
+        "rules": {
+          "purchasePrice": 400,
+          "baseRent": 50,
+          "rentTiers": [
+            200,
+            600,
+            1400,
+            1700,
+            2000
+          ],
+          "mortgageValue": 200,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Boardwalk",
+          "color": "#0000FF",
+          "x": 94,
+          "y": 82.5,
+          "rotationDegrees": 270
+        }
+      }
+    ],
+    "groups": [
+      {
+        "id": "railroads",
+        "label": "Railroads",
+        "squareIds": [
+          "reading-railroad",
+          "pennsylvania-railroad",
+          "b-o-railroad",
+          "short-line"
+        ],
+        "rules": {
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ]
+        },
+        "presentation": {
+          "color": "#FFFFFF",
+          "tokenImage": {
+            "src": "images/train_icon.png",
+            "height": 60,
+            "width": 65
+          }
+        }
+      },
+      {
+        "id": "utilities",
+        "label": "Utilities",
+        "squareIds": [
+          "electric-company",
+          "water-works"
+        ],
+        "rules": {
+          "rentTiers": [
+            4,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "presentation": {
+          "color": "#FFFFFF"
+        }
+      },
+      {
+        "id": "brown",
+        "label": "Brown",
+        "squareIds": [
+          "mediterranean-avenue",
+          "baltic-avenue"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#8B4513"
+        }
+      },
+      {
+        "id": "light-blue",
+        "label": "Light Blue",
+        "squareIds": [
+          "oriental-avenue",
+          "vermont-avenue",
+          "connecticut-avenue"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#87CEEB"
+        }
+      },
+      {
+        "id": "pink",
+        "label": "Pink",
+        "squareIds": [
+          "st-charles-place",
+          "states-avenue",
+          "virginia-avenue"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#D63384"
+        }
+      },
+      {
+        "id": "orange",
+        "label": "Orange",
+        "squareIds": [
+          "st-james-place",
+          "tennessee-avenue",
+          "new-york-avenue"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#FFA500"
+        }
+      },
+      {
+        "id": "red",
+        "label": "Red",
+        "squareIds": [
+          "kentucky-avenue",
+          "indiana-avenue",
+          "illinois-avenue"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#FF0000"
+        }
+      },
+      {
+        "id": "yellow",
+        "label": "Yellow",
+        "squareIds": [
+          "atlantic-avenue",
+          "ventnor-avenue",
+          "marvin-gardens"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#FFFF00"
+        }
+      },
+      {
+        "id": "green",
+        "label": "Green",
+        "squareIds": [
+          "pacific-avenue",
+          "north-carolina-avenue",
+          "pennsylvania-avenue"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#008000"
+        }
+      },
+      {
+        "id": "blue",
+        "label": "Blue",
+        "squareIds": [
+          "park-place",
+          "boardwalk"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#0000FF"
+        }
+      }
+    ],
+    "communityChest": [
+      "Get out of Jail, Free. This card may be kept until needed or sold.",
+      "You have won second prize in a beauty contest. Collect $10.",
+      "From sale of stock, you get $50.",
+      "Life insurance matures. Collect $100.",
+      "Income tax refund. Collect $20.",
+      "Holiday fund matures. Receive $100.",
+      "You inherit $100.",
+      "Receive $25 consultancy fee.",
+      "Pay hospital fees of $100.",
+      "Bank error in your favor. Collect $200.",
+      "Pay school fees of $50.",
+      "Doctor's fee. Pay $50.",
+      "It is your birthday. Collect $10 from every player.",
+      "Advance to \"GO\" (Collect $200).",
+      "You are assessed for street repairs. $40 per house. $115 per hotel.",
+      "Go to Jail. Go directly to Jail. Do not pass \"GO\". Do not collect $200."
+    ],
+    "chance": [
+      "GET OUT OF JAIL FREE. This card may be kept until needed or traded.",
+      "Make General Repairs on All Your Property. For each house pay $25. For each hotel $100.",
+      "Speeding fine $15.",
+      "You have been elected chairman of the board. Pay each player $50.",
+      "Go back three spaces.",
+      "ADVANCE TO THE NEAREST UTILITY. IF UNOWNED, you may buy it from the Bank. IF OWNED, throw dice and pay owner a total ten times the amount thrown.",
+      "Bank pays you dividend of $50.",
+      "ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.",
+      "Pay poor tax of $15.",
+      "Take a trip to Reading Rail Road. If you pass \"GO\" collect $200.",
+      "ADVANCE to Boardwalk.",
+      "ADVANCE to Illinois Avenue. If you pass \"GO\" collect $200.",
+      "Your building loan matures. Collect $150.",
+      "ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.",
+      "ADVANCE to St. Charles Place. If you pass \"GO\" collect $200.",
+      "Go to Jail. Go Directly to Jail. Do not pass \"GO\". Do not collect $200."
+    ]
+  },
+  "NYC": {
+    "rules": {
+      "startSalary": 200,
+      "houseTotal": 32,
+      "hotelTotal": 12,
+      "bailAmount": 50
+    },
+    "squares": [
+      {
+        "id": "go",
+        "kind": "go",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "GO",
+          "color": "white",
+          "x": 94,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "COLLECT $200 SALARY AS YOU PASS."
+        }
+      },
+      {
+        "id": "port-authority-bus-terminal",
+        "kind": "street",
+        "groupId": "dark-purple",
+        "rules": {
+          "purchasePrice": 60,
+          "baseRent": 2,
+          "rentTiers": [
+            10,
+            30,
+            90,
+            160,
+            250
+          ],
+          "mortgageValue": 30,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Port Authority Bus Terminal",
+          "color": "#4B0082",
+          "x": 85.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "community-chest-south",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Community Chest",
+          "color": "white",
+          "x": 77,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "lincoln-tunnel",
+        "kind": "street",
+        "groupId": "dark-purple",
+        "rules": {
+          "purchasePrice": 60,
+          "baseRent": 4,
+          "rentTiers": [
+            20,
+            60,
+            180,
+            320,
+            450
+          ],
+          "mortgageValue": 30,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Lincoln Tunnel",
+          "color": "#4B0082",
+          "x": 68.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "city-tax",
+        "kind": "tax",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 200,
+          "taxPercentOfNetWorth": 0.1
+        },
+        "presentation": {
+          "label": "City Tax",
+          "color": "white",
+          "x": 60,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "PAY 10% OR $200"
+        }
+      },
+      {
+        "id": "lomto",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "LOMTO",
+          "color": "white",
+          "x": 51.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "statue-of-liberty",
+        "kind": "street",
+        "groupId": "light-blue",
+        "rules": {
+          "purchasePrice": 100,
+          "baseRent": 6,
+          "rentTiers": [
+            30,
+            90,
+            270,
+            400,
+            550
+          ],
+          "mortgageValue": 50,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Statue of Liberty",
+          "color": "#AACCFF",
+          "x": 43,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "chance-south",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Chance",
+          "color": "white",
+          "x": 34.5,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": "NEW YORK LOTTERY GAMES"
+        }
+      },
+      {
+        "id": "empire-state-building",
+        "kind": "street",
+        "groupId": "light-blue",
+        "rules": {
+          "purchasePrice": 100,
+          "baseRent": 6,
+          "rentTiers": [
+            30,
+            90,
+            270,
+            400,
+            550
+          ],
+          "mortgageValue": 50,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Empire State Building",
+          "color": "#AACCFF",
+          "x": 26,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "central-park",
+        "kind": "street",
+        "groupId": "light-blue",
+        "rules": {
+          "purchasePrice": 120,
+          "baseRent": 8,
+          "rentTiers": [
+            40,
+            100,
+            300,
+            450,
+            600
+          ],
+          "mortgageValue": 60,
+          "houseCost": 50,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Central Park",
+          "color": "#AACCFF",
+          "x": 17.5,
+          "y": 94,
+          "rotationDegrees": 0
+        }
+      },
+      {
+        "id": "jail",
+        "kind": "jail",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Just Visiting",
+          "color": "white",
+          "x": 6,
+          "y": 94,
+          "rotationDegrees": 0,
+          "priceText": ""
+        }
+      },
+      {
+        "id": "98-7-kiss-fm",
+        "kind": "street",
+        "groupId": "purple",
+        "rules": {
+          "purchasePrice": 140,
+          "baseRent": 10,
+          "rentTiers": [
+            50,
+            150,
+            450,
+            625,
+            750
+          ],
+          "mortgageValue": 70,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "98.7 Kiss FM",
+          "color": "purple",
+          "x": 6,
+          "y": 85.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "con-edison-electric",
+        "kind": "utility",
+        "groupId": "utilities",
+        "rules": {
+          "purchasePrice": 150,
+          "baseRent": 0,
+          "rentTiers": [
+            4,
+            10,
+            10,
+            10,
+            10
+          ],
+          "mortgageValue": 75,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Con Edison Electric",
+          "color": "white",
+          "x": 6,
+          "y": 77,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "thirteen-wnet",
+        "kind": "street",
+        "groupId": "purple",
+        "rules": {
+          "purchasePrice": 140,
+          "baseRent": 10,
+          "rentTiers": [
+            50,
+            150,
+            450,
+            625,
+            750
+          ],
+          "mortgageValue": 70,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Thirteen WNET",
+          "color": "purple",
+          "x": 6,
+          "y": 68.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "the-new-york-times",
+        "kind": "street",
+        "groupId": "purple",
+        "rules": {
+          "purchasePrice": 160,
+          "baseRent": 12,
+          "rentTiers": [
+            60,
+            180,
+            500,
+            700,
+            900
+          ],
+          "mortgageValue": 80,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "The New York Times",
+          "color": "purple",
+          "x": 6,
+          "y": 60,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "new-york-city-transit",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "New York City Transit",
+          "color": "white",
+          "x": 6,
+          "y": 51.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "new-york-rangers",
+        "kind": "street",
+        "groupId": "orange",
+        "rules": {
+          "purchasePrice": 180,
+          "baseRent": 14,
+          "rentTiers": [
+            70,
+            200,
+            550,
+            750,
+            950
+          ],
+          "mortgageValue": 90,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "New York Rangers",
+          "color": "orange",
+          "x": 6,
+          "y": 43,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "community-chest-west",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Community Chest",
+          "color": "white",
+          "x": 6,
+          "y": 34.5,
+          "rotationDegrees": 90,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "new-york-knicks",
+        "kind": "street",
+        "groupId": "orange",
+        "rules": {
+          "purchasePrice": 180,
+          "baseRent": 14,
+          "rentTiers": [
+            70,
+            200,
+            550,
+            750,
+            950
+          ],
+          "mortgageValue": 90,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "New York Knicks",
+          "color": "orange",
+          "x": 6,
+          "y": 26,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "madison-square-garden",
+        "kind": "street",
+        "groupId": "orange",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 16,
+          "rentTiers": [
+            80,
+            220,
+            600,
+            800,
+            1000
+          ],
+          "mortgageValue": 100,
+          "houseCost": 100,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Madison Square Garden",
+          "color": "orange",
+          "x": 6,
+          "y": 17.5,
+          "rotationDegrees": 90
+        }
+      },
+      {
+        "id": "free-parking",
+        "kind": "free-parking",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Free Parking",
+          "color": "white",
+          "x": 6,
+          "y": 6,
+          "rotationDegrees": 0,
+          "priceText": ""
+        }
+      },
+      {
+        "id": "macy-s",
+        "kind": "street",
+        "groupId": "red",
+        "rules": {
+          "purchasePrice": 220,
+          "baseRent": 18,
+          "rentTiers": [
+            90,
+            250,
+            700,
+            875,
+            1050
+          ],
+          "mortgageValue": 110,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "macy*s",
+          "color": "red",
+          "x": 14.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "chance-east",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Chance",
+          "color": "white",
+          "x": 23,
+          "y": 6,
+          "rotationDegrees": 180,
+          "priceText": "NEW YORK LOTTERY GAMES"
+        }
+      },
+      {
+        "id": "fao-schwarz",
+        "kind": "street",
+        "groupId": "red",
+        "rules": {
+          "purchasePrice": 220,
+          "baseRent": 18,
+          "rentTiers": [
+            90,
+            250,
+            700,
+            875,
+            1050
+          ],
+          "mortgageValue": 110,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "FAO Schwarz",
+          "color": "red",
+          "x": 31.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "bloomingdale-s",
+        "kind": "street",
+        "groupId": "red",
+        "rules": {
+          "purchasePrice": 240,
+          "baseRent": 20,
+          "rentTiers": [
+            100,
+            300,
+            750,
+            925,
+            1100
+          ],
+          "mortgageValue": 120,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "bloomingdale's",
+          "color": "red",
+          "boardName": "blooming...",
+          "x": 40,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "metro-north-railroad",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Metro-North Railroad",
+          "color": "white",
+          "x": 48.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "deloitte-touche-llp",
+        "kind": "street",
+        "groupId": "yellow",
+        "rules": {
+          "purchasePrice": 260,
+          "baseRent": 22,
+          "rentTiers": [
+            110,
+            330,
+            800,
+            975,
+            1150
+          ],
+          "mortgageValue": 130,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Deloitte & Touche LLP",
+          "color": "yellow",
+          "x": 57,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "smithbarney",
+        "kind": "street",
+        "groupId": "yellow",
+        "rules": {
+          "purchasePrice": 260,
+          "baseRent": 22,
+          "rentTiers": [
+            110,
+            330,
+            800,
+            975,
+            1150
+          ],
+          "mortgageValue": 130,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "SmithBarney",
+          "color": "yellow",
+          "x": 65.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "con-edison-gas",
+        "kind": "utility",
+        "groupId": "utilities",
+        "rules": {
+          "purchasePrice": 150,
+          "baseRent": 0,
+          "rentTiers": [
+            4,
+            10,
+            10,
+            10,
+            10
+          ],
+          "mortgageValue": 75,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Con Edison Gas",
+          "color": "white",
+          "x": 74,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "citibank",
+        "kind": "street",
+        "groupId": "yellow",
+        "rules": {
+          "purchasePrice": 280,
+          "baseRent": 24,
+          "rentTiers": [
+            120,
+            360,
+            850,
+            1025,
+            1200
+          ],
+          "mortgageValue": 140,
+          "houseCost": 150,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "CITIBANK",
+          "color": "yellow",
+          "x": 82.5,
+          "y": 6,
+          "rotationDegrees": 180
+        }
+      },
+      {
+        "id": "go-to-jail",
+        "kind": "go-to-jail",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Go to Jail",
+          "color": "white",
+          "x": 94,
+          "y": 6,
+          "rotationDegrees": 0,
+          "priceText": "Go directly to Jail. Do not pass GO. Do not collect $200."
+        }
+      },
+      {
+        "id": "the-regency-hotel",
+        "kind": "street",
+        "groupId": "green",
+        "rules": {
+          "purchasePrice": 300,
+          "baseRent": 26,
+          "rentTiers": [
+            130,
+            390,
+            900,
+            1100,
+            1275
+          ],
+          "mortgageValue": 150,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "The Regency Hotel",
+          "color": "green",
+          "x": 94,
+          "y": 14.5,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "essex-house",
+        "kind": "street",
+        "groupId": "green",
+        "rules": {
+          "purchasePrice": 300,
+          "baseRent": 26,
+          "rentTiers": [
+            130,
+            390,
+            900,
+            1100,
+            1275
+          ],
+          "mortgageValue": 150,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Essex House",
+          "color": "green",
+          "x": 94,
+          "y": 23,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "community-chest-east",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Community Chest",
+          "color": "white",
+          "x": 94,
+          "y": 31.5,
+          "rotationDegrees": 270,
+          "priceText": "FOLLOW INSTRUCTIONS ON TOP CARD"
+        }
+      },
+      {
+        "id": "the-plaza",
+        "kind": "street",
+        "groupId": "green",
+        "rules": {
+          "purchasePrice": 320,
+          "baseRent": 28,
+          "rentTiers": [
+            150,
+            450,
+            1000,
+            1200,
+            1400
+          ],
+          "mortgageValue": 160,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "The Plaza",
+          "color": "green",
+          "x": 94,
+          "y": 40,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "united-airlines",
+        "kind": "railroad",
+        "groupId": "railroads",
+        "rules": {
+          "purchasePrice": 200,
+          "baseRent": 0,
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ],
+          "mortgageValue": 100,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "United Airlines",
+          "color": "white",
+          "x": 94,
+          "y": 48.5,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "chance-north",
+        "kind": "card",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Chance",
+          "color": "white",
+          "x": 94,
+          "y": 57,
+          "rotationDegrees": 270,
+          "priceText": "NEW YORK LOTTERY GAMES"
+        }
+      },
+      {
+        "id": "tiffany-co",
+        "kind": "street",
+        "groupId": "blue",
+        "rules": {
+          "purchasePrice": 350,
+          "baseRent": 35,
+          "rentTiers": [
+            175,
+            500,
+            1100,
+            1300,
+            1500
+          ],
+          "mortgageValue": 175,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "Tiffany & CO.",
+          "color": "blue",
+          "x": 94,
+          "y": 65.5,
+          "rotationDegrees": 270
+        }
+      },
+      {
+        "id": "luxury-tax",
+        "kind": "tax",
+        "groupId": null,
+        "rules": {
+          "purchasePrice": 0,
+          "baseRent": 0,
+          "rentTiers": [],
+          "mortgageValue": 0,
+          "houseCost": 0,
+          "taxAmount": 75
+        },
+        "presentation": {
+          "label": "LUXURY TAX",
+          "color": "white",
+          "x": 94,
+          "y": 74,
+          "rotationDegrees": 270,
+          "priceText": "Pay $75"
+        }
+      },
+      {
+        "id": "trump-tower",
+        "kind": "street",
+        "groupId": "blue",
+        "rules": {
+          "purchasePrice": 400,
+          "baseRent": 50,
+          "rentTiers": [
+            200,
+            600,
+            1400,
+            1700,
+            2000
+          ],
+          "mortgageValue": 200,
+          "houseCost": 200,
+          "taxAmount": 0
+        },
+        "presentation": {
+          "label": "TRUMP TOWER",
+          "color": "blue",
+          "x": 94,
+          "y": 82.5,
+          "rotationDegrees": 270
+        }
+      }
+    ],
+    "groups": [
+      {
+        "id": "railroads",
+        "label": "Transportations",
+        "squareIds": [
+          "lomto",
+          "new-york-city-transit",
+          "metro-north-railroad",
+          "united-airlines"
+        ],
+        "rules": {
+          "rentTiers": [
+            25,
+            50,
+            100,
+            200,
+            400
+          ]
+        },
+        "presentation": {
+          "color": "white"
+        }
+      },
+      {
+        "id": "utilities",
+        "label": "Utilities",
+        "squareIds": [
+          "con-edison-electric",
+          "con-edison-gas"
+        ],
+        "rules": {
+          "rentTiers": [
+            4,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "presentation": {
+          "color": "white"
+        }
+      },
+      {
+        "id": "dark-purple",
+        "label": "Dark Purple",
+        "squareIds": [
+          "port-authority-bus-terminal",
+          "lincoln-tunnel"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#4B0082"
+        }
+      },
+      {
+        "id": "light-blue",
+        "label": "Light Blue",
+        "squareIds": [
+          "statue-of-liberty",
+          "empire-state-building",
+          "central-park"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "#AACCFF"
+        }
+      },
+      {
+        "id": "purple",
+        "label": "Purple",
+        "squareIds": [
+          "98-7-kiss-fm",
+          "thirteen-wnet",
+          "the-new-york-times"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "purple"
+        }
+      },
+      {
+        "id": "orange",
+        "label": "Orange",
+        "squareIds": [
+          "new-york-rangers",
+          "new-york-knicks",
+          "madison-square-garden"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "orange"
+        }
+      },
+      {
+        "id": "red",
+        "label": "Red",
+        "squareIds": [
+          "macy-s",
+          "fao-schwarz",
+          "bloomingdale-s"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "red"
+        }
+      },
+      {
+        "id": "yellow",
+        "label": "Yellow",
+        "squareIds": [
+          "deloitte-touche-llp",
+          "smithbarney",
+          "citibank"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "yellow"
+        }
+      },
+      {
+        "id": "green",
+        "label": "Green",
+        "squareIds": [
+          "the-regency-hotel",
+          "essex-house",
+          "the-plaza"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "green"
+        }
+      },
+      {
+        "id": "blue",
+        "label": "Blue",
+        "squareIds": [
+          "tiffany-co",
+          "trump-tower"
+        ],
+        "rules": {
+          "monopolyMultiplier": 2
+        },
+        "presentation": {
+          "color": "blue"
+        }
+      }
+    ],
+    "communityChest": [
+      "Get out of Jail, Free. This card may be kept until needed or sold.",
+      "You have won lifetime home delivery of the New York Times. Collect $10",
+      "From sale of Macy's stock, you get $45",
+      "Life insurance matures. Collect $100",
+      "Deloitte & Touche LLP tax return Collect $20",
+      "FAO Schwarz Xmas fund matures. Collect $100",
+      "You have won a United Airlines trip around the world! Collect $100",
+      "Performed a wedding at the Plaza Hotel. Receive $25",
+      "Pay hospital $100",
+      "You won the Lottery! Collect $200",
+      "Pay school tax of $150",
+      "Doctor's fee. Pay $50",
+      "Madison Square Garden opening tonight. Collect $50 from every player for opening night seats.",
+      "You have won kiss cash! Advance to GO (Collect $200)",
+      "You are assessed for street repairs. $40 per house. $115 per hotel.",
+      "Go to Jail. Go directly to Jail. Do not pass GO. Do not collect $200."
+    ],
+    "chance": [
+      "Get out of Jail free. This card may be kept until needed or sold.",
+      "Make general repairs on all your property. For each house pay $25. For each hotel $100.",
+      "Pay poor tax of $15.",
+      "You have been elected chairman of Con Edison. Pay each player $50.",
+      "Go back 3 spaces.",
+      "Advance token to the nearest Con Edison utility. If UNOWNED you may buy it from the bank. If OWNED, throw dice and pay owner a total of ten times the amount thrown.",
+      "Citibank pays you interest of $50.",
+      "Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled. If Transportation is unowned, you may buy it from the Bank.",
+      "Take a walk past The Essex House. Advance to GO. Collect $200.",
+      "Take a ride to the Regency Hotel! If you pass GO collect $200.",
+      "Take a walk on fifth avenue. Advance token to Trump Tower.",
+      "Advance to thirteen.",
+      "Your Smith Barney mutual fund pays dividend. Collect $150.",
+      "Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled.\n\nIf Transportation is unowned, you may buy it from the Bank.",
+      "Catch a bus to Central Park. If you pass GO, collect $200.",
+      "Go directly to Jail. Do not pass GO, do not collect $200."
+    ]
+  }
+}

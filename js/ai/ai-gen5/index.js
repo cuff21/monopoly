@@ -75,7 +75,7 @@
         };
 
         this.postBail = function() {
-            var hasFreeCard = p.communityChestJailCard || p.chanceJailCard;
+            var hasFreeCard = p.heldCards && p.heldCards.length > 0;
             var reserve = AIGen5.Liquidity.computeReserve(p, self.profile);
             var reserveAfterFine = p.money - 50 >= reserve * 0.75;
 

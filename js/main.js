@@ -9,7 +9,7 @@ function sleep(ms) {
 
 function bindBrowserGameState(gameInstance) {
 	var stateKeys = [
-		'player', 'square', 'communityChestCards', 'chanceCards', 'playersGame', 'pcount',
+		'player', 'square', 'cardDecks', 'playersGame', 'pcount',
 		'auctionEnabled', 'pendingAuction', 'freeParkingTaxes', 'freeParkingPot', 'turn',
 		'doublecount', 'lastGamePlayerCount', 'lastKnownPosition', 'lastKnownJail',
 		'playerOverlays', 'nextMoveDirection'
@@ -29,6 +29,39 @@ function bindBrowserGameState(gameInstance) {
 	window.sellHouse = function(index) { return gameInstance.sellHouse(index); };
 	window.canSellHouse = function(index) { return gameInstance.canSellHouse(index); };
 	window.getHouseHotelSupply = function() { return gameInstance.getHouseHotelSupply(); };
+}
+
+function getBoardTraversal(board) {
+	var ids = [], currentId = board.startSquareId;
+	for (var i = 0; i < Object.keys(board.squaresById).length; i++) {
+		ids.push(currentId);
+		currentId = board.squaresById[currentId].nextId;
+	}
+	return ids;
+}
+
+function createBoardSurface(board) {
+	var oldBoard = document.getElementById('board');
+	if (!oldBoard) return;
+	var surface = document.createElement('div');
+	surface.id = 'board';
+	surface.style.cssText = 'position:relative;width:min(90vw,900px);height:min(90vw,900px);min-width:600px;min-height:600px;border:2px solid #222;background:#eee;box-sizing:border-box;';
+	var ids = getBoardTraversal(board);
+	ids.forEach(function(id, index) {
+		var square = board.squaresById[id];
+		var cell = document.createElement('div');
+		cell.id = 'cell' + index;
+		cell.className = 'cell board-dynamic-cell';
+		cell.dataset.squareId = id;
+		cell.style.cssText = 'position:absolute;left:' + square.presentation.x + '%;top:' + square.presentation.y + '%;width:7%;height:7%;transform:translate(-50%,-50%) rotate(' + (square.presentation.rotationDegrees || 0) + 'deg);background:' + (square.presentation.color || '#fff') + ';border:1px solid #222;box-sizing:border-box;';
+		surface.appendChild(cell);
+	});
+	var center = document.createElement('div');
+	center.className = 'board-dynamic-center';
+	center.style.cssText = 'position:absolute;left:50%;top:50%;width:70%;height:70%;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;';
+	center.innerHTML = '<div id="drawn-cards" aria-label="Card decks"></div><div id="jail"><div id="jailpositionholder"></div></div>';
+	surface.appendChild(center);
+	oldBoard.parentNode.replaceChild(surface, oldBoard);
 }
 
 // Overwrite an array with numbers from one to the array's length in a random order.
@@ -58,14 +91,12 @@ function onloadBehavior() {
 	});
 	var edition = Monopoly.Editions.getActive();
 	var editionId = Monopoly.Editions.getActiveName();
-	var structuredBoard = Monopoly.Editions.buildBoardForGame(editionId);
-	var boardGroups = edition.buildGroups();
+	var editionSetup = Monopoly.Editions.buildGameSetup(editionId);
+	var structuredBoard = editionSetup.board;
 	var initialState = GameStateContext.createState({
 		player: [],
 		editionId: editionId,
-		square: edition.buildSquares(boardGroups),
-		communityChestCards: edition.buildCommunityChestCards(),
-		chanceCards: edition.buildChanceCards(),
+		cardDecks: editionSetup.cardDecks,
 		playersGame: [],
 		pcount: 2,
 		auctionEnabled: true,
@@ -82,8 +113,40 @@ function onloadBehavior() {
 	});
 	GameStateContext.initializeBoardState(initialState, structuredBoard, editionId);
 	game = new Game(undefined, initialState);
+	createBoardSurface(structuredBoard);
 	bindBrowserGameState(game);
 	resetTokenOverlays();
+	var drawnCards = document.getElementById('drawn-cards');
+	if (drawnCards) {
+		drawnCards.innerHTML = '';
+		Object.keys(cardDecks).forEach(function(deckId) {
+			var deck = cardDecks[deckId];
+			var group = document.createElement('div');
+			group.className = 'drawn-card-group';
+			group.id = 'card-deck-' + deckId;
+			var stack = document.createElement('div');
+			stack.className = 'drawn-card-stack';
+			stack.setAttribute('aria-hidden', 'true');
+			var icon = document.createElement('img');
+			icon.src = deck.icon;
+			icon.alt = '';
+			stack.appendChild(icon);
+			var card = document.createElement('div');
+			card.className = 'drawn-card';
+			var title = document.createElement('div');
+			title.className = 'drawn-card-title';
+			title.textContent = deck.label;
+			var text = document.createElement('div');
+			text.className = 'drawn-card-text';
+			text.id = 'card-deck-' + deckId + '-text';
+			text.textContent = 'No card drawn yet.';
+			card.appendChild(title);
+			card.appendChild(text);
+			group.appendChild(stack);
+			group.appendChild(card);
+			drawnCards.appendChild(group);
+		});
+	}
 
 	for (var i = 0; i <= 8; i++) {
 		player[i] = new Player("", "", game);
@@ -91,49 +154,14 @@ function onloadBehavior() {
 		if (i > 0) GameStateContext.assignPlayerId(player[i], i);
 	}
 
-	var groupPropertyArray = [];
-	var groupNumber;
-
-	for (var i = 0; i < 40; i++) {
-		groupNumber = square[i].groupNumber;
-
-		if (groupNumber > 0) {
-			if (!groupPropertyArray[groupNumber]) {
-				groupPropertyArray[groupNumber] = [];
-			}
-
-			groupPropertyArray[groupNumber].push(i);
-		}
-	}
-
-	for (var i = 0; i < 40; i++) {
-		groupNumber = square[i].groupNumber;
-
-		if (groupNumber > 0) {
-			square[i].group = groupPropertyArray[groupNumber];
-		}
-
-		square[i].index = i;
-	}
-
 	AITest3.count = 0;
 
 	player[1].human = true;
 	player[0].name = "the bank";
 
-	communityChestCards.index = 0;
-	chanceCards.index = 0;
-
-	communityChestCards.deck = [];
-	chanceCards.deck = [];
-	for (var i = 0; i < 16; i++) {
-		chanceCards.deck[i] = i;
-		communityChestCards.deck[i] = i;
-	}
-
-	// Shuffle Chance and Community Chest decks.
-	chanceCards.deck.sort(function() {return Math.random() - 0.5;});
-	communityChestCards.deck.sort(function() {return Math.random() - 0.5;});
+	Object.keys(cardDecks).forEach(function(deckId) {
+		cardDecks[deckId].order.sort(function() { return Math.random() - 0.5; });
+	});
 
 	createPlayerInputs();
 	playernumber_onchange();
@@ -148,7 +176,8 @@ function onloadBehavior() {
 	enlargeWrap.id = "enlarge-wrap";
 
 	var HTML = "";
-	for (var i = 0; i < 40; i++) {
+	var boardSquareCount = square.length;
+	for (var i = 0; i < boardSquareCount; i++) {
 		HTML += "<div id='enlarge" + i + "' class='enlarge'>";
 		HTML += "<div id='enlarge" + i + "color' class='enlarge-color'></div><br /><div id='enlarge" + i + "name' class='enlarge-name'></div>";
 		HTML += "<br /><div id='enlarge" + i + "price' class='enlarge-price'></div>";
@@ -163,7 +192,7 @@ function onloadBehavior() {
 	var currentCellName;
 	var currentCellOwner;
 
-	for (var i = 0; i < 40; i++) {
+	for (var i = 0; i < boardSquareCount; i++) {
 		s = square[i];
 
 		currentCell = document.getElementById("cell" + i);
@@ -208,20 +237,22 @@ function onloadBehavior() {
 
 	// Add images to enlarges.
 	document.getElementById("enlarge0token").innerHTML += '<img src="images/arrow_icon.png" height="40" width="136" alt="" />';
-	document.getElementById("enlarge20price").innerHTML += "<img src='images/free_parking_icon.png' height='80' width='72' alt='' style='position: relative; top: -20px;' />";
-	document.getElementById("enlarge38token").innerHTML += '<img src="images/tax_icon.png" height="60" width="70" alt="" style="position: relative; top: -20px;" />';
+	var freeParkingIndex = square.findIndex(function(item) { return item.id === 'free-parking'; });
+	var taxIndex = square.findIndex(function(item) { return item.id === 'luxury-tax' || item.id === 'city-tax'; });
+	if (freeParkingIndex !== -1) document.getElementById("enlarge" + freeParkingIndex + "price").innerHTML += "<img src='images/free_parking_icon.png' height='80' width='72' alt='' style='position: relative; top: -20px;' />";
+	if (taxIndex !== -1) document.getElementById("enlarge" + taxIndex + "token").innerHTML += '<img src="images/tax_icon.png" height="60" width="70" alt="" style="position: relative; top: -20px;" />';
 
 	EditionRenderer.renderSquareDisplay(square);
 
 	// Jail corrections
-	$("<div>", {id: "jailpositionholder" }).appendTo("#jail");
+	if (!document.getElementById("jailpositionholder")) $("<div>", {id: "jailpositionholder" }).appendTo("#jail");
 	$("<span>").text("Jail").appendTo("#jail");
 
-	document.getElementById("jail").enlargeId = "enlarge40";
+	document.getElementById("jail").enlargeId = "enlarge" + boardSquareCount;
 
-	document.getElementById("enlarge-wrap").innerHTML += "<div id='enlarge40' class='enlarge'><div id='enlarge40color' class='enlarge-color'></div><br /><div id='enlarge40name' class='enlarge-name'>Jail</div><br /><div id='enlarge40price' class='enlarge-price'><img src='images/jake_icon.png' height='80' width='80' alt='' style='position: relative; top: -20px;' /></div><br /><div id='enlarge40token' class='enlarge-token'></div></div>";
+	document.getElementById("enlarge-wrap").innerHTML += "<div id='enlarge" + boardSquareCount + "' class='enlarge'><div id='enlarge" + boardSquareCount + "color' class='enlarge-color'></div><br /><div id='enlarge" + boardSquareCount + "name' class='enlarge-name'>Jail</div><br /><div id='enlarge" + boardSquareCount + "price' class='enlarge-price'><img src='images/jake_icon.png' height='80' width='80' alt='' style='position: relative; top: -20px;' /></div><br /><div id='enlarge" + boardSquareCount + "token' class='enlarge-token'></div></div>";
 
-	document.getElementById("enlarge40name").innerHTML = "Jail";
+	document.getElementById("enlarge" + boardSquareCount + "name").innerHTML = "Jail";
 
 	// Create event handlers for hovering and draging.
 
@@ -403,9 +434,9 @@ function onloadBehavior() {
 
 	$("#trade-menu-item").click(game.trade);
 
-    for(let i = 0; i < 40; i++) {
+    for(let i = 0; i < boardSquareCount; i++) {
         let c = square[i].color;
-        if(c !== '#FFFFFF') {
+        if(/^#[0-9a-f]{6}$/i.test(c) && c.toUpperCase() !== '#FFFFFF') {
             document.querySelector('#cell'+i).style.backgroundColor = 'rgba('+(parseInt(c.substr(1,2),16))+','+(parseInt(c.substr(3,2),16))+','+(parseInt(c.substr(5,2),16))+',0.25)';
         }
         else {

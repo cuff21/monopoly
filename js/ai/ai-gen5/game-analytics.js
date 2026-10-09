@@ -44,7 +44,7 @@
         }
         var seenGroups = {};
         var total = 0;
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || !s.group || s.group.length === 0) {
                 continue;
@@ -71,7 +71,7 @@
         }
         var seenGroups = {};
         var total = 0;
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || !s.group || s.group.length === 0 || s.owner === 0) {
                 continue;
@@ -133,9 +133,9 @@
         immediateHouses = Math.floor(immediateHouses * buildFeasibility);
 
         // Expected passing GO income (~$200 every 5 turns => ~$40/turn)
-        var expectedGoIncome = 40 * turnsAhead;
+        var expectedGoIncome = (square.length || 40) * turnsAhead;
         var expectedRentIncome = 0;
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var tile = square[i];
             if (tile && tile.owner === player.index && !tile.mortgage) {
                 var rentVal = AIGen5.Valuation && typeof AIGen5.Valuation.expectedRentValue === 'function' ? AIGen5.Valuation.expectedRentValue(i, player.index, null, turnsAhead, player) : (tile.baserent || 0);
@@ -183,7 +183,7 @@
         }
         var total = p.money || 0;
         var square = AIGen5.getSquares(p);
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || s.owner !== p.index) {
                 continue;
@@ -277,7 +277,7 @@
         }
 
         var unownedCount = 0;
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (s && s.price > 0 && s.owner === 0) {
                 unownedCount++;

@@ -149,10 +149,11 @@
 		}
 	};
 
-	BrowserUI.prototype.showCard = function(deckType, text, action) {
-		var icon = deckType === 'chance' ? 'images/chance_icon.png' : 'images/community_chest_icon.png';
-		var title = deckType === 'chance' ? 'Chance' : 'Community Chest';
-		var html = "<img src='" + icon + "' alt='' style='height: 50px; float: left; margin: 8px 8px 0px 0px;' /><div class='drawn-card-title'>" + title + "</div><div class='drawn-card-text'>" + UIHtml.escapeHTML(text) + '</div>';
+	BrowserUI.prototype.showCard = function(deckId, text, action) {
+		var deck = this.game && this.game.state.cardDecks && this.game.state.cardDecks[deckId];
+		var icon = deck ? deck.icon : '';
+		var title = deck ? deck.label : deckId;
+		var html = "<img src='" + UIHtml.escapeHTML(icon) + "' alt='' style='height: 50px; float: left; margin: 8px 8px 0px 0px;' /><div class='drawn-card-title'>" + UIHtml.escapeHTML(title) + "</div><div class='drawn-card-text'>" + UIHtml.escapeHTML(text) + '</div>';
 		return this.popup(html, action);
 	};
 
@@ -423,14 +424,15 @@
 		if (typeof document === 'undefined') return;
 		var landed = document.getElementById('landed');
 		if (!landed) return;
-		var html = "You are in jail.<input type='button' id='pay-fine-button' title='Pay $50 fine to get out of jail immediately.' value='Pay $50 fine' />";
+		var bailAmount = this.game && this.game.state.board ? this.game.state.board.rules.bailAmount : 50;
+		var html = "You are in jail.<input type='button' id='pay-fine-button' title='Pay $" + bailAmount + " fine to get out of jail immediately.' value='Pay $" + bailAmount + " fine' />";
 		if (hasJailCard) html += "<input type='button' id='gojfbutton' title='Use &quot;Get Out of Jail Free&quot; card.' value='Use Card' />";
-		if (mustPayFine) html += "<div>NOTE: If you do not throw doubles after this roll, you <i>must</i> pay the $50 fine.</div>";
+		if (mustPayFine) html += "<div>NOTE: If you do not throw doubles after this roll, you <i>must</i> pay the $" + bailAmount + " fine.</div>";
 		landed.innerHTML = html;
 		var game = this.game;
 		var payFineButton = document.getElementById('pay-fine-button');
-		if (payFineButton && game && typeof game.payFifty === 'function') {
-			payFineButton.addEventListener('click', function() { game.payFifty(); });
+		if (payFineButton && game && typeof game.payBail === 'function') {
+			payFineButton.addEventListener('click', function() { game.payBail(); });
 		}
 		var jailCardButton = document.getElementById('gojfbutton');
 		if (jailCardButton && game && typeof game.useJailCard === 'function') {
@@ -443,7 +445,9 @@
 	BrowserUI.prototype.onLeaveJail = function(playerColor) {
 		if (typeof document === 'undefined') return;
 		var jail = document.getElementById('jail');
-		var cell = document.getElementById('cell11');
+		var cellIndex = this.game && this.game.state.square
+			? this.game.state.square.findIndex(function(square) { return square.id === 'jail'; }) : 10;
+		var cell = document.getElementById('cell' + cellIndex);
 		if (jail) jail.style.border = '1px solid black';
 		if (cell) cell.style.border = '2px solid ' + playerColor;
 		this.hideLanded();
@@ -493,7 +497,7 @@
 	};
 
 	BrowserUI.prototype.formatTradeResult = function(label, trade) {
-		return global.TradeView ? global.TradeView.formatResult(label, trade, this.game && this.game.state.square) : '';
+		return global.TradeView ? global.TradeView.formatResult(label, trade, this.game && this.game.state) : '';
 	};
 
 	BrowserUI.prototype.setTradePanelVisible = function(visible) {

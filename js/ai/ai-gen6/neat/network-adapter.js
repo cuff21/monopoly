@@ -80,7 +80,7 @@
             // Jail card count
             for (var p = 0; p < playerSlots; p++) {
                 if (players[p]) {
-                    var cards = (players[p].communityChestJailCard ? 1 : 0) + (players[p].chanceJailCard ? 1 : 0);
+                    var cards = players[p].heldCards ? players[p].heldCards.length : 0;
                     inputs[playerSlots * 3 + p] = Math.max(0.0, Math.min(1.0, cards / 2.0));
                 }
             }

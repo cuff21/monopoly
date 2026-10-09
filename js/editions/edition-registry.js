@@ -1,10 +1,6 @@
-// Edition registry. The current pre-migration interface uses buildGroups/buildSquares;
-// Phase 2 replaces it with the required structured contract below.
-//
 // Structured edition definition:
 //   buildBoard()               -> a new complete Board on every call
-//   buildCommunityChestCards() -> ordered Card[]
-//   buildChanceCards()         -> ordered Card[]
+//   buildCardDecks()           -> { deckId: { label, icon, cards, keepable?, continueTurn? } }
 // Registration validates and discards one fresh Board. Each Game builds and validates its
 // own Board; function-bearing behavior stays local to that Game.
 
@@ -36,11 +32,43 @@ _global.Monopoly.Editions = (function() {
 		return Object.freeze(value);
 	}
 
-	function buildValidatedEditionBoard(name, edition) {
+	function validateDeckDefinitions(name, cardDecks) {
+		if (!cardDecks || typeof cardDecks !== 'object' || Array.isArray(cardDecks)) {
+			throw new TypeError('Edition ' + name + ' buildCardDecks() must return a deck map.');
+		}
+		Object.keys(cardDecks).forEach(function(deckId) {
+			var definition = cardDecks[deckId];
+			if (!deckId) throw new TypeError('Edition ' + name + ' deck IDs must be nonempty strings.');
+			if (!definition || !Array.isArray(definition.cards) || definition.cards.length === 0) {
+				throw new TypeError('Edition ' + name + ' deck ' + deckId + ' must provide a nonempty cards[] list.');
+			}
+			definition.cards.forEach(function(card, index) {
+				if (!card || typeof card !== 'object' || typeof card.action !== 'function') {
+					throw new TypeError('Edition ' + name + ' deck ' + deckId + ' card ' + index + ' must provide an action function.');
+				}
+			});
+			['keepable', 'continueTurn'].forEach(function(field) {
+				var indexes = definition[field] || [];
+				if (!Array.isArray(indexes) || indexes.some(function(index, position) {
+					return !Number.isInteger(index) || index < 0 || index >= definition.cards.length || indexes.indexOf(index) !== position;
+				})) throw new TypeError('Edition ' + name + ' deck ' + deckId + ' has invalid ' + field + ' indexes.');
+			});
+		});
+		return cardDecks;
+	}
+
+	function buildValidatedEditionBoard(name, edition, suppliedDecks) {
 		var board = validateEditionBoard(edition.buildBoard());
+		var cardDecks = validateDeckDefinitions(name, suppliedDecks || edition.buildCardDecks() || {});
 		if (board.editionId !== name) {
 			throw new TypeError('Edition ' + name + ' buildBoard() must return a Board with matching editionId.');
 		}
+		Object.keys(board.squaresById).forEach(function(squareId) {
+			var square = board.squaresById[squareId];
+			if (square.kind === 'card' && !Object.prototype.hasOwnProperty.call(cardDecks, square.deckId)) {
+				throw new TypeError('Edition ' + name + ' square ' + squareId + ' references unknown card deck ' + square.deckId + '.');
+			}
+		});
 		return board;
 	}
 
@@ -48,8 +76,8 @@ _global.Monopoly.Editions = (function() {
 		if (!definition || typeof definition.buildBoard !== 'function') {
 			throw new Error('Edition ' + name + ' must provide buildBoard().');
 		}
-		if (typeof definition.buildCommunityChestCards !== 'function' || typeof definition.buildChanceCards !== 'function') {
-			throw new Error('Edition ' + name + ' must provide buildCommunityChestCards() and buildChanceCards().');
+		if (typeof definition.buildCardDecks !== 'function') {
+			throw new Error('Edition ' + name + ' must provide buildCardDecks().');
 		}
 		buildValidatedEditionBoard(name, definition);
 		editions[name] = definition;
@@ -68,6 +96,47 @@ _global.Monopoly.Editions = (function() {
 		});
 		validateEditionBoard(board);
 		return freezeBoardValue(board);
+	}
+
+	function cloneCardDecks(name, definitions) {
+		var decks = Object.create(null);
+		Object.keys(definitions).forEach(function(deckId) {
+			var definition = definitions[deckId];
+			var cards = definition.cards.map(function(card, index) {
+				var copy = cloneBoardValue(card);
+				copy.deckId = deckId;
+				copy.cardIndex = index;
+				copy.keepable = (definition.keepable || []).indexOf(index) !== -1;
+				copy.endsTurn = (definition.continueTurn || []).indexOf(index) === -1;
+				return copy;
+			});
+			decks[deckId] = {
+				deckId: deckId, label: definition.label || deckId, icon: definition.icon || '',
+				cards: cards, order: cards.map(function(card, index) { return index; }), index: 0
+			};
+		});
+		return decks;
+	}
+
+	function buildCardDecksForGame(name) {
+		var edition = editions[name];
+		if (!edition) throw new RangeError('Unknown Monopoly edition: ' + name);
+		return cloneCardDecks(name, validateDeckDefinitions(name, edition.buildCardDecks() || {}));
+	}
+
+	function buildGameSetup(name, ruleOverrides) {
+		var edition = editions[name];
+		if (!edition) throw new RangeError('Unknown Monopoly edition: ' + name);
+		var definitions = validateDeckDefinitions(name, edition.buildCardDecks() || {});
+		var sourceBoard = buildValidatedEditionBoard(name, edition, definitions);
+		var board = cloneBoardValue(sourceBoard);
+		board.rules = Object.assign({}, board.rules);
+		Object.keys(ruleOverrides || {}).forEach(function(key) {
+			if (BOARD_RULE_KEYS.indexOf(key) === -1) throw new RangeError('Unknown Board rule override: ' + key);
+			board.rules[key] = ruleOverrides[key];
+		});
+		validateEditionBoard(board);
+		return { board: freezeBoardValue(board), cardDecks: cloneCardDecks(name, definitions) };
 	}
 
 	function getActive() {
@@ -99,7 +168,9 @@ _global.Monopoly.Editions = (function() {
 		setActive: setActive,
 		getActiveName: getActiveName,
 		getNames: getNames,
-		buildBoardForGame: buildBoardForGame
+		buildBoardForGame: buildBoardForGame,
+		buildCardDecksForGame: buildCardDecksForGame,
+		buildGameSetup: buildGameSetup
 	};
 })();
 

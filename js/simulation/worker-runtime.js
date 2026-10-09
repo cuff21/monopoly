@@ -95,7 +95,9 @@
             });
             var board = new SimBoard(contestants, match.maxTurns || 120, {
                 edition: match.edition,
-                playerCount: match.playerCount
+                playerCount: match.playerCount,
+                boardRuleOverrides: match.boardRuleOverrides,
+                seed: match.seed
             });
             var matchRes = await board.run();
             results.push({

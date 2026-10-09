@@ -6,7 +6,7 @@
         var square = AIGen5.getSquares(p);
         var candidates = [];
 
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || s.owner !== p.index) {
                 continue;
@@ -73,7 +73,7 @@
         var square = AIGen5.getSquares(p);
         var candidates = [];
 
-        for (var i = 0; i < 40; i++) {
+        for (var i = 0; i < square.length; i++) {
             var s = square[i];
             if (!s || s.owner !== p.index || !s.mortgage) {
                 continue;

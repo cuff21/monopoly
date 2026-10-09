@@ -69,7 +69,7 @@
             }
         }
         while (players.length < playerSlots) {
-            players.push({ money: 1500, position: 0, jail: false, communityChestJailCard: false, chanceJailCard: false });
+            players.push({ money: 1500, position: 0, jail: false, heldCards: [] });
         }
 
         var turnIdx = (this.player && this.player.index ? (this.player.index - 1) : 0);
@@ -107,7 +107,7 @@
     Gen6AI.prototype.postBail = function() {
         var decisions = this.getDecision(10);
         if (decisions.jailAction === 'card') {
-            if (this.player.communityChestJailCard || this.player.chanceJailCard) {
+            if (this.player.heldCards && this.player.heldCards.length) {
                 return true;
             }
         }
@@ -133,15 +133,16 @@
         for (var i = 0; i < 40; i++) {
             var sq = state.square[i];
             if (!sq || sq.owner !== this.player.index) continue;
+            var squareId = sq.id === undefined ? i : sq.id;
 
             var d = this.getDecision(i, this.player.money);
             if (sq.mortgage) {
                 var unmortgagePrice = Math.round(sq.price * 0.55);
                 if (d.unmortgage && this.player.money >= unmortgagePrice) {
-                    game.unmortgage(i);
+                    game.unmortgage(squareId);
                 }
             } else if (d.mortgage && !sq.house && !sq.hotel) {
-                game.mortgage(i);
+                game.mortgage(squareId);
             }
         }
 
@@ -150,6 +151,7 @@
         if (supply.housesAvailable > 0 || supply.hotelsAvailable > 0) {
             for (var i = 0; i < 40; i++) {
                 var sq = state.square[i];
+                var squareId = sq && sq.id !== undefined ? sq.id : i;
                 if (sq && sq.owner === this.player.index && sq.group && sq.houseprice > 0 && !sq.mortgage) {
                     var ownsAll = sq.group.every(function(idx) {
                         return state.square[idx] && state.square[idx].owner === sq.owner && !state.square[idx].mortgage;
@@ -157,7 +159,7 @@
                     if (ownsAll && sq.house < 5 && this.player.money >= sq.houseprice) {
                         var d = this.getDecision(i);
                         if (d.buildHouseCount > 0) {
-                            game.buyHouse(i);
+                            game.buyHouse(squareId);
                         }
                     }
                 }
@@ -228,7 +230,22 @@
                 propertyTransfer[requestedIndex] = -1;
                 propertyTransfer[offeredIndex] = 1;
                 if (!this.getDecision(this.player.position, 0, propertyTransfer).proposeTrade) return false;
-                game.trade(new Trade(this.player, state.player[opponentIndex], 0, propertyTransfer, 0, 0));
+                var squareIds = [];
+                if (state.board) {
+                    var squareId = state.board.startSquareId;
+                    for (var squareOrdinal = 0; squareOrdinal < Object.keys(state.board.squaresById).length; squareOrdinal++) {
+                        squareIds.push(squareId);
+                        squareId = state.board.squaresById[squareId].nextId;
+                    }
+                } else {
+                    squareIds = state.square.map(function(square, index) { return square.id || String(index); });
+                }
+                var offeredSquareIds = [], requestedSquareIds = [];
+                propertyTransfer.forEach(function(direction, index) {
+                    if (direction === 1) offeredSquareIds.push(squareIds[index]);
+                    else if (direction === -1) requestedSquareIds.push(squareIds[index]);
+                });
+                game.trade(new Trade(this.player.playerId || this.player, state.player[opponentIndex].playerId || state.player[opponentIndex], 0, offeredSquareIds, requestedSquareIds, []));
                 return true;
             }
         }
@@ -248,10 +265,11 @@
             if (this.player.money >= 0) break;
             var sq = state.square[i];
             if (sq && sq.owner === this.player.index && (sq.house > 0 || sq.hotel > 0)) {
+                var squareId = sq.id === undefined ? i : sq.id;
                 var decision = this.getDecision(i, this.player.money);
                 var sellCount = decision.sellHouseCount;
-                while (sellCount > 0 && game.canSellHouse(i) && this.player.money < 0) {
-                    if (!game.sellHouse(i)) break;
+                while (sellCount > 0 && game.canSellHouse(squareId) && this.player.money < 0) {
+                    if (!game.sellHouse(squareId)) break;
                     sellCount--;
                 }
             }
@@ -262,7 +280,7 @@
             if (this.player.money >= 0) break;
             var sq = state.square[i];
             if (sq && sq.owner === this.player.index && !sq.mortgage && sq.house === 0 && sq.hotel === 0) {
-                game.mortgage(i);
+                game.mortgage(sq.id === undefined ? i : sq.id);
             }
         }
     };
@@ -314,6 +332,7 @@
         id: "6",
         label: "Gen6 NEAT AI",
         defaultPriority: 6,
+        maxBoardSquareCount: 40,
         createPlayer: function(player) {
             var trainer = global.Gen6Trainer;
             var trainedBrain = trainer ? trainer.getStoredChampion() : null;

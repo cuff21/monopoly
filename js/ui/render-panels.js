@@ -42,22 +42,19 @@ function formatTradeResult(label, tradeObj) {
 	var offered = [];
 	var requested = [];
 	var money = tradeObj.getMoney();
-
-	for (var i = 0; i < 40; i++) {
-		if (tradeObj.getProperty(i) === 1) {
-			offered.push(UIHtml.escapeHTML(square[i].name));
-		} else if (tradeObj.getProperty(i) === -1) {
-			requested.push(UIHtml.escapeHTML(square[i].name));
-		}
-	}
-	if (tradeObj.getCommunityChestJailCard() === 1 || tradeObj.getChanceJailCard() === 1) {
-		offered.push("Get Out of Jail Free card");
-	}
-	if (tradeObj.getCommunityChestJailCard() === -1 || tradeObj.getChanceJailCard() === -1) {
-		requested.push("Get Out of Jail Free card");
-	}
-
-	return UIHtml.escapeHTML(label) + ": <table class='trade-summary'><tr><th>" + UIHtml.escapeHTML(initiator.name) + " gives</th><th>" + UIHtml.escapeHTML(recipient.name) + " gives</th></tr><tr><td>" + (offered.join(", ") || "Nothing") + (money > 0 ? " and $" + money : "") + "</td><td>" + (requested.join(", ") || "Nothing") + (money < 0 ? " and $" + (-money) : "") + "</td></tr></table>";
+	var squares = (typeof square !== 'undefined' && square) || [];
+	tradeObj.getOfferedSquareIds().forEach(function(id) {
+		var item = squares.filter(function(candidate) { return candidate.id === id; })[0];
+		offered.push(UIHtml.escapeHTML(item ? item.name : id));
+	});
+	tradeObj.getRequestedSquareIds().forEach(function(id) {
+		var item = squares.filter(function(candidate) { return candidate.id === id; })[0];
+		requested.push(UIHtml.escapeHTML(item ? item.name : id));
+	});
+	tradeObj.getHeldCards().forEach(function(card) { (card.direction === 1 ? offered : requested).push('Get Out of Jail Free card'); });
+	var initiatorName = typeof initiator === 'object' ? initiator.name : initiator;
+	var recipientName = typeof recipient === 'object' ? recipient.name : recipient;
+	return UIHtml.escapeHTML(label) + ": <table class='trade-summary'><tr><th>" + UIHtml.escapeHTML(initiatorName) + " gives</th><th>" + UIHtml.escapeHTML(recipientName) + " gives</th></tr><tr><td>" + (offered.join(", ") || "Nothing") + (money > 0 ? " and $" + money : "") + "</td><td>" + (requested.join(", ") || "Nothing") + (money < 0 ? " and $" + (-money) : "") + "</td></tr></table>";
 }
 
 function updateMoney(gameInstance) {
@@ -167,7 +164,7 @@ function updateOwned(gameInstance) {
 	housetext = "";
 	var sq;
 
-	for (var i = 0; i < 40; i++) {
+	for (var i = 0; i < squares.length; i++) {
 		sq = squares[i];
 		if (sq.groupNumber && sq.owner === 0) {
 			$("#cell" + i + "owner").hide();
@@ -180,7 +177,7 @@ function updateOwned(gameInstance) {
 		}
 	}
 
-	for (var i = 0; i < 40; i++) {
+	for (var i = 0; i < squares.length; i++) {
 		sq = squares[i];
 		if (sq.owner == currentTurn) {
 
@@ -213,21 +210,10 @@ function updateOwned(gameInstance) {
 		}
 	}
 
-	if (p.communityChestJailCard) {
-		if (HTML === "") {
-			firstproperty = 40;
-			HTML += "<table>";
-		}
-		HTML += "<tr class='property-cell-row'><td class='propertycellcheckbox'><input type='checkbox' id='propertycheckbox40' /></td><td class='propertycellcolor' style='background: white;'></td><td class='propertycellname'>Get Out of Jail Free Card</td></tr>";
-
-	}
-	if (p.chanceJailCard) {
-		if (HTML === "") {
-			firstproperty = 41;
-			HTML += "<table>";
-		}
-		HTML += "<tr class='property-cell-row'><td class='propertycellcheckbox'><input type='checkbox' id='propertycheckbox41' /></td><td class='propertycellcolor' style='background: white;'></td><td class='propertycellname'>Get Out of Jail Free Card</td></tr>";
-	}
+	p.heldCards.forEach(function(cardId, index) {
+		if (HTML === "") { firstproperty = squares.length + index; HTML += "<table>"; }
+		HTML += "<tr class='property-cell-row'><td class='propertycellcheckbox'><input type='checkbox' id='propertycheckbox" + (squares.length + index) + "' /></td><td class='propertycellcolor' style='background: white;'></td><td class='propertycellname'>Get Out of Jail Free Card</td></tr>";
+	});
 
 	if (HTML === "") {
 		HTML = UIHtml.escapeHTML(p.name) + ", you don't have any properties.";
@@ -273,7 +259,7 @@ function updateOption(gameInstance) {
 	var allGroupUnmortgaged = true;
 	var checkedproperty = getCheckedProperty();
 
-	if (checkedproperty < 0 || checkedproperty >= 40) {
+	if (checkedproperty < 0 || checkedproperty >= squares.length) {
 		$("#buyhousebutton").hide();
 		$("#sellhousebutton").hide();
 		$("#mortgagebutton").hide();

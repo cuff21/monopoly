@@ -20,6 +20,11 @@
 		configuration.players.forEach(function(selection, index) {
 			var currentPlayer = availableSlots[index];
 			var registration = (dependencies.aiRegistry || global.AISetupRegistry).get(selection.ai);
+			var squareCount = currentPlayer.game && currentPlayer.game.state.board
+				? Object.keys(currentPlayer.game.state.board.squaresById).length : null;
+			if (registration && registration.maxBoardSquareCount && squareCount !== registration.maxBoardSquareCount) {
+				throw new RangeError(registration.label + ' supports exactly ' + registration.maxBoardSquareCount + ' board squares; this edition has ' + squareCount + '.');
+			}
 			currentPlayer.color = selection.color.toLowerCase();
 			currentPlayer.human = selection.ai === '0';
 			if (currentPlayer.human) {

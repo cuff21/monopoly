@@ -59,16 +59,38 @@ async function runTests() {
     assert.throws(() => Gen6Compatibility.rejectLegacyStorage(legacyStorage), /gen6Population, gen6Champion/);
     assert.strictEqual(enumeratedLegacyKeys, 3, 'legacy detection should enumerate key names only');
     assert.strictEqual(Gen6Compatibility.rejectLegacyStorage({ length: 1, key: () => 'gameHistory' }).length, 0);
+    const schema1PolicyTensors = Gen6Compatibility.TENSOR_SHAPES.map(([name, shape]) => ({
+        name,
+        shape: shape.slice(),
+        values: new Float32Array(shape.reduce((size, dimension) => size * dimension, 1))
+    }));
+    assert.strictEqual(schema1PolicyTensors.reduce((total, tensor) => total + tensor.values.length, 0), 25107);
+    assert.strictEqual(Gen6Compatibility.PARAMETER_COUNT, 25107);
+    assert.deepStrictEqual(Gen6Compatibility.TILE_KINDS, ['street', 'railroad', 'utility', 'tax', 'card', 'jail', 'go-to-jail', 'free-parking', 'go']);
+    assert.deepStrictEqual(Array.from(Gen6Compatibility.encodeTileKind('card')), [0, 0, 0, 0, 1, 0, 0, 0, 0]);
+    assert.throws(() => Gen6Compatibility.encodeTileKind('chance'), RangeError);
+    assert.ok(Gen6Compatibility.normalizeCardCount(3) > Gen6Compatibility.normalizeCardCount(2), 'card-count features must distinguish counts above two');
+    [0, 1, 2, 3, 16, 1000, 1000000].forEach(count => assert.ok(Number.isFinite(Gen6Compatibility.normalizeCardCount(count))));
+    assert.deepStrictEqual(Array.from(Gen6Compatibility.encodeTradeCardTransfer(3, 4)), [Math.fround(Math.log1p(3)), Math.fround(Math.log1p(4))]);
+    assert.deepStrictEqual(Gen6Compatibility.jailActionMask(0, 200, 50), [false, true, true]);
+    assert.deepStrictEqual(Gen6Compatibility.jailActionMask(9, 0, 50), [true, true, false]);
+    const cardCopyKeys = [0, 1, 2].map(copyOrdinal => Array.from(Gen6Compatibility.encodeJailCardCandidateKey(1, 0, copyOrdinal)));
+    assert.strictEqual(new Set(cardCopyKeys.map(key => key.join(','))).size, 3, 'equivalent card copies need distinct sampling keys');
+    assert.deepStrictEqual(cardCopyKeys, [0, 1, 2].map(copyOrdinal => Array.from(Gen6Compatibility.encodeJailCardCandidateKey(1, 0, copyOrdinal))), 'candidate keys must not depend on held-card IDs or their order');
+    assert.throws(() => Gen6Compatibility.normalizeCardCount(-1), RangeError);
     const schema1PolicyEnvelope = {
         format: 'monopoly-gen6-policy', schemaVersion: 1, policyId: 'active',
-        tensors: [{ name: 'example', shape: [1], values: new Float32Array([0]) }],
+        tensors: schema1PolicyTensors,
         validation: {}, coverage: {}
     };
     assert.strictEqual(Gen6Compatibility.assertSchema1Record(schema1PolicyEnvelope), schema1PolicyEnvelope);
     assert.throws(() => Gen6Compatibility.assertSchema1Record({ schemaVersion: 1 }), /Malformed Schema 1/);
     assert.throws(() => Gen6Compatibility.assertSchema1Record({
-        ...schema1PolicyEnvelope, tensors: [{ name: 'broken', shape: [2], values: new Float32Array([0]) }]
+        ...schema1PolicyEnvelope, tensors: [{ ...schema1PolicyTensors[0], shape: [32, 51], values: new Float32Array(32 * 51) }, ...schema1PolicyTensors.slice(1)]
     }), /Malformed Schema 1 Gen6 policy record/);
+    assert.throws(() => Gen6Compatibility.assertSchema1Record({
+        ...schema1PolicyEnvelope, tensors: schema1PolicyTensors.slice(0, -1)
+    }), /Malformed Schema 1 Gen6 policy record/, 'interim and old tensor manifests must not be accepted as Schema 1');
     assert.throws(() => Gen6Compatibility.assertSchema1Record({ schemaVersion: 2 }), /schemaVersion 1 is required/);
     console.log('✔ Test 0.01: Unsupported Gen6 schemas and legacy storage are rejected without reading values.');
 
@@ -123,7 +145,7 @@ async function runTests() {
     const workerPool = new Gen6Trainer.BrowserWorkerPool(2, 'fake-worker.js', FakeSimulationWorker);
     const workerBrains = Array.from({ length: 4 }, () => Genotype.createInitial(147, 9));
     const workerMatches = await Promise.all([
-        workerPool.runMatch(workerBrains, 5, { edition: 'NYC', playerCount: 6 }),
+        workerPool.runMatch(workerBrains, 5, { edition: 'NYC', playerCount: 6, boardRuleOverrides: { startSalary: 250 }, seed: 77 }),
         workerPool.runMatch(workerBrains, 5, { edition: 'NYC', playerCount: 6 }),
         workerPool.runMatch(workerBrains, 5, { edition: 'NYC', playerCount: 6 }),
         workerPool.runMatch([
@@ -135,6 +157,9 @@ async function runTests() {
     assert.strictEqual(workerMatches.length, 4);
     assert.strictEqual(workerMaxActiveMatches, 2, 'pool should execute concurrently but respect its worker limit');
     assert.ok(workerMessages.slice(0, 3).every(message => message.matches[0].edition === 'NYC' && message.matches[0].playerCount === 6), 'worker messages should preserve the fixed tournament setup');
+    assert.deepStrictEqual(workerMessages[0].matches[0].boardRuleOverrides, { startSalary: 250 }, 'worker payloads should carry rule overrides as setup data');
+    assert.strictEqual(workerMessages[0].matches[0].seed, 77, 'worker payloads should carry the match seed as setup data');
+    assert.strictEqual(workerMessages[0].matches[0].board, undefined, 'workers should build Boards locally rather than receive function-bearing Boards');
     assert.deepStrictEqual(
         workerMessages[3].matches[0].contestants[0].genotype,
         Gen6SimulationAdapter.serialize({ kind: 'gen6', genotype: workerBrains[0] }).genotype
@@ -289,9 +314,9 @@ async function runTests() {
     console.log('✔ Test 0.62: Gen6 property policy actions verified.');
 
     // --- Test 0.65: Gen6 proposes a legal reciprocal monopoly trade ---
-    const tradeBot = { index: 1, position: 5, money: 1200 };
-    const tradeOpponent = { index: 2, position: 10, money: 1100 };
-    const tradeBoard = Array.from({ length: 40 }, (_, index) => ({ index, owner: 0, house: 0, hotel: 0, mortgage: false, houseprice: 50, group: null }));
+    const tradeBot = { index: 1, playerId: 'player-1', position: 5, money: 1200 };
+    const tradeOpponent = { index: 2, playerId: 'player-2', position: 10, money: 1100 };
+    const tradeBoard = Array.from({ length: 40 }, (_, index) => ({ id: 'trade-property-' + index, index, owner: 0, house: 0, hotel: 0, mortgage: false, houseprice: 50, group: null }));
     tradeBoard[1].group = tradeBoard[3].group = [1, 3];
     tradeBoard[6].group = tradeBoard[8].group = [6, 8];
     tradeBoard[1].owner = tradeBoard[6].owner = 1;
@@ -305,8 +330,8 @@ async function runTests() {
     const tradingAI = new Gen6AI(tradeBot, Genotype.createInitial(147, 9));
     tradingAI.getDecision = () => ({ proposeTrade: true });
     assert.strictEqual(tradingAI.onLand(), true, 'proposal output should submit a valid reciprocal trade');
-    assert.strictEqual(proposedTrade.getProperty(3), -1, 'AI should request the opponent-owned missing group member');
-    assert.strictEqual(proposedTrade.getProperty(6), 1, 'AI should offer its piece completing the opponent group');
+    assert.deepStrictEqual(proposedTrade.getRequestedSquareIds(), ['trade-property-3'], 'AI should request the opponent-owned missing group member');
+    assert.deepStrictEqual(proposedTrade.getOfferedSquareIds(), ['trade-property-6'], 'AI should offer its piece completing the opponent group');
     console.log('✔ Test 0.65: Reciprocal trade proposal verified.');
 
     // --- Test 1: Gen6AI instantiation & decision methods ---

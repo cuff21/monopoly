@@ -1,225 +1,99 @@
-// Direct property actions: buying, mortgaging, and building houses/hotels.
+// Rule actions over stable square IDs and per-game square state.
+(function(global) {
+	'use strict';
 
-function notifyPropertyUI(game, method) {
-	if (!game || !game.ui || typeof game.ui[method] !== 'function') {
-		return;
+	function context(game, squareId) {
+		var state = game && game.state;
+		if (!state || !state.board) throw new RangeError('Property action requires a Game Board.');
+		var square = global.getSquare(state.board, squareId);
+		var squareState = global.GameStateContext.getSquareState(state, squareId);
+		return { state: state, square: square, squareState: squareState };
 	}
-	return game.ui[method].apply(game.ui, Array.prototype.slice.call(arguments, 2));
-}
-
-function buy(game) {
-	var state = game.state;
-	var p = state.player[state.turn];
-	var property = state.square[p.position];
-	var cost = property.price;
-
-	if (p.money >= cost) {
-		p.pay(cost, 0);
-
-		property.owner = state.turn;
-		state.pendingAuction = -1;
-		notifyPropertyUI(game, "updateButtonState", "End turn", "End turn and advance to the next player.");
-		notifyPropertyUI(game, "updateMoney");
-		notifyPropertyUI(game, "alert", p.name + " bought " + property.name + " for " + property.pricetext + ".");
-		notifyPropertyUI(game, "updateOwned");
-		notifyPropertyUI(game, "hideLanded");
-
-	} else {
-		notifyPropertyUI(game, "showMessage", p.name + ", you need $" + (property.price - p.money) + " more to buy " + property.name + ".");
+	function notify(game, method) {
+		if (game.ui && typeof game.ui[method] === 'function') game.ui[method].apply(game.ui, Array.prototype.slice.call(arguments, 2));
 	}
-}
-
-function mortgage(game, index) {
-	var state = game.state;
-	var sq = state.square[index];
-	var p = state.player[sq.owner];
-
-	if (sq.house > 0 || sq.hotel > 0 || sq.mortgage) {
-		return false;
+	function owner(game, ownerId) {
+		return global.GameStateContext.getPlayerById(game.state, ownerId);
 	}
-
-	var group = sq.group || [];
-	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
-		var groupSquare = state.square[group[groupIndex]];
-		if (groupSquare && (groupSquare.house > 0 || groupSquare.hotel > 0)) {
-			return false;
-		}
+	function groupState(game, square) {
+		return square.groupId ? global.getGroupSquareIds(game.state.board, square.groupId).map(function(id) {
+			return { id: id, square: global.getSquare(game.state.board, id), state: global.GameStateContext.getSquareState(game.state, id) };
+		}) : [];
 	}
-
-	var mortgagePrice = Math.round(sq.price * 0.5);
-	var unmortgagePrice = Math.round(sq.price * 0.55);
-
-	sq.mortgage = true;
-	p.money += mortgagePrice;
-
-	notifyPropertyUI(game, "updateMortgageButton", "Unmortgage for $" + unmortgagePrice, "Unmortgage " + sq.name + " for $" + unmortgagePrice + ".");
-
-	notifyPropertyUI(game, "alert", p.name + " mortgaged " + sq.name + " for $" + mortgagePrice + ".");
-	notifyPropertyUI(game, "updateOwned");
-	notifyPropertyUI(game, "updateMoney");
-
-	notifyPropertyUI(game, "onMortgageChanged", index, true);
-
-	return true;
-}
-
-function unmortgage(game, index) {
-	var state = game.state;
-	var sq = state.square[index];
-	var p = state.player[sq.owner];
-	var unmortgagePrice = Math.round(sq.price * 0.55);
-	var mortgagePrice = Math.round(sq.price * 0.5);
-
-	if (unmortgagePrice > p.money || !sq.mortgage) {
-		return false;
-	}
-
-	p.pay(unmortgagePrice, 0);
-	sq.mortgage = false;
-
-	notifyPropertyUI(game, "updateMortgageButton", "Mortgage for $" + mortgagePrice, "Mortgage " + sq.name + " for $" + mortgagePrice + ".");
-
-	notifyPropertyUI(game, "alert", p.name + " unmortgaged " + sq.name + " for $" + unmortgagePrice + ".");
-	notifyPropertyUI(game, "updateOwned");
-
-	notifyPropertyUI(game, "onMortgageChanged", index, false);
-
-	return true;
-}
-
-// Shared house/hotel bank (32 houses, 12 hotels total) that buyHouse enforces for every caller, human or bot.
-function getHouseHotelSupply(game) {
-	var squares = game.state.square;
-	var housesInPlay = 0;
-	var hotelsInPlay = 0;
-
-	for (var i = 0; i < squares.length; i++) {
-		if (squares[i].hotel === 1) {
-			hotelsInPlay++;
-		} else {
-			housesInPlay += squares[i].house;
-		}
-	}
-
-	return { housesAvailable: 32 - housesInPlay, hotelsAvailable: 12 - hotelsInPlay };
-}
-
-function buyHouse(game, index) {
-	var state = game.state;
-	var sq = state.square[index];
-	var p = state.player[sq.owner];
-	var group = sq.group || [];
-
-    if(sq.mortgage || sq.hotel === 1) {
-        return false;
-    }
-
-	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
-		var groupSquare = state.square[group[groupIndex]];
-		if (groupSquare && (groupSquare.house < sq.house || groupSquare.mortgage)) {
-			return false;
-		}
-	}
-
-	if (p.money - sq.houseprice < 0) {
-		return false;
-
-	} else {
-		var supply = getHouseHotelSupply(game);
-
-		if (sq.house < 4) {
-			if (supply.housesAvailable <= 0) {
-				return false;
-
-			} else {
-				sq.house++;
-				notifyPropertyUI(game, "alert", p.name + " bought a house on " + sq.name + ".");
-				notifyPropertyUI(game, "onHouseChanged", index, sq.house, sq.hotel);
-			}
-
-		} else {
-			if (supply.hotelsAvailable <= 0) {
-				return false;
-
-			} else {
-				sq.house = 5;
-				sq.hotel = 1;
-				notifyPropertyUI(game, "alert", p.name + " bought a hotel on " + sq.name + ".");
-				notifyPropertyUI(game, "onHouseChanged", index, sq.house, sq.hotel);
-			}
-		}
-
-		p.pay(sq.houseprice, 0);
-
-		notifyPropertyUI(game, "updateOwned");
-		notifyPropertyUI(game, "updateMoney");
-
+	function buy(game, squareId) {
+		var c = context(game, squareId), p = game.state.player[game.state.turn], rules = c.square.rules;
+		if (c.squareState.ownerId !== null || rules.purchasePrice <= 0) return false;
+		if (p.money < rules.purchasePrice) return false;
+		p.pay(rules.purchasePrice, global.GameStateContext.BANK_ID);
+		global.GameStateContext.setSquareOwner(game.state, squareId, p.playerId);
+		game.state.pendingAuction = null;
+		notify(game, 'updateMoney'); notify(game, 'updateOwned');
 		return true;
 	}
-}
-
-// Houses/hotels must be sold evenly across a color-group, same as buying.
-function canSellHouse(game, index) {
-	var state = game.state;
-	var sq = state.square[index];
-	if (sq.house === 0 && sq.hotel === 0) {
-		return false;
+	function mortgage(game, squareId) {
+		var c = context(game, squareId), s = c.squareState;
+		if (s.ownerId === null || s.ownerId !== game.state.player[game.state.turn].playerId || s.house || s.hotel || s.mortgage) return false;
+		if (groupState(game, c.square).some(function(m) { return m.state.house || m.state.hotel; })) return false;
+		var p = owner(game, s.ownerId), amount = c.square.rules.mortgageValue;
+		s.mortgage = true; p.money += amount;
+		notify(game, 'updateOwned'); notify(game, 'updateMoney');
+		return true;
+	}
+	function unmortgage(game, squareId) {
+		var c = context(game, squareId), s = c.squareState;
+		if (s.ownerId === null || s.ownerId !== game.state.player[game.state.turn].playerId || !s.mortgage) return false;
+		var p = owner(game, s.ownerId), amount = Math.round(c.square.rules.purchasePrice * 0.55);
+		if (p.money < amount) return false;
+		p.pay(amount, global.GameStateContext.BANK_ID); s.mortgage = false;
+		notify(game, 'updateOwned'); notify(game, 'updateMoney');
+		return true;
+	}
+	function supply(game) {
+		var houses = 0, hotels = 0;
+		Object.keys(game.state.squareStateById).forEach(function(id) {
+			var s = game.state.squareStateById[id];
+			if (s.hotel) hotels += 1; else houses += s.house;
+		});
+		return { housesAvailable: game.state.board.rules.houseTotal - houses, hotelsAvailable: game.state.board.rules.hotelTotal - hotels };
+	}
+	function build(game, squareId) {
+		var c = context(game, squareId), s = c.squareState, group = groupState(game, c.square);
+		if (s.ownerId === null || s.ownerId !== game.state.player[game.state.turn].playerId || c.square.kind !== 'street' || s.mortgage || s.hotel) return false;
+		if (!group.length || !group.every(function(m) { return m.state.ownerId === s.ownerId && !m.state.mortgage; })) return false;
+		if (group.some(function(m) { return m.state.house < s.house; })) return false;
+		var p = owner(game, s.ownerId), cost = c.square.rules.houseCost, available = supply(game);
+		if (p.money < cost) return false;
+		if (s.house < 4 && available.housesAvailable <= 0) return false;
+		if (s.house === 4 && available.hotelsAvailable <= 0) return false;
+		if (s.house < 4) s.house += 1; else { s.house = 5; s.hotel = 1; }
+		p.pay(cost, global.GameStateContext.BANK_ID);
+		notify(game, 'updateOwned'); notify(game, 'updateMoney');
+		return true;
+	}
+	function canSell(game, squareId) {
+		var c = context(game, squareId), s = c.squareState;
+		if (s.ownerId === null || s.ownerId !== game.state.player[game.state.turn].playerId || (!s.house && !s.hotel)) return false;
+		return !groupState(game, c.square).some(function(m) { return m.id !== squareId && m.state.house > s.house; });
+	}
+	function sell(game, squareId) {
+		if (!canSell(game, squareId)) return false;
+		var c = context(game, squareId), s = c.squareState, p = owner(game, s.ownerId);
+		if (s.hotel) { s.hotel = 0; s.house = 4; } else s.house -= 1;
+		p.money += c.square.rules.houseCost / 2;
+		notify(game, 'updateOwned'); notify(game, 'updateMoney');
+		return true;
 	}
 
-	var group = sq.group || [];
-	for (var groupIndex = 0; groupIndex < group.length; groupIndex++) {
-		var groupSquare = state.square[group[groupIndex]];
-		if (groupSquare && groupSquare.house > sq.house) {
-			return false;
-		}
+	var api = { buy: buy, mortgage: mortgage, unmortgage: unmortgage, buyHouse: build, sellHouse: sell, canSellHouse: canSell, getHouseHotelSupply: supply };
+	global.PropertyActions = api;
+	if (typeof Game !== 'undefined') {
+		Game.prototype.buy = function(squareId) { return buy(this, squareId); };
+		Game.prototype.mortgage = function(squareId) { return mortgage(this, squareId); };
+		Game.prototype.unmortgage = function(squareId) { return unmortgage(this, squareId); };
+		Game.prototype.buyHouse = function(squareId) { return build(this, squareId); };
+		Game.prototype.sellHouse = function(squareId) { return sell(this, squareId); };
+		Game.prototype.canSellHouse = function(squareId) { return canSell(this, squareId); };
+		Game.prototype.getHouseHotelSupply = function() { return supply(this); };
 	}
-	return true;
-}
-
-function sellHouse(game, index) {
-	var state = game.state;
-	var sq = state.square[index];
-	var p = state.player[sq.owner];
-
-	if (!canSellHouse(game, index)) {
-		return false;
-	}
-
-	if (sq.hotel === 1) {
-		sq.hotel = 0;
-		sq.house = 4;
-		notifyPropertyUI(game, "alert", p.name + " sold the hotel on " + sq.name + ".");
-		notifyPropertyUI(game, "onHouseChanged", index, sq.house, sq.hotel);
-		p.money += sq.houseprice * 0.5;
-	} else if(sq.house > 0) {
-		sq.house--;
-		notifyPropertyUI(game, "alert", p.name + " sold a house on " + sq.name + ".");
-		notifyPropertyUI(game, "onHouseChanged", index, sq.house, sq.hotel);
-		p.money += sq.houseprice * 0.5;
-	}
-	notifyPropertyUI(game, "updateOwned");
-	notifyPropertyUI(game, "updateMoney");
-	return true;
-}
-
-if (typeof Game !== 'undefined') {
-	Game.prototype.buy = function() { return buy(this); };
-	Game.prototype.mortgage = function(index) { return mortgage(this, index); };
-	Game.prototype.unmortgage = function(index) { return unmortgage(this, index); };
-	Game.prototype.buyHouse = function(index) { return buyHouse(this, index); };
-	Game.prototype.sellHouse = function(index) { return sellHouse(this, index); };
-	Game.prototype.canSellHouse = function(index) { return canSellHouse(this, index); };
-	Game.prototype.getHouseHotelSupply = function() { return getHouseHotelSupply(this); };
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-	module.exports = {
-		buy: buy,
-		mortgage: mortgage,
-		unmortgage: unmortgage,
-		buyHouse: buyHouse,
-		sellHouse: sellHouse,
-		canSellHouse: canSellHouse,
-		getHouseHotelSupply: getHouseHotelSupply
-	};
-}
+	if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);
