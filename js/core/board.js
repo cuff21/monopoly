@@ -136,10 +136,32 @@ function getGroupSquareIds(board, groupId) {
 	return getGroup(board, groupId).squareIds.slice();
 }
 
+var boardTraversals = new WeakMap();
+function cachedTraversal(board) {
+	if (!Object.isFrozen(board) || !Object.isFrozen(board.squaresById)) return null;
+	if (boardTraversals.has(board)) return boardTraversals.get(board);
+	var ids = [], indexes = Object.create(null), currentId = board.startSquareId;
+	var count = Object.keys(board.squaresById).length;
+	if (!Object.values(board.squaresById).every(Object.isFrozen)) return null;
+	for (var i = 0; i < count; i++) {
+		indexes[currentId] = i; ids.push(currentId);
+		currentId = getSquare(board, currentId).nextId;
+	}
+	var circular = ids.length === new Set(ids).size && currentId === board.startSquareId && ids.every(function(id, index) {
+		return getSquare(board, id).previousId === ids[(index + count - 1) % count];
+	});
+	var traversal = { ids: ids, indexes: indexes, circular: circular };
+	boardTraversals.set(board, traversal);
+	return traversal;
+}
+
 function getSquareIds(board) {
 	if (!board || !board.squaresById || !board.startSquareId) throw new TypeError('A structured Board is required.');
+	var cached = cachedTraversal(board);
+	if (cached) return cached.ids.slice();
 	var ids = [], currentId = board.startSquareId;
-	for (var i = 0; i < Object.keys(board.squaresById).length; i++) {
+	var count = Object.keys(board.squaresById).length;
+	for (var i = 0; i < count; i++) {
 		ids.push(currentId);
 		currentId = getSquare(board, currentId).nextId;
 	}
@@ -147,10 +169,15 @@ function getSquareIds(board) {
 }
 
 function walk(board, squareId, signedSteps) {
-	var squareCount = board && board.squaresById ? Object.keys(board.squaresById).length : 0;
 	if (!Number.isInteger(signedSteps)) throw new RangeError('Steps must be a signed integer.');
 	getSquare(board, squareId);
+	var cached = cachedTraversal(board);
+	var squareCount = cached ? cached.ids.length : Object.keys(board.squaresById).length;
 	if (squareCount === 0) throw new RangeError('Cannot walk an empty board.');
+	if (cached && cached.circular) {
+		var index = cached.indexes[squareId];
+		return cached.ids[((index + signedSteps % squareCount) % squareCount + squareCount) % squareCount];
+	}
 	var steps = signedSteps % squareCount;
 	var currentId = squareId;
 	while (steps > 0) {

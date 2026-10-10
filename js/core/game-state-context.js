@@ -28,28 +28,56 @@
 		return state;
 	}
 
-	function getDecisionView(state) {
+	var decisionViews = new WeakMap();
+	// Query objects are stable for a state. A policy can additionally provide
+	// its current immutable snapshot to reuse validated records for that request;
+	// ordinary callers continue to read changing state on every query.
+	function getDecisionView(state, snapshotProvider) {
 		if (!state || !state.board || !state.squareStateById) throw new TypeError('A structured Game state is required.');
+		if (decisionViews.has(state)) return decisionViews.get(state);
 		var GameStateContext = api;
-		return Object.freeze({
-			board: state.board,
-			editionId: state.editionId,
+		var snapshot, squareStates = new Map(), players;
+		function currentSnapshot() {
+			var current = snapshotProvider && snapshotProvider();
+			if (current !== snapshot) { snapshot = current; squareStates.clear(); players = undefined; }
+			return current;
+		}
+		function squareState(squareId) {
+			if (!currentSnapshot()) return getSquareState(state, squareId);
+			if (!squareStates.has(squareId)) squareStates.set(squareId, getSquareState(state, squareId));
+			return squareStates.get(squareId);
+		}
+		function activePlayers() {
+			if (!currentSnapshot()) return GameStateContext.getActivePlayers(state);
+			if (!players) players = GameStateContext.getActivePlayers(state);
+			return players;
+		}
+		var view = Object.freeze({
+			get board() { return state.board; },
+			get editionId() { return state.editionId; },
 			getSquare: function(squareId) { return getSquare(state.board, squareId); },
-			getSquareState: function(squareId) { return getSquareState(state, squareId); },
+			getSquareState: squareState,
 			getGroup: function(groupId) { return getGroup(state.board, groupId); },
 			getGroupSquareIds: function(groupId) { return getGroupSquareIds(state.board, groupId); },
-			getPlayer: function(playerId) { return GameStateContext.getPlayerById(state, playerId); },
-			getPlayers: function() { return GameStateContext.getActivePlayers(state).slice(); },
-			getSquareOwner: function(squareId) { return getSquareState(state, squareId).ownerId; },
+			getPlayer: function(playerId) {
+				var player = activePlayers().find(function(candidate) { return candidate.playerId === playerId; });
+				if (!player) throw new RangeError('Unknown active player ID: ' + playerId);
+				return player;
+			},
+			getPlayers: function() { return activePlayers().slice(); },
+			getSquareOwner: function(squareId) { return squareState(squareId).ownerId; },
 			getSquareIds: function() { return getSquareIds(state.board); }
 		});
+		decisionViews.set(state, view);
+		return view;
 	}
 
 	function getSquareState(state, squareId) {
-		if (!state || !state.squareStateById || !Object.prototype.hasOwnProperty.call(state.squareStateById, squareId)) {
+		var squares = state && state.squareStateById;
+		if (!squares || !Object.prototype.hasOwnProperty.call(squares, squareId)) {
 			throw new RangeError('Unknown square ID: ' + squareId);
 		}
-		return state.squareStateById[squareId];
+		return squares[squareId];
 	}
 
 	function getActivePlayers(state) {

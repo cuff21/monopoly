@@ -3,14 +3,19 @@
     var AIGen5 = global.AIGen5 = global.AIGen5 || {};
 
     AIGen5.getGameState = function(subject) {
-        if (subject && subject.game && subject.game.state) return subject.game.state;
-        if (subject && subject.state) return subject.state;
+        var game = subject && subject.game;
+        if (game && game.state) return game.state;
+        var state = subject && subject.state;
+        if (state) return state;
         return subject && subject.board && subject.squareStateById ? subject : null;
     };
     AIGen5.getDecisionView = function(subject) {
         if (subject && typeof subject.getSquare === 'function' && typeof subject.getSquareState === 'function') return subject;
-        if (subject && subject.game && subject.game.decisionView) return subject.game.decisionView;
-        if (subject && subject.decisionView) return subject.decisionView;
+        var game = subject && subject.game;
+        var view = game && game.decisionView;
+        if (view) return view;
+        view = subject && subject.decisionView;
+        if (view) return view;
         var state = AIGen5.getGameState(subject);
         return global.GameStateContext.getDecisionView(state);
     };
@@ -18,8 +23,11 @@
         return AIGen5.getDecisionView(subject).getPlayers();
     };
     AIGen5.groupIds = function(view, definition) {
-        return definition.groupId ? view.getGroupSquareIds(definition.groupId) : [];
+        if (!definition.groupId) return emptyGroup;
+        var ids = view.getGroup(definition.groupId).squareIds;
+        return Object.isFrozen(ids) ? ids : view.getGroupSquareIds(definition.groupId);
     };
+    var emptyGroup = Object.freeze([]);
     AIGen5.tradeProperty = function(trade, squareId) {
         return trade.getOfferedSquareIds().includes(squareId) ? 1 : trade.getRequestedSquareIds().includes(squareId) ? -1 : 0;
     };
@@ -61,6 +69,9 @@
         return active;
     }
 
+    // Landing probabilities depend only on immutable board links and dice rolls,
+    // not ownership, cash, buildings, or the current decision snapshot.
+    var landingCaches = new WeakMap();
     // Probability of landing exactly on targetSquareId at least once within `rolls` single dice rolls from fromSquareId.
     function landingProbability(fromSquareId, targetSquareId, rolls, subject) {
         if (fromSquareId === undefined || targetSquareId === undefined) {
@@ -71,6 +82,12 @@
         var board = AIGen5.getDecisionView(subject).board;
         global.getSquare(board, fromSquareId);
         global.getSquare(board, targetSquareId);
+        var cache, cacheKey = fromSquareId + '/' + targetSquareId + '/' + rolls;
+        if (Object.isFrozen(board)) {
+            cache = landingCaches.get(board);
+            if (!cache) { cache = new Map(); landingCaches.set(board, cache); }
+            if (cache.has(cacheKey)) return cache.get(cacheKey);
+        }
         var dist = Object.create(null);
         dist[fromSquareId] = 1;
         var landedProbability = 0;
@@ -99,7 +116,9 @@
             dist = nextDist;
         }
 
-        return clamp(landedProbability, 0, 1);
+        var result = clamp(landedProbability, 0, 1);
+        if (cache) cache.set(cacheKey, result);
+        return result;
     }
 
     // Converts a count of upcoming turns into an equivalent count of single dice rolls, approximating doubles chains.

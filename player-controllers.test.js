@@ -87,6 +87,12 @@ async function run() {
         assert.strictEqual((await game.dispatchPlayerAction(captured, { type: 'mortgage', squareId: 'boardwalk' })).ok, false);
         assert.strictEqual(game.state.player[1].money, 1500);
         assert.strictEqual(game._requests.size, 0);
+        const firstBoard = captured.state.board;
+        await game.requestDecision('manage', 'player-1', {});
+        assert.strictEqual(captured.state.board, firstBoard, 'immutable definitions are shared between snapshots');
+        assert.ok(Object.values(firstBoard.squaresById).every(square => square.behavior === undefined),
+            'shared definitions must not expose executable board behavior');
+        assert.throws(() => { firstBoard.squaresById.boardwalk.rules.purchasePrice = 1; }, TypeError);
         game.state.player[2].money = -1; game.state.turn = 2;
         await game.bankruptcy();
         assert.strictEqual(game.state.player[2].playerId, 'player-3');
@@ -423,6 +429,45 @@ async function run() {
         assert.strictEqual(policies[1].inherit(['mediterranean-avenue']).length, 1);
         policies[1].profile.name = 'Defensive';
         assert.deepStrictEqual(policies[1].inherit(['mediterranean-avenue']), []);
+    }
+    // Request caches reuse stable queries without hiding changes on the next
+    // snapshot, or during direct policy calls outside a decision.
+    {
+        const game = fixture(), actor = Controllers.policyPlayer(game.state.player[1]);
+        const view = actor.game.decisionView;
+        assert.strictEqual(Context.getDecisionView(game.state), Context.getDecisionView(game.state));
+        const originalSupply = global.PropertyActions.getHouseHotelSupply;
+        let supplyCalls = 0, retainedProperty;
+        const policy = { buyProperty() {
+            const property = view.getSquareState('mediterranean-avenue');
+            if (!retainedProperty) retainedProperty = property;
+            assert.strictEqual(property.house, retainedProperty.house, 'held references follow request snapshots');
+            assert.throws(() => { property.house = 99; }, TypeError);
+            const first = actor.game.getHouseHotelSupply(), second = actor.game.getHouseHotelSupply();
+            assert.strictEqual(first, second, 'supply totals are computed once per request');
+            assert.ok(Object.isFrozen(first));
+            assert.strictEqual(first.housesAvailable, 32 - property.house);
+            assert.strictEqual(view.getSquareOwner('mediterranean-avenue'), property.ownerId);
+            assert.throws(() => view.getSquareState('unknown-square'), RangeError);
+            return false;
+        } };
+        Controllers.bindPolicy(policy, actor);
+        const controller = new Controllers.AIController(policy);
+        global.PropertyActions.getHouseHotelSupply = (...args) => { supplyCalls++; return originalSupply(...args); };
+        try {
+            for (const houses of [0, 1]) {
+                game.state.squareStateById['mediterranean-avenue'].house = houses;
+                Context.setSquareOwner(game.state, 'mediterranean-avenue', houses ? 'player-2' : null);
+                controller.decide({ kind: 'purchase', playerId: 'player-1', state: Controllers.copy(game.state),
+                    options: { squareId: 'boardwalk' } });
+            }
+            assert.strictEqual(supplyCalls, 2);
+            game.state.squareStateById['mediterranean-avenue'].house = 2;
+            assert.strictEqual(retainedProperty.house, 2, 'direct queries retain live reads');
+            assert.strictEqual(actor.game.getHouseHotelSupply().housesAvailable, 30);
+            game.state.squareStateById['mediterranean-avenue'].house = 3;
+            assert.strictEqual(actor.game.getHouseHotelSupply().housesAvailable, 29);
+        } finally { global.PropertyActions.getHouseHotelSupply = originalSupply; }
     }
     // Keep the dependency boundary enforceable as new decisions are added.
     {

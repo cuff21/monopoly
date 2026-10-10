@@ -80,9 +80,10 @@
         var value = s.rules.purchasePrice * (view.getSquareState(s.id).mortgage ? 0.5 : 1) * 0.65;
         value += (s.rules.baseRent || 0) * 3;
         value += (s.rules.houseCost || 0) * 0.5 * buildFeasibility;
-        value += groupScore(squareId, ownerId, ownership, subject) * 2;
+        var score = groupScore(squareId, ownerId, ownership, subject);
+        value += score * 2;
 
-        if (sGroupIds.length > 0 && groupScore(squareId, ownerId, ownership, subject) >= 80) {
+        if (sGroupIds.length > 0 && score >= 80) {
             value += s.rules.houseCost * 2 * buildFeasibility;
         }
 

@@ -46,6 +46,19 @@ for (const editionId of ['Classic', 'NYC']) {
 	const groupId = editionId === 'Classic' ? 'brown' : 'dark-purple';
 	const groupSquareIds = view.getGroupSquareIds(groupId);
 	assert.ok(groupSquareIds.length >= 2, editionId + ' fixture group exists');
+	const originalWalk = global.walk;
+	let walks = 0;
+	try {
+		global.walk = (...args) => { walks++; return originalWalk(...args); };
+		const probability = global.AIGen5.Probability.landingProbability('go', groupSquareIds[0], 4, state);
+		const firstWalks = walks;
+		assert.ok(firstWalks > 0);
+		assert.strictEqual(global.AIGen5.Probability.landingProbability('go', groupSquareIds[0], 4, state), probability);
+		assert.strictEqual(walks, firstWalks, 'repeated immutable-board probability queries reuse their calculation');
+	} finally { global.walk = originalWalk; }
+	const orderedIds = global.getSquareIds(state.board);
+	const firstId = orderedIds[0]; orderedIds.reverse();
+	assert.strictEqual(global.getSquareIds(state.board)[0], firstId, 'callers cannot mutate cached board order');
 	GameStateContext.setSquareOwner(state, groupSquareIds[0], 'player-1');
 	assert.strictEqual(typeof ai.buyProperty(groupSquareIds[1]), 'boolean', editionId + ' buy hook accepts a square ID');
 	assert.ok(Number.isInteger(ai.bid(groupSquareIds[1], 0)), editionId + ' auction hook accepts a square ID');

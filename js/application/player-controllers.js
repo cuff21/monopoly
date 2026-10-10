@@ -15,10 +15,19 @@
         return Object.freeze(result);
     }
     var policyContexts = new WeakMap();
+    var arrayQueries = new Set(['map','filter','find','findIndex','some','every','forEach','slice','includes','indexOf','reduce','concat','join','entries','values',Symbol.iterator]);
+    var policyBoards = new WeakMap();
+    function policyBoard(board) {
+        if (!board) return board;
+        if (!Object.isFrozen(board)) return copy(board);
+        if (!policyBoards.has(board)) policyBoards.set(board, copy(board));
+        return policyBoards.get(board);
+    }
     // A planner's references follow the current request snapshot when resumed. Direct
     // policy helpers retain read-only queries for callers outside the decision loop.
     function policyPlayer(player) {
         var game = player.game, context = { state: null }, cache = new Map();
+        var supplySnapshot, supplyValue;
         function state() { return context.state || game.state; }
         function squares() {
             var current = state();
@@ -36,30 +45,55 @@
             var initial = read();
             if (!initial || typeof initial !== 'object') return initial;
             if (cache.has(path)) return cache.get(path);
+            // A request snapshot never changes. Resolve each proxy's path once
+            // per snapshot, while retaining live reads outside a decision and
+            // refreshing held references when a planner resumes on a new one.
+            var resolvedSnapshot, resolvedValue, boundMethods = new Map();
+            function resolve() {
+                if (!context.state) return read();
+                if (resolvedSnapshot !== context.state) {
+                    resolvedValue = read(); resolvedSnapshot = context.state;
+                }
+                return resolvedValue;
+            }
             var proxy = new Proxy(Array.isArray(initial) ? [] : {}, {
                 get: function(_, key) {
-                    var value = read();
+                    var value = resolve();
                     if (value === null || value === undefined) return undefined;
                     if (key === 'AI' || key === 'human' || key === 'pay' || key === 'behavior') return undefined;
                     if (key === 'game') return facade;
+                    // Definitions are immutable and sanitized once, so querying
+                    // them needs no dynamic proxy for mutable player state.
+                    if (key === 'board' && path === 'state') return context.state ? context.state.board : policyBoard(game.state.board);
                     if (key === 'position' && value.squareId && state().board) return global.getSquareIds(state().board).indexOf(value.squareId);
                     if (key === 'policyMetadata' && !context.state) {
                         var controller = game.controllers && game.controllers.get(value.playerId);
                         return controller && controller.metadata ? controller.metadata(global.GameStateContext.getActivePlayers(game.state)) : value.policyMetadata;
                     }
-                    var child = key === 'square' && path === 'state' ? squares : function() { var item = read(); return item && item[key]; };
-                    var item = child();
+                    var legacySquares = key === 'square' && path === 'state';
+                    var item = legacySquares ? squares() : value[key];
                     if (typeof item === 'function') {
-                        if (Array.isArray(value) && ['map','filter','find','findIndex','some','every','forEach','slice','includes','indexOf','reduce','concat','join','entries','values',Symbol.iterator].includes(key)) return item.bind(proxy);
+                        if (Array.isArray(value) && arrayQueries.has(key)) {
+                            var bound = boundMethods.get(key);
+                            if (!bound || bound.source !== item) {
+                                bound = { source: item, method: item.bind(proxy) }; boundMethods.set(key, bound);
+                            }
+                            return bound.method;
+                        }
                         if (key === 'random') return item;
                         return undefined;
                     }
-                    return readonly(child, path + '/' + String(key));
+                    if (item === null || typeof item !== 'object') return item;
+                    var childPath = path + '/' + String(key);
+                    if (cache.has(childPath)) return cache.get(childPath);
+                    return readonly(legacySquares ? squares : function() {
+                        var parent = resolve(); return parent && parent[key];
+                    }, childPath);
                 },
-                has: function(_, key) { return key in read(); },
-                ownKeys: function() { return Reflect.ownKeys(read()); },
+                has: function(_, key) { return key in resolve(); },
+                ownKeys: function() { return Reflect.ownKeys(resolve()); },
                 getOwnPropertyDescriptor: function(_, key) {
-                    var value = read();
+                    var value = resolve();
                     if (key === 'length' && Array.isArray(value)) return { value: value.length, writable: true, enumerable: false, configurable: false };
                     return key in value ? { enumerable: true, configurable: true } : undefined;
                 },
@@ -70,10 +104,17 @@
             cache.set(path, proxy); return proxy;
         }
         var readonlyState = readonly(state, 'state');
-        var facade = Object.freeze({ state: readonlyState, decisionView: game.state.board ? global.GameStateContext.getDecisionView(readonlyState) : null,
+        var facade = Object.freeze({ state: readonlyState, decisionView: game.state.board ? global.GameStateContext.getDecisionView(readonlyState, function() { return context.state; }) : null,
             getDie: function(index) { return game.getDie(index); },
             canSellHouse: function(id) { return global.PropertyActions && state().board && state().squareStateById ? global.PropertyActions.canSellHouse({ state: state() }, id) : game.canSellHouse(id); },
-            getHouseHotelSupply: function() { return copy(global.PropertyActions && state().board && state().squareStateById ? global.PropertyActions.getHouseHotelSupply({ state: state() }) : game.getHouseHotelSupply()); }
+            getHouseHotelSupply: function() {
+                if (context.state && supplySnapshot === context.state) return supplyValue;
+                var current = state();
+                var result = copy(global.PropertyActions && current.board && current.squareStateById
+                    ? global.PropertyActions.getHouseHotelSupply({ state: current }) : game.getHouseHotelSupply());
+                if (context.state) { supplySnapshot = context.state; supplyValue = result; }
+                return result;
+            }
         });
         var result = readonly(function() {
             return context.state ? context.state.player.find(function(p) { return p && p.playerId === player.playerId; }) : player;
@@ -200,13 +241,17 @@
     };
     function decisionSnapshot(game) {
         var state = Object.assign({}, game.state);
+        var activePlayers = global.GameStateContext.getActivePlayers(game.state);
+        var squareIds = game.state.board ? global.getSquareIds(game.state.board) : [];
         state.player = (game.state.player || []).map(function(player) {
             if (!player) return player;
             var controller = game.controllers.get(player.playerId);
-            return Object.assign({}, player, { position: game.state.board && player.squareId ? global.getSquareIds(game.state.board).indexOf(player.squareId) : player.position,
-                policyMetadata: controller && controller.metadata ? controller.metadata(global.GameStateContext.getActivePlayers(game.state)) : null });
+            return Object.assign({}, player, { position: game.state.board && player.squareId ? squareIds.indexOf(player.squareId) : player.position,
+                policyMetadata: controller && controller.metadata ? controller.metadata(activePlayers) : null });
         });
-        return copy(state);
+        var board = policyBoard(state.board);
+        delete state.board;
+        return Object.freeze(Object.assign({}, copy(state), { board: board }));
     }
     function freezeOptions(options) {
         var result = {};
