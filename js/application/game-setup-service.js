@@ -1,3 +1,4 @@
+if (typeof module !== 'undefined' && module.exports) require('./player-controllers');
 (function(global) {
 	'use strict';
 
@@ -8,9 +9,12 @@
 	}
 
 	function createPlayers(configuration, playerSlots) {
+		var game = playerSlots[0] && playerSlots[0].game;
+		var random = game && game.state && game.state.random;
+		if (typeof random !== 'function') throw new TypeError('Player setup requires the owning Game seeded RNG.');
 		var availableSlots = playerSlots.slice();
 		for (var i = availableSlots.length - 1; i > 0; i--) {
-			var swapIndex = Math.floor(Math.random() * (i + 1));
+			var swapIndex = Math.floor(random() * (i + 1));
 			var current = availableSlots[i];
 			availableSlots[i] = availableSlots[swapIndex];
 			availableSlots[swapIndex] = current;
@@ -29,11 +33,14 @@
 			currentPlayer.human = selection.ai === '0';
 			if (currentPlayer.human) {
 				currentPlayer.name = selection.name;
+                currentPlayer.game.registerController(currentPlayer.playerId, new global.PlayerControllers.BrowserController(currentPlayer.game));
 				return;
 			}
 
 			if (!registration) throw new Error('No AI setup registration exists for id: ' + selection.ai);
-			currentPlayer.AI = registration.createPlayer(currentPlayer, selection);
+			var random = currentPlayer.game && currentPlayer.game.state && currentPlayer.game.state.random;
+			currentPlayer.AI = registration.createPlayer(currentPlayer, selection, random);
+            currentPlayer.game.registerController(currentPlayer.playerId, new global.PlayerControllers.AIController(currentPlayer.AI, currentPlayer.game.ui));
 
 			if (registration.trackResults) playersGame.push(currentPlayer);
 			var colorName = currentPlayer.color.charAt(0).toUpperCase() + currentPlayer.color.slice(1);

@@ -7,6 +7,7 @@ var registry = require('./js/editions/edition-registry');
 require('./js/editions/classic');
 require('./js/editions/newyorkcity');
 var Game = require('./js/game/game-core').Game;
+var registerFixtures = require('./test-support/controllers').registerFixtures;
 require('./js/game/auction');
 require('./js/game/trade');
 require('./js/game/bankruptcy');
@@ -25,7 +26,7 @@ function fixture(editionId, players) {
 		p.AI = { alertList: '', buyProperty: function() { return false; }, bid: function() { return 0; }, beforeTurn: function() { return true; }, onLand: function() { return true; }, postBail: function() { return false; }, acceptTrade: function() { return false; } };
 		Context.assignPlayerId(p, i); state.player[i] = p;
 	}
-	return game;
+	return registerFixtures(game);
 }
 
 async function run() {
@@ -95,8 +96,7 @@ async function run() {
 		assert.strictEqual(jailPlayer.jail, true);
 		assert.strictEqual(jailGame.state.doublecount, 0);
 		assert.strictEqual(jailPlayer.money, moneyBeforeJail, 'third doubles must not land on the intervening square');
-		assert.strictEqual(typeof popupCallback, 'function');
-		await popupCallback();
+		assert.strictEqual(popupCallback, undefined, 'acknowledgement is delegated to the controller');
 		assert.strictEqual(jailPlayer.squareId, 'jail');
 	}
 
@@ -184,7 +184,7 @@ async function run() {
 	auctionState.player[1].AI.bid = function() { return 100; };
 	auctionState.player[2].AI.bid = function() { return 150; };
 	auctionGame.addPropertyToAuctionQueue('port-authority-bus-terminal');
-	assert.strictEqual(auctionGame.auction(), true);
+	assert.strictEqual(await auctionGame.auction(), true);
 	assert.strictEqual(auctionState.squareStateById['port-authority-bus-terminal'].ownerId, auctionState.player[2].playerId);
 	assert.strictEqual(auctionState.player[2].money, 1350);
 	var settledBid = auctionGame.auctionState.highestBid;
@@ -205,7 +205,7 @@ async function run() {
 	// Bankruptcy transfers property by stable identity before the active roster shifts.
 	state.squareStateById['baltic-avenue'].ownerId = p1.playerId;
 	p1.creditor = p2.playerId; p1.money = -10; state.turn = 1;
-	game.bankruptcy();
+	await game.bankruptcy();
 	assert.strictEqual(state.squareStateById['baltic-avenue'].ownerId, p2.playerId);
 	assert.strictEqual(state.player[1].playerId, 'player-2');
 	assert.strictEqual(state.player[1].index, 1);
@@ -217,6 +217,7 @@ async function run() {
 	Context.setSquareOwner(mortgageState, transferredSquare, bankrupt.playerId);
 	mortgageState.squareStateById[transferredSquare].mortgage = true;
 	creditor.human = true;
+    mortgageGame.registerController(creditor.playerId, new global.PlayerControllers.BrowserController(mortgageGame));
 	mortgageGame.play = function() {};
 	mortgageGame.ui = {
 		alert: function() {}, updateMoney: function() {}, updateOwned: function() {},
@@ -225,10 +226,10 @@ async function run() {
 			assert.strictEqual(name, creditor.name);
 			assert.deepStrictEqual(pending.map(function(property) { return property.squareId; }), [transferredSquare]);
 			assert.strictEqual(confirm(transferredSquare), true);
-			finish();
+            if (!pending.length) finish();
 		}
 	};
-	mortgageGame.bankruptcy();
+	await mortgageGame.bankruptcy();
 	assert.strictEqual(mortgagePrompt, 1);
 	assert.strictEqual(mortgageState.squareStateById[transferredSquare].ownerId, creditor.playerId);
 	assert.strictEqual(mortgageState.squareStateById[transferredSquare].mortgage, false);
@@ -238,7 +239,7 @@ async function run() {
 	var bankGame = fixture('Classic'), bankState = bankGame.state;
 	Context.setSquareOwner(bankState, 'boardwalk', bankState.player[1].playerId);
 	bankState.player[1].money = -5; bankState.player[1].creditor = Context.BANK_ID; bankState.turn = 1;
-	bankGame.bankruptcy();
+	await bankGame.bankruptcy();
 	assert.strictEqual(bankState.squareStateById.boardwalk.ownerId, null);
 	assert.ok(bankGame.auctionState.queue.includes('boardwalk'));
 

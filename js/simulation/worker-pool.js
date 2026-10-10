@@ -85,12 +85,15 @@
                     edition: job.setup.edition,
                     playerCount: job.setup.playerCount,
                     boardRuleOverrides: job.setup.boardRuleOverrides,
-                    seed: job.setup.seed
+                    seed: job.setup.seed,
+                    roster: job.setup.roster
                 }]
             });
-            slot.timeoutId = setTimeout(function() {
-                self.handleTimeout(slot);
-            }, this.timeoutMs);
+            slot.timeoutId = (function(workerSlot) {
+                return setTimeout(function() {
+                    self.handleTimeout(workerSlot);
+                }, self.timeoutMs);
+            })(slot);
         }
     };
 

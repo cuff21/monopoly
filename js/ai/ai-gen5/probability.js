@@ -5,18 +5,31 @@
     AIGen5.getGameState = function(subject) {
         if (subject && subject.game && subject.game.state) return subject.game.state;
         if (subject && subject.state) return subject.state;
-        return subject && Array.isArray(subject.square) ? subject : null;
+        return subject && subject.board && subject.squareStateById ? subject : null;
     };
-    AIGen5.getSquares = function(subject) {
+    AIGen5.getDecisionView = function(subject) {
+        if (subject && typeof subject.getSquare === 'function' && typeof subject.getSquareState === 'function') return subject;
+        if (subject && subject.game && subject.game.decisionView) return subject.game.decisionView;
+        if (subject && subject.decisionView) return subject.decisionView;
         var state = AIGen5.getGameState(subject);
-        return state && Array.isArray(state.square) ? state.square : [];
+        return global.GameStateContext.getDecisionView(state);
     };
     AIGen5.getPlayers = function(subject) {
-        var state = AIGen5.getGameState(subject);
-        return state && Array.isArray(state.player) ? state.player : [];
+        return AIGen5.getDecisionView(subject).getPlayers();
+    };
+    AIGen5.groupIds = function(view, definition) {
+        return definition.groupId ? view.getGroupSquareIds(definition.groupId) : [];
+    };
+    AIGen5.tradeProperty = function(trade, squareId) {
+        return trade.getOfferedSquareIds().includes(squareId) ? 1 : trade.getRequestedSquareIds().includes(squareId) ? -1 : 0;
+    };
+    AIGen5.counterTrade = function(trade, money, property) {
+        var ids = Object.keys(property);
+        return new global.Trade(trade.getInitiator(), trade.getRecipient(), Math.round(money),
+            ids.filter(function(id) { return property[id] > 0; }),
+            ids.filter(function(id) { return property[id] < 0; }), trade.getHeldCards());
     };
 
-    var BOARD_SIZE = 40;
     // Doubles give an extra roll, but a 3rd consecutive double sends the player to jail instead of moving.
     var EXPECTED_ROLLS_PER_TURN = 1 + (1 / 6) + (1 / 36);
     var DOUBLE_PROBABILITY = 1 / 6;
@@ -34,16 +47,13 @@
     }
 
     function isPlayerActive(p) {
-        return !!p && (p.money >= 0 || p.creditor === -1);
+        return !!p && (p.money >= 0 || p.creditor === null);
     }
 
     function getActivePlayers(subject) {
-        var state = AIGen5.getGameState(subject);
         var players = AIGen5.getPlayers(subject);
-        if (!state) return [];
-        var playerLimit = state.pcount > 0 ? Math.min(players.length, state.pcount + 1) : players.length;
         var active = [];
-        for (var i = 1; i < playerLimit; i++) {
+        for (var i = 0; i < players.length; i++) {
             if (isPlayerActive(players[i])) {
                 active.push(players[i]);
             }
@@ -51,19 +61,22 @@
         return active;
     }
 
-    // Probability of landing exactly on targetIndex at least once within `rolls` single dice rolls from fromPosition.
-    function landingProbability(fromPosition, targetIndex, rolls) {
-        if (fromPosition === undefined || targetIndex === undefined) {
+    // Probability of landing exactly on targetSquareId at least once within `rolls` single dice rolls from fromSquareId.
+    function landingProbability(fromSquareId, targetSquareId, rolls, subject) {
+        if (fromSquareId === undefined || targetSquareId === undefined) {
             return 0;
         }
         rolls = Math.max(1, Math.round(rolls || 1));
 
-        var dist = {};
-        dist[((fromPosition % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE] = 1;
+        var board = AIGen5.getDecisionView(subject).board;
+        global.getSquare(board, fromSquareId);
+        global.getSquare(board, targetSquareId);
+        var dist = Object.create(null);
+        dist[fromSquareId] = 1;
         var landedProbability = 0;
 
         for (var r = 0; r < rolls; r++) {
-            var nextDist = {};
+            var nextDist = Object.create(null);
             for (var pos in dist) {
                 var mass = dist[pos];
                 if (mass <= 0) {
@@ -74,9 +87,9 @@
                     if (!weight) {
                         continue;
                     }
-                    var newPos = (Number(pos) + sum) % BOARD_SIZE;
+                    var newPos = global.walk(board, pos, sum);
                     var moved = mass * weight;
-                    if (newPos === targetIndex) {
+                    if (newPos === targetSquareId) {
                         landedProbability += moved;
                     } else {
                         nextDist[newPos] = (nextDist[newPos] || 0) + moved;
@@ -94,17 +107,17 @@
         return Math.max(1, Math.round((turnsAhead || 1) * EXPECTED_ROLLS_PER_TURN));
     }
 
-    // Sums landing probability across all active opponents (or all active players if excludePlayerIndex is omitted).
-    function aggregateBoardThreat(targetIndex, excludePlayerIndex, turnsAhead, subject) {
+    // Sums landing probability across all active opponents (or all active players if excludePlayerId is omitted).
+    function aggregateBoardThreat(targetSquareId, excludePlayerId, turnsAhead, subject) {
         var rolls = turnsToRolls(turnsAhead);
         var total = 0;
         var players = getActivePlayers(subject);
         for (var i = 0; i < players.length; i++) {
             var opponent = players[i];
-            if (opponent.index === excludePlayerIndex || opponent.position === undefined || opponent.jail) {
+            if (opponent.playerId === excludePlayerId || opponent.squareId === undefined || opponent.jail) {
                 continue;
             }
-            total += landingProbability(opponent.position, targetIndex, rolls);
+            total += landingProbability(opponent.squareId, targetSquareId, rolls, subject);
         }
         return total;
     }

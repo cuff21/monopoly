@@ -1,6 +1,6 @@
+if (typeof module !== 'undefined' && module.exports) require('../../application/player-controllers');
 // Gen5 AI: orchestrates the probability/analytics/valuation/liquidity/building/debt/trade/auction modules
-// behind the same 7-hook contract the game engine expects (buyProperty, beforeTurn, onLand, acceptTrade,
-// postBail, payDebt, bid).
+// behind read-only policy helpers and resumable action planners driven by player controllers.
 (function(global) {
     var AIGen5 = global.AIGen5 = global.AIGen5 || {};
 
@@ -25,6 +25,7 @@
     }
 
     function Gen5AI(p, profileInput, paramsInput) {
+        if (!p || !p.game || !p.game.decisionView) throw new TypeError('Gen5 AI requires a structured Game decision view.');
         this.aiType = 'gen5';
         this.profile = pickProfile(profileInput);
         this.params = paramsInput || (AIGen5.ParameterGenerator ? AIGen5.ParameterGenerator.generate() : {});
@@ -39,35 +40,37 @@
         p.name = "Gen5 AI Player " + this.constructor.count;
         this.personality = this.profile.name;
 
+        p = PlayerControllers.policyPlayer(p);
+        PlayerControllers.bindPolicy(this, p);
         var self = this;
 
-        this.buyProperty = function(index) {
+        this.buyProperty = function(squareId) {
             var state = AIGen5.getGameState(p);
-            var square = AIGen5.getSquares(p);
-            var s = square[index];
-            if (!s || s.price === 0 || s.owner !== 0) {
+            var view = AIGen5.getDecisionView(p);
+            var s = view.getSquare(squareId);
+            if (!s || s.rules.purchasePrice === 0 || view.getSquareState(s.id).ownerId !== null) {
                 return false;
             }
 
             var reserve = AIGen5.Liquidity.computeReserve(p, self.profile);
-            if (p.money < s.price + reserve) {
+            if (p.money < s.rules.purchasePrice + reserve) {
                 return false;
             }
 
-            var score = AIGen5.Valuation.evaluateProperty(index, p.index, p.money, self.profile, 0, state);
+            var score = AIGen5.Valuation.evaluateProperty(squareId, p.playerId, p.money, self.profile, 0, state);
             var threshold = self.profile.name === 'Sentinel' ? 68 : self.profile.name === 'Gambler' ? 50 : 58;
             return score >= threshold;
         };
 
-        this.beforeTurn = function() {
+        this.beforeTurn = function*() {
             self.turnNumber++;
-            AIGen5.Building.plan(p, self.profile, self.params);
-            AIGen5.DebtManager.planUnmortgage(p, self.profile, self.params);
-            return AIGen5.TradeEvaluation.proposeOpportunity(p, self.profile, self.tradeMemory, self.params, self.turnNumber);
+            yield* AIGen5.Building.plan(p, self.profile, self.params);
+            yield* AIGen5.DebtManager.planUnmortgage(p, self.profile, self.params);
+            return yield* AIGen5.TradeEvaluation.proposeOpportunity(p, self.profile, self.tradeMemory, self.params, self.turnNumber);
         };
 
-        this.onLand = function() {
-            return AIGen5.TradeEvaluation.proposeOpportunity(p, self.profile, self.tradeMemory, self.params, self.turnNumber);
+        this.onLand = function*() {
+            return yield* AIGen5.TradeEvaluation.proposeOpportunity(p, self.profile, self.tradeMemory, self.params, self.turnNumber);
         };
 
         this.acceptTrade = function(tradeObj) {
@@ -77,7 +80,7 @@
         this.postBail = function() {
             var hasFreeCard = p.heldCards && p.heldCards.length > 0;
             var reserve = AIGen5.Liquidity.computeReserve(p, self.profile);
-            var reserveAfterFine = p.money - 50 >= reserve * 0.75;
+            var reserveAfterFine = p.money - p.game.decisionView.board.rules.bailAmount >= reserve * 0.75;
 
             if (p.jailroll === 2) {
                 return true;
@@ -91,8 +94,18 @@
             return p.jailroll >= 1 && self.profile.riskTolerance > 0.7;
         };
 
-        this.payDebt = function() {
-            AIGen5.DebtManager.resolveDebt(p);
+        this.payDebt = function*() {
+            yield* AIGen5.DebtManager.resolveDebt(p);
+        };
+
+        this.inherit = function(squareIds) {
+            if (this.profile.name === 'Defensive') return [];
+            var floor = Math.max(100, p.money * 0.25);
+            var view = p.game.decisionView;
+            var id = squareIds.find(function(id) {
+                return view.getSquareState(id).mortgage && p.money - Math.round(view.getSquare(id).rules.purchasePrice * 0.5) >= floor;
+            });
+            return id ? [{ type: 'inheritUnmortgage', squareId: id }] : [];
         };
 
         this.bid = function(property, currentBid) {

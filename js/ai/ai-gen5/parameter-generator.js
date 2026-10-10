@@ -3,16 +3,12 @@
 (function(global) {
     var AIGen5 = global.AIGen5 = global.AIGen5 || {};
 
-    function localNormal(m, sd) {
+    function localNormal(m, sd, random) {
         var u = 0, v = 0;
-        while (u === 0) { u = Math.random(); }
-        while (v === 0) { v = Math.random(); }
+        while (u === 0) { u = random(); }
+        while (v === 0) { v = random(); }
         var val = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
         return val * (sd || 1) + (m || 0);
-    }
-
-    function gaussian(m, sd) {
-        return typeof global.normal === 'function' ? global.normal(m, sd) : localNormal(m, sd);
     }
 
     var PARAM_SPEC = {
@@ -29,13 +25,19 @@
         return spec.integer ? Math.round(clamped) : clamped;
     }
 
-    function generate() {
+    // Explicit inputs keep simulation policies independent of browser storage and ambient RNGs.
+    // Calling without options retains history-based policy generation for interactive games.
+    function generate(options) {
+        var random = options ? options.random : Math.random;
+        if (typeof random !== 'function') throw new TypeError('Gen5 parameter generation requires a random function.');
+        var gaussian = function(m, sd) { return localNormal(m, sd, random); };
         var params = {};
         for (var name in PARAM_SPEC) {
             params[name] = gaussian(PARAM_SPEC[name].mean, PARAM_SPEC[name].sd);
         }
 
-        var gameHistory = global.GameStorage.getHistory();
+        var gameHistory = options ? (options.history || []) :
+            (global.GameStorage && typeof global.GameStorage.getHistory === 'function' ? global.GameStorage.getHistory() : []);
         var winningPlayers = [];
         for (var g = 0; g < gameHistory.length; g++) {
             var gamePlayers = gameHistory[g];
@@ -49,7 +51,7 @@
             }
         }
 
-        if (Math.random() < 0.8 && winningPlayers.length > 1) {
+        if (random() < 0.8 && winningPlayers.length > 1) {
             var means = {};
             var sds = {};
             for (var name1 in PARAM_SPEC) {

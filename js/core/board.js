@@ -136,6 +136,16 @@ function getGroupSquareIds(board, groupId) {
 	return getGroup(board, groupId).squareIds.slice();
 }
 
+function getSquareIds(board) {
+	if (!board || !board.squaresById || !board.startSquareId) throw new TypeError('A structured Board is required.');
+	var ids = [], currentId = board.startSquareId;
+	for (var i = 0; i < Object.keys(board.squaresById).length; i++) {
+		ids.push(currentId);
+		currentId = getSquare(board, currentId).nextId;
+	}
+	return ids;
+}
+
 function walk(board, squareId, signedSteps) {
 	var squareCount = board && board.squaresById ? Object.keys(board.squaresById).length : 0;
 	if (!Number.isInteger(signedSteps)) throw new RangeError('Steps must be a signed integer.');
@@ -386,6 +396,7 @@ _global.Card = Card;
 _global.getSquare = getSquare;
 _global.getGroup = getGroup;
 _global.getGroupSquareIds = getGroupSquareIds;
+_global.getSquareIds = getSquareIds;
 _global.walk = walk;
 _global.findNext = findNext;
 _global.validateBoard = validateBoard;
@@ -398,6 +409,7 @@ if (typeof module !== 'undefined' && module.exports) {
 		getSquare: getSquare,
 		getGroup: getGroup,
 		getGroupSquareIds: getGroupSquareIds,
+		getSquareIds: getSquareIds,
 		walk: walk,
 		findNext: findNext,
 		validateBoard: validateBoard,

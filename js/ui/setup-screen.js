@@ -42,7 +42,7 @@ function setup() {
 	auctionEnabled = configuration.auctionEnabled;
 	freeParkingTaxes = configuration.freeParkingTaxes;
 	freeParkingPot = 0;
-	updateFreeParkingDisplay();
+	updateFreeParkingDisplay(game);
 	pendingAuction = -1;
 	ensureUniqueHumanNames();
     playersGame = [];
@@ -55,7 +55,7 @@ function setup() {
 	playersGame = getSetupService().createPlayers(configuration, player.slice(1, pcount + 1));
 
 	$("#board, #moneybar").show();
-	setTokenOverlaysVisible(true);
+	setTokenOverlaysVisible(true, game);
 	$("#setup").hide();
 	$("#refresh").hide();
 
@@ -68,7 +68,8 @@ function setup() {
 	document.getElementById("stats").style.top = "0px";
 	document.getElementById("stats").style.left = "0px";
 	console.log("Starting the game!");
-	game.play();
+    game.onGameError = function(error) { game.ui.showMessage('Game stopped: ' + error.message, undefined, undefined, 0); };
+    Promise.resolve(game.play()).catch(function() { /* onGameError presents the failure. */ });
 }
 
 function restartGame() {
@@ -104,7 +105,7 @@ function restartGame() {
 	}
 	playernumber_onchange();
 	$("#board, #control, #moneybar, #refresh").hide();
-	setTokenOverlaysVisible(false);
+	setTokenOverlaysVisible(false, game);
 	$("#setup").show();
 }
 

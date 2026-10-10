@@ -11,6 +11,7 @@
         { src: 'editions/edition-registry.js', page: true, worker: true },
         { src: 'editions/classic.js', page: true, worker: true },
         { src: 'editions/newyorkcity.js', page: true, worker: true },
+        { src: 'application/player-controllers.js', page: true, worker: true },
         { src: 'application/ai-setup-registry.js', page: true, worker: true },
         { src: 'ai/parameter-generator.js', page: true },
         { src: 'ai/ai-genetic.js', page: true },

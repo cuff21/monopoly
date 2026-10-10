@@ -6,7 +6,7 @@
     function createSignature(property, money) {
         var offered = [];
         var requested = [];
-        for (var i = 0; i < 40; i++) {
+        for (var i of Object.keys(property).sort()) {
             var v = property[i] || 0;
             if (v > 0) {
                 offered.push(i);
@@ -20,10 +20,9 @@
 
     // Converts an incoming Trade object (this AI is the recipient) into the "this AI gives away" convention.
     function normalizeIncoming(tradeObj) {
-        var property = [];
-        for (var i = 0; i < 40; i++) {
-            property[i] = -(tradeObj.getProperty(i) || 0);
-        }
+        var property = Object.create(null);
+        tradeObj.getOfferedSquareIds().forEach(function(id) { property[id] = -1; });
+        tradeObj.getRequestedSquareIds().forEach(function(id) { property[id] = 1; });
         return { property: property, money: -(tradeObj.getMoney() || 0) };
     }
 
@@ -33,9 +32,9 @@
     }
 
 function TradeMemory() {
-        this.records = {};
-        this.negotiationSessions = {};
-        this.reputations = {};
+        this.records = Object.create(null);
+        this.negotiationSessions = Object.create(null);
+        this.reputations = Object.create(null);
     }
 
     TradeMemory.prototype.getReputation = function(opponentIndex) {
@@ -71,7 +70,7 @@ function TradeMemory() {
 
     TradeMemory.prototype.recordOutcome = function(opponentIndex, signature, status, snapshot, counterValue) {
         if (!this.records[opponentIndex]) {
-            this.records[opponentIndex] = {};
+            this.records[opponentIndex] = Object.create(null);
         }
         this.records[opponentIndex][signature] = {
             status: status,
@@ -166,8 +165,8 @@ function TradeMemory() {
         }
 
         // 3. Defensive: high rejection rate or explicitly defensive profile
-        if (opponentPlayer && opponentPlayer.AI && opponentPlayer.AI.profile) {
-            var oppProf = opponentPlayer.AI.profile;
+        if (opponentPlayer && opponentPlayer.policyMetadata && opponentPlayer.policyMetadata.profile) {
+            var oppProf = opponentPlayer.policyMetadata.profile;
             if (AIGen5.isDefensiveProfile && AIGen5.isDefensiveProfile(oppProf)) {
                 return 'Defensive';
             }

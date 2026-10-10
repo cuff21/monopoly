@@ -15,7 +15,7 @@
 		return rent.multiplier + "x dice";
 	}
 
-	function cityTax(context) {
+	async function cityTax(context) {
 		var game = context.game;
 		var state = context.state;
 		var player = GameStateContext.getPlayerById(state, context.playerId);
@@ -37,11 +37,8 @@
 			context.ui.alert(player.name + " paid $" + amount + " for landing on City Tax.");
 		}
 
-		if (player.human && typeof context.ui.chooseTax === 'function') {
-			context.ui.chooseTax(fixedAmount, percentageAmount, payTax);
-		} else {
-			payTax(fixedAmount);
-		}
+        var action = await game.requestDecision('tax', player.playerId, { fixedAmount: fixedAmount, percentageAmount: percentageAmount });
+        payTax(action.amount);
 		context.ui.displayLanded("You landed on City Tax. Pay $" + fixedAmount + " or " + (taxSquare.rules.taxPercentOfNetWorth * 100) + "% of total worth.");
 	}
 

@@ -4,7 +4,8 @@ var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
 	(typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
 
 function popup(HTML, action, option, timer, gameInstance) {
-	var popupGame = gameInstance || (typeof game !== 'undefined' ? game : null);
+	var popupGame = gameInstance;
+	if (!popupGame || !popupGame.state) throw new TypeError('Popup rendering requires the owning Game.');
 	if (popupGame && popupGame.ui && popupGame.ui.isHeadless) {
 		for (var a = 1; a < arguments.length; a++) {
 			if (typeof arguments[a] === "function") {
@@ -55,8 +56,6 @@ function popup(HTML, action, option, timer, gameInstance) {
 		var currentPlayer = state && state.player && state.player[state.turn];
 		if (currentPlayer) {
 			timeout = currentPlayer.human ? 0 : 3;
-		} else if (!gameInstance) {
-			timeout = (typeof player !== "undefined" && player[turn] && !player[turn].human) ? 3 : 0;
 		} else {
 			timeout = 0;
 		}
@@ -166,9 +165,12 @@ function getPlayerPersonality(p) {
 }
 
 function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
-	var players = gameState ? gameState.player : player;
-	var squares = gameState ? gameState.square : square;
-	var p = players[playerIndex];
+	if (!gameState || !gameState.board || !gameState.squareStateById) throw new TypeError('Player statistics require a structured Game state.');
+	var players = gameState.player;
+	var playerObject = typeof playerIndex === 'string' ? globalThis.GameStateContext.getPlayerById(gameState, playerIndex) : players[playerIndex];
+	var p = playerObject;
+	playerIndex = players.indexOf(playerObject);
+	var squareIds = getSquareIds(gameState.board);
 	var HTML = "<div class='statsplayername'>" + UIHtml.escapeHTML(p.name) + "</div>";
 	if (showPersonality) {
 		var personality = getPlayerPersonality(p);
@@ -178,11 +180,11 @@ function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
 	}
 	var write = false;
 
-	for (var i = 0; i < squares.length; i++) {
-		var sq = squares[i];
-
-		if (sq.owner === playerIndex) {
-			var mortgagetext = sq.mortgage ? "title='Mortgaged' style='color: grey;'" : "";
+	for (var i = 0; i < squareIds.length; i++) {
+		var sq = gameState.board.squaresById[squareIds[i]];
+		var sqState = gameState.squareStateById[sq.id];
+		if (sqState.ownerId === p.playerId) {
+			var mortgagetext = sqState.mortgage ? "title='Mortgaged' style='color: grey;'" : "";
 			var housetext = "";
 
 			if (!write) {
@@ -190,17 +192,17 @@ function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
 				HTML += "<table>";
 			}
 
-			if (sq.house === 5) {
+			if (sqState.hotel) {
 				housetext = "<span style='float: right; font-weight: bold;'>1&nbsp;x&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' style='float: none;' /></span>";
-			} else if (sq.house > 0 && sq.house < 5) {
-				housetext = "<span style='float: right; font-weight: bold;'>" + sq.house + "&nbsp;x&nbsp;<img src='images/house.png' alt='' title='House' class='house' style='float: none;' /></span>";
+			} else if (sqState.house > 0 && sqState.house < 5) {
+				housetext = "<span style='float: right; font-weight: bold;'>" + sqState.house + "&nbsp;x&nbsp;<img src='images/house.png' alt='' title='House' class='house' style='float: none;' /></span>";
 			}
 
-			HTML += "<tr><td class='statscellcolor' style='background: " + UIHtml.escapeHTML(sq.color) + ";";
-			if (sq.groupNumber === 1 || sq.groupNumber === 2) {
+			HTML += "<tr><td class='statscellcolor' style='background: " + UIHtml.escapeHTML(sq.presentation.color) + ";";
+			if (sq.kind === 'railroad' || sq.kind === 'utility') {
 				HTML += " border: 1px solid grey;";
 			}
-			HTML += "' onmouseover='showdeed(" + i + ");' onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.name) + housetext + "</td></tr>";
+			HTML += "' onmouseover=\"showdeed('" + UIHtml.escapeHTML(sq.id) + "')\" onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.presentation.label) + housetext + "</td></tr>";
 		}
 	}
 
@@ -216,16 +218,18 @@ function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
 }
 
 function showAuctionPlayerStats(playerIndex, event, gameInstance) {
-	var gameState = gameInstance && gameInstance.state;
-	var players = gameState ? gameState.player : player;
+	if (!gameInstance || !gameInstance.state) throw new TypeError('Auction stats require the owning Game.');
+	var gameState = gameInstance.state;
+	var selected = typeof playerIndex === 'string' ? globalThis.GameStateContext.getPlayerById(gameState, playerIndex) : gameState.player[playerIndex];
+	var players = gameState.player;
 	var tooltip = document.getElementById("auctionplayerstats");
 	if (!tooltip) {
 		tooltip = document.createElement("div");
 		tooltip.id = "auctionplayerstats";
 		document.body.appendChild(tooltip);
 	}
-	tooltip.innerHTML = getPlayerStatsHTML(playerIndex, false, gameState);
-	tooltip.style.borderColor = players[playerIndex].color;
+	tooltip.innerHTML = getPlayerStatsHTML(selected.playerId, false, gameState);
+	tooltip.style.borderColor = selected.color;
 	tooltip.style.display = "block";
 	positionAuctionPlayerStats(event);
 }
@@ -245,14 +249,17 @@ function hideAuctionPlayerStats() {
 	}
 }
 
-function showStats() {
+function showStats(gameInstance) {
+	if (!gameInstance || !gameInstance.state) throw new TypeError('Player stats require the owning Game.');
+	var gameState = gameInstance.state;
+	var players = gameState.player;
 	var HTML = "<table align='center'><tr>";
 
-	for (var x = 1; x <= pcount; x++) {
+	for (var x = 1; x <= gameState.pcount; x++) {
 		if (x === 5) {
 			HTML += "</tr><tr>";
 		}
-		HTML += "<td class='statscell' id='statscell" + x + "' style='border: 2px solid " + player[x].color + "' >" + getPlayerStatsHTML(x, true) + "</td>";
+		HTML += "<td class='statscell' id='statscell" + x + "' style='border: 2px solid " + players[x].color + "' >" + getPlayerStatsHTML(x, true, gameState) + "</td>";
 	}
 	HTML += "</tr></table><div id='titledeed'></div>";
 
@@ -263,40 +270,44 @@ function showStats() {
 	});
 }
 
-function showdeed(property) {
-	var sq = square[property];
+function showdeed(property, gameInstance) {
+	var gameState = gameInstance && gameInstance.state;
+	if (!gameState || typeof property !== 'string') return;
+	var sq = gameState.board.squaresById[property];
+	if (!sq) return;
+	var current = gameState.squareStateById[property], rules = sq.rules;
 	$("#deed").show();
 
 	$("#deed-normal").hide();
 	$("#deed-mortgaged").hide();
 	$("#deed-special").hide();
 
-	if (sq.mortgage) {
+	if (current.mortgage) {
 		$("#deed-mortgaged").show();
-		document.getElementById("deed-mortgaged-name").textContent = sq.name;
-		document.getElementById("deed-mortgaged-mortgage").textContent = (sq.price / 2);
+		document.getElementById("deed-mortgaged-name").textContent = sq.presentation.label;
+		document.getElementById("deed-mortgaged-mortgage").textContent = rules.mortgageValue;
 
 	} else {
 
-		if (sq.groupNumber >= 3) {
+		if (sq.kind === 'street') {
 			$("#deed-normal").show();
-			document.getElementById("deed-header").style.backgroundColor = sq.color;
-			document.getElementById("deed-name").textContent = sq.name;
-			document.getElementById("deed-baserent").textContent = sq.baserent;
-			document.getElementById("deed-rent1").textContent = sq.rent1;
-			document.getElementById("deed-rent2").textContent = sq.rent2;
-			document.getElementById("deed-rent3").textContent = sq.rent3;
-			document.getElementById("deed-rent4").textContent = sq.rent4;
-			document.getElementById("deed-rent5").textContent = sq.rent5;
-			document.getElementById("deed-mortgage").textContent = (sq.price / 2);
-			document.getElementById("deed-houseprice").textContent = sq.houseprice;
-			document.getElementById("deed-hotelprice").textContent = sq.houseprice;
+			document.getElementById("deed-header").style.backgroundColor = sq.presentation.color;
+			document.getElementById("deed-name").textContent = sq.presentation.label;
+			document.getElementById("deed-baserent").textContent = rules.baseRent;
+			rules.rentTiers.forEach(function(rent, i) { document.getElementById('deed-rent' + (i + 1)).textContent = rent; });
+			document.getElementById("deed-mortgage").textContent = rules.mortgageValue;
+			document.getElementById("deed-houseprice").textContent = rules.houseCost;
+			document.getElementById("deed-hotelprice").textContent = rules.houseCost;
 
-		} else if (sq.groupProfile) {
+		} else if (sq.groupId) {
 			$("#deed-special").show();
-			document.getElementById("deed-special-name").textContent = sq.name;
-			document.getElementById("deed-special-text").innerHTML = EditionRenderer.renderSpecialDeedText(sq.groupProfile);
-			document.getElementById("deed-special-mortgage").textContent = (sq.price / 2);
+			document.getElementById("deed-special-name").textContent = sq.presentation.label;
+			var group = gameState.board.groupsById[sq.groupId];
+			var special = sq.kind === 'utility'
+				? { kind: 'utility', deed: { multipliers: group.rules.rentTiers } }
+				: { kind: sq.kind, deed: { rents: group.rules.rentTiers, groupName: group.label } };
+			document.getElementById("deed-special-text").innerHTML = EditionRenderer.renderSpecialDeedText(special);
+			document.getElementById("deed-special-mortgage").textContent = rules.mortgageValue;
 		}
 	}
 }

@@ -113,13 +113,10 @@
 		p.jail = true;
 		game.state.doublecount = 0;
 		ui(game, 'updateButtonState', 'End turn', 'End turn and advance to the next player.');
-		if (p.human) ui(game, 'focusNextButton');
+
 		await ui(game, 'updatePosition');
 		ui(game, 'updateOwned');
-		if (!p.human) {
-			p.AI.alertList = '';
-			game.next();
-		}
+		game.turnEnded = true;
 	}
 
 	function payEachPlayer(game, amount, cause) {
@@ -221,25 +218,10 @@
 		var p = currentPlayer(game);
 		var deck = state.cardDecks[deckId];
 		var card = deck.cards[cardIndex];
-		var isHeadless = !!(game.ui && game.ui.isHeadless);
-		var applyCard = function() {
-			return cardAction(game, deckId, cardIndex);
-		};
-		if (card.keepable) deck.order.splice(deck.index, 1);
-		if (isHeadless) {
-			await applyCard();
-		} else {
-			var animation = ui(game, 'updateDrawnCard', deckId, cardIndex);
-			if (p.human) {
-				await animation;
-				ui(game, 'showCard', deckId, card.text, function() {
-					applyCard();
-				});
-			} else {
-				await Promise.all([animation, ui(game, 'delay', 500)]);
-				await applyCard();
-			}
-		}
+        if (card.keepable) deck.order.splice(deck.index, 1);
+        await ui(game, 'updateDrawnCard', deckId, cardIndex);
+        await game.requestDecision('acknowledge', p.playerId, { deckId: deckId, message: card.text });
+        await cardAction(game, deckId, cardIndex);
 		if (deck.order.length) {
 			if (!card.keepable) deck.index++;
 			if (deck.index >= deck.order.length) deck.index = 0;
@@ -253,9 +235,6 @@
 		if (square.kind === 'card' && Object.prototype.hasOwnProperty.call(state.cardDecks, square.deckId) && state.cardDecks[square.deckId].order.length) {
 			var deck = state.cardDecks[square.deckId];
 			await runCard(game, square.deckId, deck.order[deck.index]);
-		} else if (!p.human) {
-			p.AI.alertList = '';
-			if (!p.AI.onLand()) game.next();
 		}
 	}
 
@@ -270,10 +249,7 @@
 		await card.action(context);
 		ui(game, 'updateOwned');
 		ui(game, 'updateMoney');
-		if (!p.human) {
-			if (!card.endsTurn) p.AI.alertList = '';
-			else game.next();
-		}
+		if (card.endsTurn) game.turnEnded = true;
 	}
 
 	function rentFor(squareId, state, diceTotal, increasedRent) {
@@ -302,18 +278,9 @@
 		squareState.landcount++;
 		ui(game, 'alert', p.name + ' landed on ' + square.label + '.');
 
-		if (rules.purchasePrice > 0 && squareState.ownerId === null) {
-			if (!p.human) {
-				if (p.AI.buyProperty(squareId)) game.buy(squareId);
-				else if (state.auctionEnabled) state.pendingAuction = squareId;
-			} else {
-				ui(game, 'displayPropertyPurchase', squareId, boardSquare);
-				if (state.auctionEnabled) {
-					state.pendingAuction = squareId;
-					ui(game, 'updateButtonState', 'Auction property', 'Send the declined property to auction and advance the turn.');
-				}
-			}
-		}
+        if (rules.purchasePrice > 0 && squareState.ownerId === null) {
+            await game.requestDecision('purchase', p.playerId, { squareId: squareId });
+        }
 
 		if (squareState.ownerId !== null && squareState.ownerId !== p.playerId && !squareState.mortgage) {
 			var rent = rentFor(squareId, state, diceTotal, !!increasedRent);
@@ -335,15 +302,15 @@
 		if (boardSquare.kind === 'go-to-jail') {
 			ui(game, 'updateMoney');
 			await ui(game, 'updatePosition');
-			if (p.human) ui(game, 'showMessage', 'Go to jail. Go directly to Jail. Do not pass GO. Do not collect $200.', function() { goToJail(game); });
-			else await goToJail(game);
+            await game.requestDecision('acknowledge', p.playerId, { message: 'Go to jail. Go directly to Jail. Do not pass GO. Do not collect $200.' });
+            await goToJail(game);
 			return;
 		}
 		if (boardSquare.kind === 'free-parking') collectFreeParking(game);
 		ui(game, 'updateMoney');
 		await ui(game, 'updatePosition');
 		ui(game, 'updateOwned');
-		if (!p.human) p.AI.alertList = '';
+
 		await drawCardAtSquare(game);
 	}
 
@@ -351,7 +318,7 @@
 		var state = game.state;
 		var p = currentPlayer(game);
 		ui(game, 'onRollStart');
-		if (p.human) ui(game, 'focusNextButton');
+
 		ui(game, 'updateButtonState', 'End turn', 'End turn and advance to the next player.');
 		game.rollDice();
 		var die1 = game.getDie(1);
@@ -366,8 +333,8 @@
 				state.doublecount = 0;
 				ui(game, 'alert', p.name + ' rolled doubles three times in a row.');
 				ui(game, 'updateMoney');
-				if (p.human) ui(game, 'popup', 'You rolled doubles three times in a row. Go to jail.', function() { goToJail(game); });
-				else await goToJail(game);
+                await game.requestDecision('acknowledge', p.playerId, { message: 'You rolled doubles three times in a row. Go to jail.' });
+                await goToJail(game);
 				return;
 			}
 		} else {
@@ -388,25 +355,16 @@
 				state.doublecount = 0;
 				ui(game, 'alert', p.name + ' rolled doubles to get out of jail.');
 				await land(game);
-			} else if (p.jailroll === 3) {
-				if (p.human) {
-					ui(game, 'showMessage', 'You must pay the $50 fine.', async function() {
-						await payBail(game);
-						move(game, die1 + die2);
-						await land(game);
-					});
-				} else {
-					await payBail(game);
-					move(game, die1 + die2);
-					await land(game);
-				}
-			} else {
-				ui(game, 'displayLanded', 'You are in jail.');
-				if (!p.human) {
-					p.AI.alertList = '';
-					game.next();
-				}
-			}
+            } else if (p.jailroll === 3) {
+                await game.requestDecision('acknowledge', p.playerId, { message: 'You must pay the $' + state.board.rules.bailAmount + ' fine.' });
+                await payBail(game);
+                move(game, die1 + die2);
+                await land(game);
+            } else {
+                ui(game, 'displayLanded', 'You are in jail.');
+                game.turnEnded = true;
+            }
+
 		} else {
 			ui(game, 'updateDice', die1, die2);
 			var movement = move(game, die1 + die2);
@@ -417,46 +375,61 @@
 		}
 	}
 
-	async function play(game) {
-		var state = game.state;
-		if (game.isOver) {
-			if (typeof game.onGameCompleted === 'function') game.onGameCompleted();
-			return;
-		}
-		game.turnCount = (game.turnCount || 0) + 1;
-		if (game.maxTurns && game.turnCount > game.maxTurns) {
-			game.isOver = true;
-			if (typeof game.onGameCompleted === 'function') game.onGameCompleted();
-			return;
-		}
-		if (game.auction()) return;
-		state.turn++;
-		if (state.turn > state.pcount) state.turn -= state.pcount;
-		var p = currentPlayer(game);
-		game.resetDice();
-		if (game.ui && typeof game.ui.updateTurnDisplay === 'function') game.ui.updateTurnDisplay(p);
-		ui(game, 'alert', 'It is ' + p.name + "'s turn.");
-		p.pay(0, p.creditor);
-		ui(game, 'onTurnStart', state.turn);
-		state.doublecount = 0;
-		ui(game, 'updateButtonState', 'Roll Dice', 'Roll the dice and move your token accordingly.');
-		ui(game, 'setDiceVisible', false);
-		if (p.jail) {
-		ui(game, 'displayJailOptions', p.heldCards.length > 0, p.jailroll === 2);
-			ui(game, 'updateButtonState', undefined, 'Roll the dice. If you throw doubles, you will get out of jail.');
-			if (p.jailroll === 0) ui(game, 'alert', 'This is ' + p.name + "'s first turn in jail.");
-			else if (p.jailroll === 1) ui(game, 'alert', 'This is ' + p.name + "'s second turn in jail.");
-			else if (p.jailroll === 2) ui(game, 'alert', 'This is ' + p.name + "'s third turn in jail.");
-			if (!p.human && p.AI.postBail()) {
-				if (p.heldCards.length) await useJailCard(game);
-				else await payBail(game);
-			}
-		}
-		ui(game, 'updateMoney');
-		await ui(game, 'updatePosition');
-		ui(game, 'updateOwned');
-		if (!p.human && !p.AI.beforeTurn()) game.next();
-	}
+    async function run(game) {
+        var state = game.state;
+        // Resolve every player before beginning; setup failures must precede any rule changes.
+        GameStateContext.getActivePlayers(state).forEach(function(p) {
+            if (!game.controllers.has(p.playerId)) throw new Error('Missing controller for ' + p.playerId);
+        });
+        while (!game.isOver) {
+            await game.auction();
+            if (game.isOver) break;
+            if (game.maxTurns && (game.turnCount || 0) >= game.maxTurns) { game.isOver = true; break; }
+            game.turnCount = (game.turnCount || 0) + 1;
+            state.turn = state.turn % state.pcount + 1;
+            var p = currentPlayer(game);
+            game.turnEnded = false;
+            game.resetDice(); state.doublecount = 0;
+            ui(game, 'updateTurnDisplay', p); ui(game, 'onTurnStart', state.turn);
+            ui(game, 'alert', 'It is ' + p.name + "'s turn.");
+            ui(game, 'updateButtonState', 'Roll Dice', 'Roll the dice and move your token.');
+            ui(game, 'setDiceVisible', false);
+            p.pay(0, p.creditor);
+            if (p.jail) {
+                ui(game, 'displayJailOptions', p.heldCards.length > 0, p.jailroll === 2);
+                await game.requestDecision('jail', p.playerId, {});
+            }
+            await game.requestDecision('manage', p.playerId, { hook: 'beforeTurn' });
+            ui(game, 'updateMoney'); await ui(game, 'updatePosition'); ui(game, 'updateOwned');
+            var nextAction = 'roll';
+            while (!game.isOver) {
+                if (p.money < 0) {
+                    await game.requestDecision('debt', p.playerId, { hook: 'payDebt', nextAction: 'finish' });
+                    if (game.isOver || p.active === false) break;
+                    if (p.money < 0) { await game.bankruptcy(); break; }
+                }
+                var action = await game.requestDecision('turn', p.playerId, { nextAction: nextAction });
+                if (game.isOver || p.active === false) break;
+                if (action.type === 'endTurn') break;
+                await roll(game);
+                if (!game.turnEnded) await game.requestDecision('manage', p.playerId, { hook: 'onLand' });
+                if (state.pendingAuction !== -1 && state.pendingAuction !== null && state.auctionEnabled) {
+                    game.addPropertyToAuctionQueue(state.pendingAuction); state.pendingAuction = -1;
+                    await game.auction();
+                }
+                nextAction = game.turnEnded || state.doublecount === 0 ? 'endTurn' : 'roll';
+            }
+        }
+        game.completeGame();
+    }
+    function play(game) {
+        if (game._playPromise) return game._playPromise;
+        game._playPromise = run(game).catch(function(error) {
+            game.fail(error);
+            throw error;
+        });
+        return game._playPromise;
+    }
 
 	var methods = {
 		play: play, roll: roll, land: land, drawCardAtSquare: drawCardAtSquare,

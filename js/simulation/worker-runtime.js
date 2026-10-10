@@ -97,7 +97,8 @@
                 edition: match.edition,
                 playerCount: match.playerCount,
                 boardRuleOverrides: match.boardRuleOverrides,
-                seed: match.seed
+                seed: match.seed,
+                roster: match.roster
             });
             var matchRes = await board.run();
             results.push({

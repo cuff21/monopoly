@@ -4,13 +4,13 @@
 	var UIHtml = global.UIHtml || (typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
 
 	function renderSquareDisplay(squares) {
-		squares.forEach(function(square, index) {
-			var display = square.display || {};
-			var nameElement = document.getElementById('cell' + index + 'name');
+		squares.forEach(function(square) {
+			var display = square.presentation || square.display || {};
+			var nameElement = document.getElementById('square-' + square.id + '-name');
 			if (display.boardName && nameElement) nameElement.textContent = display.boardName;
 
 			if (!display.tokenImage) return;
-			var tokenElement = document.getElementById('enlarge' + index + 'token');
+			var tokenElement = document.getElementById('deed-' + square.id + '-token');
 			if (!tokenElement) return;
 
 			var image = document.createElement('img');
@@ -37,8 +37,10 @@
 	}
 
 	function formatRentText(square, rent) {
-		var formatter = square.display && square.display.rentText;
-		var rentText = typeof formatter === 'function' ? formatter(rent, square) : '$' + rent;
+		var display = square.presentation || square.display || {};
+		var formatter = display.rentText;
+		var rentText = typeof formatter === 'function' ? formatter(rent, square)
+			: rent && rent.type === 'diceMultiplier' ? rent.multiplier + 'x dice' : '$' + rent;
 		return UIHtml.escapeHTML(rentText);
 	}
 

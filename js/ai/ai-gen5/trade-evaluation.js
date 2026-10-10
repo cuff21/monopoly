@@ -6,66 +6,66 @@
     // Trade utility = immediate gain + future board gain + tempo effect + reputation effect - monopoly danger - cash stress - social friction
     function evaluate(tradeObj, p, profile, tradeMemory, turnNumber) {
         var state = AIGen5.getGameState(p);
-        var square = AIGen5.getSquares(p);
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
         var money = tradeObj.getMoney();
-        var initiator = tradeObj.getInitiator();
-        var property = [];
-        var ownership = {};
+        var initiator = view.getPlayer(tradeObj.getInitiator());
+        var property = Object.create(null);
+        var ownership = Object.create(null);
         var incomingValue = 0;
         var outgoingValue = 0;
 
-        for (var i = 0; i < square.length; i++) {
-            property[i] = tradeObj.getProperty(i) || 0;
+        for (var i of squareIds) {
+            property[i] = AIGen5.tradeProperty(tradeObj, i) || 0;
             if (property[i] > 0) {
-                ownership[i] = p.index;
+                ownership[i] = p.playerId;
             } else if (property[i] < 0) {
-                ownership[i] = initiator.index;
+                ownership[i] = initiator.playerId;
             }
         }
 
-        for (var j = 0; j < square.length; j++) {
+        for (var j of squareIds) {
             if (property[j] > 0) {
-                incomingValue += AIGen5.Valuation.assetValue(j, p.index, ownership, p);
+                incomingValue += AIGen5.Valuation.assetValue(j, p.playerId, ownership, p);
             }
             if (property[j] < 0) {
-                outgoingValue += AIGen5.Valuation.assetValue(j, p.index, null, p);
+                outgoingValue += AIGen5.Valuation.assetValue(j, p.playerId, null, p);
             }
         }
 
         var tradeValue = money + incomingValue - outgoingValue;
-        tradeValue += 15 * tradeObj.getCommunityChestJailCard();
-        tradeValue += 15 * tradeObj.getChanceJailCard();
+        tradeValue += 15 * tradeObj.getHeldCards().reduce(function(total, card) { return total + card.direction; }, 0);
 
         var monopolyEnablementRisk = 0;
         var blockingValue = 0;
-        var groupsTouched = {};
+        var groupsTouched = Object.create(null);
         var boardMonopolies = AIGen5.Analytics && typeof AIGen5.Analytics.countBoardMonopolies === 'function' ? AIGen5.Analytics.countBoardMonopolies(true, state) : 0;
-        for (var k = 0; k < square.length; k++) {
-            var s = square[k];
-            if (!s || !s.group || property[k] === 0) {
+        for (var k of squareIds) {
+            var s = view.getSquare(k);
+            if (!s.groupId || property[k] === 0) {
                 continue;
             }
-            groupsTouched[s.group.join(',')] = true;
+            groupsTouched[s.groupId] = true;
         }
 
         for (var groupKey in groupsTouched) {
-            var groupIndices = groupKey.split(',').map(Number);
-            var sampleSquare = square[groupIndices[0]];
-            var isColorGroup = sampleSquare && sampleSquare.houseprice > 0 && groupIndices.length >= 2;
+            var groupSquareIds = view.getGroupSquareIds(groupKey);
+            var sampleSquare = view.getSquare(groupSquareIds[0]);
+            var isColorGroup = sampleSquare && sampleSquare.rules.houseCost > 0 && groupSquareIds.length >= 2;
 
-            var initiatorOwnsAll = groupIndices.every(function(idx) {
-                return ownership[idx] !== undefined ? ownership[idx] === initiator.index : square[idx].owner === initiator.index;
+            var initiatorOwnsAll = groupSquareIds.every(function(idx) {
+                return ownership[idx] !== undefined ? ownership[idx] === initiator.playerId : view.getSquareState(idx).ownerId === initiator.playerId;
             });
-            var initiatorAlreadyOwnedAll = groupIndices.every(function(idx) {
-                return square[idx].owner === initiator.index;
+            var initiatorAlreadyOwnedAll = groupSquareIds.every(function(idx) {
+                return view.getSquareState(idx).ownerId === initiator.playerId;
             });
             var initiatorCompletes = initiatorOwnsAll && !initiatorAlreadyOwnedAll;
 
-            var aiOwnsAll = groupIndices.every(function(idx) {
-                return ownership[idx] !== undefined ? ownership[idx] === p.index : square[idx].owner === p.index;
+            var aiOwnsAll = groupSquareIds.every(function(idx) {
+                return ownership[idx] !== undefined ? ownership[idx] === p.playerId : view.getSquareState(idx).ownerId === p.playerId;
             });
-            var aiAlreadyOwnedAll = groupIndices.every(function(idx) {
-                return square[idx].owner === p.index;
+            var aiAlreadyOwnedAll = groupSquareIds.every(function(idx) {
+                return view.getSquareState(idx).ownerId === p.playerId;
             });
             var aiCompletes = aiOwnsAll && !aiAlreadyOwnedAll;
 
@@ -76,35 +76,35 @@
 
                 if (isColorGroup) {
                     var initiatorPostTradeCash = (initiator.money || 0) - money;
-                    var immediateHouses = AIGen5.Analytics && typeof AIGen5.Analytics.projectedImmediateHouses === 'function' ? AIGen5.Analytics.projectedImmediateHouses(initiator, groupIndices[0], initiatorPostTradeCash) : 0;
-                    var houseLevel = Math.min(5, Math.floor(immediateHouses / groupIndices.length));
+                    var immediateHouses = AIGen5.Analytics && typeof AIGen5.Analytics.projectedImmediateHouses === 'function' ? AIGen5.Analytics.projectedImmediateHouses(initiator, groupSquareIds[0], initiatorPostTradeCash) : 0;
+                    var houseLevel = Math.min(5, Math.floor(immediateHouses / groupSquareIds.length));
 
                     var avgGroupRent = 0;
-                    for (var g = 0; g < groupIndices.length; g++) {
-                        var gsq = square[groupIndices[g]];
+                    for (var g = 0; g < groupSquareIds.length; g++) {
+                        var gsq = view.getSquare(groupSquareIds[g]);
                         if (houseLevel > 0) {
-                            avgGroupRent += (gsq['rent' + houseLevel] || (gsq.baserent * 5));
+                            avgGroupRent += (gsq.rules.rentTiers[(houseLevel) - 1] || (gsq.rules.baseRent * 5));
                         } else {
-                            avgGroupRent += (gsq.baserent * 2);
+                            avgGroupRent += (gsq.rules.baseRent * 2);
                         }
                     }
-                    avgGroupRent = avgGroupRent / groupIndices.length;
+                    avgGroupRent = avgGroupRent / groupSquareIds.length;
 
                     var aiLandingProb = 0;
-                    if (AIGen5.Probability && p.position !== undefined) {
-                        for (var g2 = 0; g2 < groupIndices.length; g2++) {
-                            aiLandingProb += AIGen5.Probability.landingProbability(p.position, groupIndices[g2], 6);
+                    if (AIGen5.Probability && p.squareId !== undefined) {
+                        for (var g2 = 0; g2 < groupSquareIds.length; g2++) {
+                            aiLandingProb += AIGen5.Probability.landingProbability(p.squareId, groupSquareIds[g2], 6, p);
                         }
                     }
 
-                    var traffic = AIGen5.Probability ? AIGen5.Probability.aggregateBoardThreat(groupIndices[0], initiator.index, 4, state) : 0.5;
-                    var immediateCapitalThreat = immediateHouses * sampleSquare.houseprice * 0.8;
+                    var traffic = AIGen5.Probability ? AIGen5.Probability.aggregateBoardThreat(groupSquareIds[0], initiator.playerId, 4, state) : 0.5;
+                    var immediateCapitalThreat = immediateHouses * sampleSquare.rules.houseCost * 0.8;
                     var immediateRentThreat = (aiLandingProb * avgGroupRent * 3.0) + (avgGroupRent * (0.5 + traffic) * 1.5);
                     var groupBaseRisk = immediateCapitalThreat + immediateRentThreat + 80;
 
                     // Future-turn buildability impact: if opponent will reach 3 houses within 2-4 turns, accelerate threat
                     if (AIGen5.Analytics && typeof AIGen5.Analytics.projectedFutureBuildability === 'function') {
-                        var futureBuild = AIGen5.Analytics.projectedFutureBuildability(initiator, groupIndices[0], initiatorPostTradeCash, 3);
+                        var futureBuild = AIGen5.Analytics.projectedFutureBuildability(initiator, groupSquareIds[0], initiatorPostTradeCash, 3);
                         if (futureBuild && futureBuild.reachesThreeHouses) {
                             groupBaseRisk *= 1.35;
                         }
@@ -112,7 +112,7 @@
 
                     monopolyEnablementRisk += groupBaseRisk * rankMultiplier * soleMonopolyMultiplier * (profile.monopolyBlockWeight || 1);
                 } else {
-                    var nonColorRent = sampleSquare.group.length === 4 ? 200 : (sampleSquare.baserent * 10);
+                    var nonColorRent = sampleSquare.kind === 'railroad' ? sampleSquare.rules.rentTiers[Math.min(groupSquareIds.length, sampleSquare.rules.rentTiers.length) - 1] : (sampleSquare.rules.rentTiers[0] * 10);
                     monopolyEnablementRisk += nonColorRent * rankMultiplier * (profile.monopolyBlockWeight || 1);
                 }
             }
@@ -120,22 +120,22 @@
             if (aiCompletes) {
                 if (isColorGroup) {
                     var aiPostTradeCash = (p.money || 0) + money;
-                    var aiImmediateHouses = AIGen5.Analytics && typeof AIGen5.Analytics.projectedImmediateHouses === 'function' ? AIGen5.Analytics.projectedImmediateHouses(p, groupIndices[0], aiPostTradeCash) : 0;
-                    var aiHouseLevel = Math.min(5, Math.floor(aiImmediateHouses / groupIndices.length));
+                    var aiImmediateHouses = AIGen5.Analytics && typeof AIGen5.Analytics.projectedImmediateHouses === 'function' ? AIGen5.Analytics.projectedImmediateHouses(p, groupSquareIds[0], aiPostTradeCash) : 0;
+                    var aiHouseLevel = Math.min(5, Math.floor(aiImmediateHouses / groupSquareIds.length));
 
                     var aiAvgRent = 0;
-                    for (var ag = 0; ag < groupIndices.length; ag++) {
-                        var asq = square[groupIndices[ag]];
+                    for (var ag = 0; ag < groupSquareIds.length; ag++) {
+                        var asq = view.getSquare(groupSquareIds[ag]);
                         if (aiHouseLevel > 0) {
-                            aiAvgRent += (asq['rent' + aiHouseLevel] || (asq.baserent * 5));
+                            aiAvgRent += (asq.rules.rentTiers[(aiHouseLevel) - 1] || (asq.rules.baseRent * 5));
                         } else {
-                            aiAvgRent += (asq.baserent * 2);
+                            aiAvgRent += (asq.rules.baseRent * 2);
                         }
                     }
-                    aiAvgRent = aiAvgRent / groupIndices.length;
+                    aiAvgRent = aiAvgRent / groupSquareIds.length;
 
-                    var aiTraffic = AIGen5.Probability ? AIGen5.Probability.aggregateBoardThreat(groupIndices[0], p.index, 4, state) : 0.5;
-                    blockingValue += ((aiAvgRent * (0.6 + aiTraffic) * 1.5) + (aiImmediateHouses * sampleSquare.houseprice * 0.5) + 60) * (profile.monopolyBlockWeight || 1);
+                    var aiTraffic = AIGen5.Probability ? AIGen5.Probability.aggregateBoardThreat(groupSquareIds[0], p.playerId, 4, state) : 0.5;
+                    blockingValue += ((aiAvgRent * (0.6 + aiTraffic) * 1.5) + (aiImmediateHouses * sampleSquare.rules.houseCost * 0.5) + 60) * (profile.monopolyBlockWeight || 1);
                 } else {
                     blockingValue += 80 * (profile.monopolyBlockWeight || 1);
                 }
@@ -144,11 +144,11 @@
 
         // Strategic lane blocking (railroads, utilities, and color sets)
         if (AIGen5.Valuation && typeof AIGen5.Valuation.strategicBlockingValue === 'function') {
-            for (var bi = 0; bi < square.length; bi++) {
+            for (var bi of squareIds) {
                 if (property[bi] < 0) { // AI gives away bi to initiator
-                    monopolyEnablementRisk += AIGen5.Valuation.strategicBlockingValue(bi, p.index, initiator.index, p) * 0.5;
+                    monopolyEnablementRisk += AIGen5.Valuation.strategicBlockingValue(bi, p.playerId, initiator.playerId, p) * 0.5;
                 } else if (property[bi] > 0) { // AI receives bi
-                    blockingValue += AIGen5.Valuation.strategicBlockingValue(bi, p.index, initiator.index, p) * 0.5;
+                    blockingValue += AIGen5.Valuation.strategicBlockingValue(bi, p.playerId, initiator.playerId, p) * 0.5;
                 }
             }
         }
@@ -172,7 +172,7 @@
         // Reputation / social friction
         var frictionPenalty = 0;
         if (tradeMemory && typeof tradeMemory.getFrictionPenalty === 'function') {
-            frictionPenalty = tradeMemory.getFrictionPenalty(initiator.index);
+            frictionPenalty = tradeMemory.getFrictionPenalty(initiator.playerId);
         }
 
         var netValue = tradeValue - monopolyEnablementRisk + blockingValue + tempoGain - cashStress - frictionPenalty;
@@ -189,9 +189,10 @@
 
     function acceptTrade(tradeObj, p, profile, tradeMemory, turnNumber) {
         var state = AIGen5.getGameState(p);
-        var square = AIGen5.getSquares(p);
-        var initiator = tradeObj.getInitiator();
-        var recipient = tradeObj.getRecipient();
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
+        var initiator = view.getPlayer(tradeObj.getInitiator());
+        var recipient = view.getPlayer(tradeObj.getRecipient());
         var evaluation = evaluate(tradeObj, p, profile, tradeMemory, turnNumber);
 
         var norm = AIGen5.TradeMemory.normalizeIncoming(tradeObj);
@@ -214,7 +215,7 @@
         }
 
         // Opponent tendency profiling:
-        var oppTendency = tradeMemory && typeof tradeMemory.getOpponentTendency === 'function' ? tradeMemory.getOpponentTendency(initiator.index, initiator) : 'Balanced';
+        var oppTendency = tradeMemory && typeof tradeMemory.getOpponentTendency === 'function' ? tradeMemory.getOpponentTendency(initiator.playerId, initiator) : 'Balanced';
         if (oppTendency === 'Desperate') {
             threshold += 20; // Desperate opponents overpay for survival
         }
@@ -222,39 +223,40 @@
         var initiatorCompletesColorMonopoly = false;
         var aiCompletesColorMonopoly = false;
 
-        var seenGroups = {};
-        for (var i = 0; i < square.length; i++) {
-            var propVal = tradeObj.getProperty(i) || 0;
-            var s = square[i];
-            if (!s || !s.group || s.group.length < 2 || propVal === 0) {
+        var seenGroups = Object.create(null);
+        for (var i of squareIds) {
+            var propVal = AIGen5.tradeProperty(tradeObj, i) || 0;
+            var s = view.getSquare(i);
+            var sGroupIds = AIGen5.groupIds(view, s);
+            if (!s || sGroupIds.length < 2 || propVal === 0) {
                 continue;
             }
-            var gKey = s.group.join(',');
+            var gKey = sGroupIds.join(',');
             if (seenGroups[gKey]) {
                 continue;
             }
             seenGroups[gKey] = true;
 
-            var isColorGroup = s.houseprice > 0;
-            var groupIndices = s.group;
+            var isColorGroup = s.rules.houseCost > 0;
+            var groupSquareIds = sGroupIds;
 
-            var initAll = groupIndices.every(function(idx) {
-                var pVal = tradeObj.getProperty(idx) || 0;
-                return pVal < 0 || (square[idx].owner === initiator.index && pVal === 0);
+            var initAll = groupSquareIds.every(function(idx) {
+                var pVal = AIGen5.tradeProperty(tradeObj, idx) || 0;
+                return pVal < 0 || (view.getSquareState(idx).ownerId === initiator.playerId && pVal === 0);
             });
-            var initPrior = groupIndices.every(function(idx) {
-                return square[idx].owner === initiator.index;
+            var initPrior = groupSquareIds.every(function(idx) {
+                return view.getSquareState(idx).ownerId === initiator.playerId;
             });
             if (isColorGroup && initAll && !initPrior) {
                 initiatorCompletesColorMonopoly = true;
             }
 
-            var aiAll = groupIndices.every(function(idx) {
-                var pVal = tradeObj.getProperty(idx) || 0;
-                return pVal > 0 || (square[idx].owner === p.index && pVal === 0);
+            var aiAll = groupSquareIds.every(function(idx) {
+                var pVal = AIGen5.tradeProperty(tradeObj, idx) || 0;
+                return pVal > 0 || (view.getSquareState(idx).ownerId === p.playerId && pVal === 0);
             });
-            var aiPrior = groupIndices.every(function(idx) {
-                return square[idx].owner === p.index;
+            var aiPrior = groupSquareIds.every(function(idx) {
+                return view.getSquareState(idx).ownerId === p.playerId;
             });
             if (isColorGroup && aiAll && !aiPrior) {
                 aiCompletesColorMonopoly = true;
@@ -266,7 +268,7 @@
         // Defensive personalities never give away an unreciprocated color monopoly.
         if (isDefensive && initiatorCompletesColorMonopoly && !aiCompletesColorMonopoly) {
             console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": defensive veto against unreciprocated color monopoly.");
-            tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+            tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
             return false;
         }
 
@@ -293,19 +295,19 @@
 
             if (!swapAcceptable) {
                 console.log("[Gen5AI " + p.name + "] Declined mutual monopoly swap with " + initiator.name + ": insufficient strategic advantage.");
-                tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+                tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
                 return false;
             }
         }
 
         // Check for bad faith retreat: opponent gave an offer worse than their previous offer in the active session
-        if (tradeMemory.isBadFaithRegression && tradeMemory.isBadFaithRegression(initiator.index, evaluation.netValue, turnNumber)) {
-            console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": bad faith regression detected (offer worsened from " + tradeMemory.getSession(initiator.index).lastNetValue + " to " + evaluation.netValue + ").");
-            tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+        if (tradeMemory.isBadFaithRegression && tradeMemory.isBadFaithRegression(initiator.playerId, evaluation.netValue, turnNumber)) {
+            console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": bad faith regression detected (offer worsened from " + tradeMemory.getSession(initiator.playerId).lastNetValue + " to " + evaluation.netValue + ").");
+            tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
             return false;
         }
 
-        var session = tradeMemory.startOrUpdateSession ? tradeMemory.startOrUpdateSession(initiator.index, evaluation.netValue, turnNumber) : { round: 1, squeezed: false };
+        var session = tradeMemory.startOrUpdateSession ? tradeMemory.startOrUpdateSession(initiator.playerId, evaluation.netValue, turnNumber) : { round: 1, squeezed: false };
 
         // Situation 2: Opponent gives an offer at or above the minimum acceptable level
         if (evaluation.netValue >= threshold) {
@@ -317,24 +319,24 @@
             if (allowSqueeze) {
                 session.squeezed = true;
                 if (tradeMemory && typeof tradeMemory.recordSqueeze === 'function') {
-                    tradeMemory.recordSqueeze(initiator.index);
+                    tradeMemory.recordSqueeze(initiator.playerId);
                 }
                 var squeezeBonus = Math.min(Math.floor(initiatorSurplusCash * 0.35), 35);
                 if (squeezeBonus >= 15) {
                     var squeezeMoney = (tradeObj.getMoney() || 0) + squeezeBonus;
-                    var squeezeProperty = [];
-                    for (var spIdx = 0; spIdx < square.length; spIdx++) {
-                        squeezeProperty[spIdx] = tradeObj.getProperty(spIdx) || 0;
+                    var squeezeProperty = Object.create(null);
+                    for (var spIdx of squareIds) {
+                        squeezeProperty[spIdx] = AIGen5.tradeProperty(tradeObj, spIdx) || 0;
                     }
                     console.log("[Gen5AI " + p.name + "] Offer is acceptable, attempting one final squeeze counter (+$" + squeezeBonus + ") with " + initiator.name + ".");
-                    tradeMemory.recordOutcome(initiator.index, signature, 'countered', snapshot, -squeezeMoney);
-                    return new Trade(initiator, recipient, squeezeMoney, squeezeProperty, tradeObj.getCommunityChestJailCard(), tradeObj.getChanceJailCard());
+                    tradeMemory.recordOutcome(initiator.playerId, signature, 'countered', snapshot, -squeezeMoney);
+                    return AIGen5.counterTrade(tradeObj, squeezeMoney, squeezeProperty);
                 }
             }
 
             // Acceptance:
             console.log("[Gen5AI " + p.name + "] Accepted trade offer from " + initiator.name + " (netValue: " + evaluation.netValue + " >= threshold: " + threshold + ").");
-            tradeMemory.recordOutcome(initiator.index, signature, 'accepted', snapshot);
+            tradeMemory.recordOutcome(initiator.playerId, signature, 'accepted', snapshot);
             return true;
         }
 
@@ -344,24 +346,25 @@
         var opponentTradeablePropertyVal = 0;
         var eligibleProperties = [];
 
-        for (var ei = 0; ei < square.length; ei++) {
-            var esq = square[ei];
-            if (esq && esq.owner === initiator.index && !esq.mortgage && (!esq.house || esq.house === 0) && (!esq.hotel || esq.hotel === 0)) {
+        for (var ei of squareIds) {
+            var esq = view.getSquare(ei);
+            var esqGroupIds = AIGen5.groupIds(view, esq);
+            if (esq && view.getSquareState(esq.id).ownerId === initiator.playerId && !view.getSquareState(esq.id).mortgage && (!view.getSquareState(esq.id).house || view.getSquareState(esq.id).house === 0) && (!view.getSquareState(esq.id).hotel || view.getSquareState(esq.id).hotel === 0)) {
                 // Ensure no houses in this color group
                 var groupSafe = true;
-                if (esq.group) {
-                    for (var gi = 0; gi < esq.group.length; gi++) {
-                        var gTile = square[esq.group[gi]];
-                        if (gTile && (gTile.house > 0 || gTile.hotel > 0)) {
+                if (esqGroupIds) {
+                    for (var gi = 0; gi < esqGroupIds.length; gi++) {
+                        var gTile = view.getSquare(esqGroupIds[gi]);
+                        if (gTile && (view.getSquareState(gTile.id).house > 0 || view.getSquareState(gTile.id).hotel > 0)) {
                             groupSafe = false;
                             break;
                         }
                     }
                 }
                 if (groupSafe) {
-                    var pAssetVal = AIGen5.Valuation ? AIGen5.Valuation.assetValue(ei, p.index, null, p) : (esq.price || 0);
+                    var pAssetVal = AIGen5.Valuation ? AIGen5.Valuation.assetValue(ei, p.playerId, null, p) : (esq.rules.purchasePrice || 0);
                     opponentTradeablePropertyVal += pAssetVal;
-                    eligibleProperties.push({ index: ei, value: pAssetVal, price: esq.price || 0, group: esq.group });
+                    eligibleProperties.push({ squareId: ei, value: pAssetVal, price: esq.rules.purchasePrice || 0, group: esqGroupIds });
                 }
             }
         }
@@ -372,7 +375,7 @@
         // If opponent lacks the means to reach an acceptable trade even with all their assets, decline
         if (totalOpponentAssets < deficit * 0.7 || typeof Trade === 'undefined') {
             console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": opponent lacks means to reach an acceptable offer (deficit: " + deficit + ", available assets: " + totalOpponentAssets + ").");
-            tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+            tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
             return false;
         }
 
@@ -398,9 +401,9 @@
 
         var targetValueGap = deficit + overshootAmount;
 
-        var counterProperty = [];
-        for (var cp = 0; cp < square.length; cp++) {
-            counterProperty[cp] = tradeObj.getProperty(cp) || 0;
+        var counterProperty = Object.create(null);
+        for (var cp of squareIds) {
+            counterProperty[cp] = AIGen5.tradeProperty(tradeObj, cp) || 0;
         }
 
         var currentCounterCash = tradeObj.getMoney() || 0;
@@ -408,8 +411,8 @@
 
         // Sort eligible properties: prioritize those completing AI's color group, then utilities/railroads, then highest value
         eligibleProperties.sort(function(a, b) {
-            var aScore = AIGen5.Valuation ? AIGen5.Valuation.groupScore(a.index, p.index, null, p) : 0;
-            var bScore = AIGen5.Valuation ? AIGen5.Valuation.groupScore(b.index, p.index, null, p) : 0;
+            var aScore = AIGen5.Valuation ? AIGen5.Valuation.groupScore(a.squareId, p.playerId, null, p) : 0;
+            var bScore = AIGen5.Valuation ? AIGen5.Valuation.groupScore(b.squareId, p.playerId, null, p) : 0;
             if (aScore !== bScore) {
                 return bScore - aScore;
             }
@@ -420,8 +423,8 @@
         for (var ep = 0; ep < eligibleProperties.length; ep++) {
             if (currentCounterCash + (targetValueGap - valueAddedByProperties) > initiatorAvailableCash) {
                 var candidate = eligibleProperties[ep];
-                if (counterProperty[candidate.index] === 0) {
-                    counterProperty[candidate.index] = 1;
+                if (counterProperty[candidate.squareId] === 0) {
+                    counterProperty[candidate.squareId] = 1;
                     valueAddedByProperties += candidate.value;
                     if (valueAddedByProperties >= targetValueGap) {
                         break;
@@ -447,7 +450,7 @@
             counterMoney = Math.max(counterMoney, drainBuildingFunds);
             if (counterMoney > initiator.money) {
                 console.log("[Gen5AI " + p.name + "] Declined monopoly trade with " + initiator.name + ": initiator cannot afford resource-draining price.");
-                tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+                tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
                 return false;
             }
         }
@@ -455,91 +458,94 @@
         // If the resulting counter is worse or identical to the incoming offer
         if (counterMoney <= (tradeObj.getMoney() || 0) && valueAddedByProperties <= 0) {
             console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": unable to construct an advantageous counter.");
-            tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+            tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
             return false;
         }
 
-        if (tradeMemory.isWorseCounter(initiator.index, signature, -counterMoney)) {
+        if (tradeMemory.isWorseCounter(initiator.playerId, signature, -counterMoney)) {
             console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": counter would be worse than previous counter in memory.");
-            tradeMemory.recordOutcome(initiator.index, signature, 'rejected', snapshot);
+            tradeMemory.recordOutcome(initiator.playerId, signature, 'rejected', snapshot);
             return false;
         }
 
         console.log("[Gen5AI " + p.name + "] Proposing overshoot counteroffer to " + initiator.name + " (round: " + round + ", overshoot: +$" + overshootAmount + ", counterCash: $" + counterMoney + ").");
-        tradeMemory.recordOutcome(initiator.index, signature, 'countered', snapshot, -counterMoney);
-        return new Trade(initiator, recipient, counterMoney, counterProperty, tradeObj.getCommunityChestJailCard(), tradeObj.getChanceJailCard());
+        tradeMemory.recordOutcome(initiator.playerId, signature, 'countered', snapshot, -counterMoney);
+        return AIGen5.counterTrade(tradeObj, counterMoney, counterProperty);
     }
 
     // Looks for a one-for-one property swap that would complete one of the AI's own groups.
     function findOpportunity(p, profile, turnNumber) {
         var state = AIGen5.getGameState(p);
-        var square = AIGen5.getSquares(p);
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
         var best = null;
         var availableCash = Math.max(0, p.money - (AIGen5.Liquidity ? AIGen5.Liquidity.computeReserve(p, profile) : 120));
         var deadlock = AIGen5.Analytics && typeof AIGen5.Analytics.getDeadlockState === 'function' ? AIGen5.Analytics.getDeadlockState(p, null, turnNumber) : { mode: 'Normal', factor: 0 };
         var stagnation = deadlock.factor;
 
-        for (var targetIndex = 0; targetIndex < square.length; targetIndex++) {
-            var targetSquare = square[targetIndex];
-            if (!targetSquare || !targetSquare.group || targetSquare.group.length < 2) {
+        for (var targetSquareId of squareIds) {
+            var targetSquare = view.getSquare(targetSquareId);
+            var targetSquareGroupIds = AIGen5.groupIds(view, targetSquare);
+            if (!targetSquare || targetSquareGroupIds.length < 2) {
                 continue;
             }
 
             var ownedInTarget = 0;
-            var missingIndex = -1;
-            var missingOwner = 0;
+            var missingSquareId = null;
+            var missingOwner = null;
             var blocked = false;
-            for (var m = 0; m < targetSquare.group.length; m++) {
-                var memberIndex = targetSquare.group[m];
-                var member = square[memberIndex];
+            for (var m = 0; m < targetSquareGroupIds.length; m++) {
+                var memberSquareId = targetSquareGroupIds[m];
+                var member = view.getSquare(memberSquareId);
                 if (!member) {
                     blocked = true;
                     break;
                 }
-                if (member.house > 0 || member.hotel > 0) {
+                if (view.getSquareState(member.id).house > 0 || view.getSquareState(member.id).hotel > 0) {
                     blocked = true;
                 }
-                if (member.owner === p.index) {
+                if (view.getSquareState(member.id).ownerId === p.playerId) {
                     ownedInTarget++;
                 } else {
-                    missingIndex = memberIndex;
-                    missingOwner = member.owner;
+                    missingSquareId = memberSquareId;
+                    missingOwner = view.getSquareState(member.id).ownerId;
                 }
             }
-            if (blocked || ownedInTarget !== targetSquare.group.length - 1 || missingOwner === 0 || missingOwner === p.index) {
+            if (blocked || ownedInTarget !== targetSquareGroupIds.length - 1 || missingOwner === null || missingOwner === p.playerId) {
                 continue;
             }
 
-            for (var offerIndex = 0; offerIndex < square.length; offerIndex++) {
-                var offerSquare = square[offerIndex];
-                if (!offerSquare || offerSquare.owner !== p.index || offerIndex === missingIndex || offerSquare.mortgage) {
+            for (var offeredSquareId of squareIds) {
+                var offerSquare = view.getSquare(offeredSquareId);
+                var offerSquareGroupIds = AIGen5.groupIds(view, offerSquare);
+                if (!offerSquare || view.getSquareState(offerSquare.id).ownerId !== p.playerId || offeredSquareId === missingSquareId || view.getSquareState(offerSquare.id).mortgage) {
                     continue;
                 }
-                if (offerSquare.house > 0 || offerSquare.hotel > 0 || targetSquare.group.indexOf(offerIndex) !== -1) {
+                if (view.getSquareState(offerSquare.id).house > 0 || view.getSquareState(offerSquare.id).hotel > 0 || targetSquareGroupIds.indexOf(offeredSquareId) !== -1) {
                     continue;
                 }
-                if (AIGen5.Valuation.groupScore(offerIndex, p.index, null, p) >= 80) {
+                if (AIGen5.Valuation.groupScore(offeredSquareId, p.playerId, null, p) >= 80) {
                     continue;
                 }
 
-                // Check if offering offerIndex would complete missingOwner's color group
-                if (offerSquare.group && offerSquare.houseprice > 0 && offerSquare.group.length >= 2) {
+                // Check if offering offeredSquareId would complete missingOwner's color group
+                if (offerSquare.rules.houseCost > 0 && offerSquareGroupIds.length >= 2) {
                     var opponentOwnedInOfferGroup = 0;
-                    for (var og = 0; og < offerSquare.group.length; og++) {
-                        var ogIdx = offerSquare.group[og];
-                        if (ogIdx === offerIndex) {
+                    for (var og = 0; og < offerSquareGroupIds.length; og++) {
+                        var ogIdx = offerSquareGroupIds[og];
+                        if (ogIdx === offeredSquareId) {
                             continue;
                         }
-                        if (square[ogIdx] && square[ogIdx].owner === missingOwner) {
+                        if (view.getSquareState(ogIdx).ownerId === missingOwner) {
                             opponentOwnedInOfferGroup++;
                         }
                     }
-                    var opponentCompletesMonopoly = (opponentOwnedInOfferGroup === offerSquare.group.length - 1);
+                    var opponentCompletesMonopoly = (opponentOwnedInOfferGroup === offerSquareGroupIds.length - 1);
                     if (opponentCompletesMonopoly) {
                         var isDefensiveProfile = AIGen5.isDefensiveProfile ? AIGen5.isDefensiveProfile(profile) : ((profile.riskTolerance || 0.5) <= 0.45);
-                        var opponentRent3 = offerSquare.rent3 || (offerSquare.baserent * 10);
-                        var myRent3 = targetSquare.rent3 || (targetSquare.baserent * 10);
-                        var opponentPlayer = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(missingOwner, state) : (state.player && state.player[missingOwner] || null);
+                        var opponentRent3 = offerSquare.rules.rentTiers[2] || (offerSquare.rules.baseRent * 10);
+                        var myRent3 = targetSquare.rules.rentTiers[2] || (targetSquare.rules.baseRent * 10);
+                        var opponentPlayer = AIGen5.Analytics ? AIGen5.Analytics.getPlayerById(missingOwner, state) : view.getPlayer(missingOwner);
                         var opponentCanBuildFaster = opponentPlayer && (opponentPlayer.money || 0) > (p.money || 0);
 
                         // If AI has Asymmetric Lead in a deadlock, refuse to propose mutual monopoly swaps
@@ -561,18 +567,18 @@
                     }
                 }
 
-                var hypotheticalOwnership = {};
-                hypotheticalOwnership[missingIndex] = p.index;
-                hypotheticalOwnership[offerIndex] = missingOwner;
-                var receivedValue = AIGen5.Valuation.assetValue(missingIndex, p.index, hypotheticalOwnership, p);
-                var offeredValue = AIGen5.Valuation.assetValue(offerIndex, p.index, null, p);
-                var opponentTargetValue = AIGen5.Valuation.assetValue(missingIndex, missingOwner, null, p);
-                var opponentOfferValue = AIGen5.Valuation.assetValue(offerIndex, missingOwner, hypotheticalOwnership, p);
+                var hypotheticalOwnership = Object.create(null);
+                hypotheticalOwnership[missingSquareId] = p.playerId;
+                hypotheticalOwnership[offeredSquareId] = missingOwner;
+                var receivedValue = AIGen5.Valuation.assetValue(missingSquareId, p.playerId, hypotheticalOwnership, p);
+                var offeredValue = AIGen5.Valuation.assetValue(offeredSquareId, p.playerId, null, p);
+                var opponentTargetValue = AIGen5.Valuation.assetValue(missingSquareId, missingOwner, null, p);
+                var opponentOfferValue = AIGen5.Valuation.assetValue(offeredSquareId, missingOwner, hypotheticalOwnership, p);
                 var cashOffer = Math.max(0, Math.ceil(opponentTargetValue - opponentOfferValue + 85));
                 var netGain = receivedValue - offeredValue - cashOffer;
 
                 if (cashOffer <= availableCash && netGain > 20 && (!best || netGain > best.netGain)) {
-                    best = { missingIndex: missingIndex, offerIndex: offerIndex, owner: missingOwner, cash: cashOffer, netGain: netGain };
+                    best = { missingSquareId: missingSquareId, offeredSquareId: offeredSquareId, owner: missingOwner, cash: cashOffer, netGain: netGain };
                 }
             }
         }
@@ -580,10 +586,10 @@
         return best;
     }
 
-    function proposeOpportunity(p, profile, tradeMemory, params, turnNumber) {
+    function* proposeOpportunity(p, profile, tradeMemory, params, turnNumber) {
         var game = p && p.game;
         var state = AIGen5.getGameState(p);
-        if (typeof Trade === 'undefined' || !game || typeof game.trade !== 'function') {
+        if (typeof Trade === 'undefined' || !game) {
             return false;
         }
 
@@ -592,26 +598,27 @@
             return false;
         }
 
-        var square = AIGen5.getSquares(p);
-        var property = [];
-        for (var i = 0; i < square.length; i++) {
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
+        var property = Object.create(null);
+        for (var i of squareIds) {
             property[i] = 0;
         }
-        property[opportunity.missingIndex] = -1;
-        property[opportunity.offerIndex] = 1;
+        property[opportunity.missingSquareId] = -1;
+        property[opportunity.offeredSquareId] = 1;
 
         var signature = AIGen5.TradeMemory.createSignature(property, opportunity.cash);
-        var opponent = AIGen5.Analytics ? AIGen5.Analytics.getPlayerByIndex(opportunity.owner, state) : (state.player && state.player[opportunity.owner] || null);
+        var opponent = AIGen5.Analytics ? AIGen5.Analytics.getPlayerById(opportunity.owner, state) : view.getPlayer(opportunity.owner);
         var snapshot = AIGen5.TradeMemory.snapshotOf(opponent, turnNumber);
 
         if (!tradeMemory.shouldReoffer(opportunity.owner, signature, snapshot, params)) {
             return false;
         }
 
-        var proposedTrade = new Trade(p, opponent, opportunity.cash, property, 0, 0);
-        game.trade(proposedTrade);
+        var proposedTrade = new Trade(p.playerId, opponent.playerId, opportunity.cash, [opportunity.offeredSquareId], [opportunity.missingSquareId], []);
+        yield [{ type: 'proposeTrade', offer: proposedTrade }];
         tradeMemory.recordOutcome(opportunity.owner, signature, 'proposed', snapshot);
-        return true;
+        return false;
     }
 
     AIGen5.TradeEvaluation = {

@@ -360,7 +360,7 @@
 				<td colspan="2" style="border: none">
 					<div style="padding-top: 8px;">
 						<input type="button" id="nextbutton" title="Roll the dice and move your token accordingly." value="Roll Dice"/>
-						<input type="button" id="resignbutton" title="If you cannot pay your debt then you must resign from the game." value="Resign" onclick="game.resign();" />
+						<input type="button" id="resignbutton" title="If you cannot pay your debt then you must resign from the game." value="Resign" onclick="game.ui.resign();" />
 					</div>
 				</td>
 			</tr>
@@ -391,10 +391,10 @@
 			</tr>
 			<tr>
 				<td colspan="2" class="trade-cell">
-					<input type="button" id="proposetradebutton" value="Propose Trade" onclick="game.proposeTrade();" title="Exchange the money and properties that are checked above." />
-					<input type="button" id="canceltradebutton" value="Cancel Trade" onclick='game.cancelTrade();' title="Cancel the trade." />
-					<input type="button" id="accepttradebutton" value="Accept Trade" onclick="game.acceptTrade();" title="Accept the proposed trade." />
-					<input type="button" id="rejecttradebutton" value="Reject Trade" onclick='game.cancelTrade();' title="Reject the proposed trade." />
+					<input type="button" id="proposetradebutton" value="Propose Trade" onclick="game.ui.submitTrade();" title="Exchange the money and properties that are checked above." />
+					<input type="button" id="canceltradebutton" value="Cancel Trade" onclick='game.ui.cancelTrade();' title="Cancel the trade." />
+					<input type="button" id="accepttradebutton" value="Accept Trade" onclick="game.ui.acceptTrade();" title="Accept the proposed trade." />
+					<input type="button" id="rejecttradebutton" value="Reject Trade" onclick='game.ui.cancelTrade();' title="Reject the proposed trade." />
 				</td>
 			</tr>
 		</table>

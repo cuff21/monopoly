@@ -1,11 +1,12 @@
+if (typeof module !== 'undefined' && module.exports) require('../application/player-controllers');
 // The Game instance's dice/turn-advance nucleus. Auction, trade, and bankruptcy behavior are
 // mixed in as Game.prototype methods by auction.js, trade.js, and bankruptcy.js (loaded after this
 // file); property-actions.js and the Game-scoped turn flow supply the remaining methods.
 function Game(ui, state) {
 	var self = this;
+	PlayerControllers.init(this);
 	var die1;
 	var die2;
-	var areDiceRolled = false;
 
 	this.ui = ui || ((typeof UIBridge !== 'undefined') ? UIBridge.createDefaultUI() : null);
 	if (this.ui) this.ui.game = this;
@@ -22,59 +23,21 @@ function Game(ui, state) {
 	this.state = state || (typeof GameStateContext !== 'undefined' && GameStateContext
 		? GameStateContext.createState()
 		: {});
+	this.decisionView = this.state.board && GameStateContext
+		? GameStateContext.getDecisionView(this.state)
+		: null;
 
 	this.rollDice = function() {
-		die1 = Math.floor(Math.random() * 6) + 1;
-		die2 = Math.floor(Math.random() * 6) + 1;
-		areDiceRolled = true;
+		var random = typeof self.state.random === 'function' ? self.state.random : Math.random;
+		die1 = Math.floor(random() * 6) + 1;
+		die2 = Math.floor(random() * 6) + 1;
 	};
 
 	this.resetDice = function() {
-		areDiceRolled = false;
+		die1 = undefined; die2 = undefined;
 	};
 
-	this.next = async function() {
-		var state = self.state;
-		if (self.isOver) {
-			if (typeof self.onGameCompleted === 'function') {
-				self.onGameCompleted();
-			}
-			return;
-		}
-		if (self.ui && typeof self.ui.waitForPopupClose === 'function') {
-			await self.ui.waitForPopupClose();
-		}
-		var p = state.player[state.turn];
-		if (state.pendingAuction !== -1 && state.pendingAuction !== null && state.auctionEnabled) {
-			self.addPropertyToAuctionQueue(state.pendingAuction);
-			state.pendingAuction = -1;
-		}
-		if (self.auction()) {
-			return;
-		}
-		if (!p.human && p.money < 0) {
-			p.AI.payDebt();
-
-			if (p.money < 0) {
-				if (self.ui && self.ui.isHeadless) {
-					self.bankruptcy();
-				} else if (self.ui && typeof self.ui.showMessage === 'function') {
-					var creditor = p.creditor === 'bank' ? 'the bank' : (global.GameStateContext && global.GameStateContext.getPlayerById(state, p.creditor).name);
-					self.ui.showMessage(p.name + " is bankrupt. All of its assets will be turned over to " + creditor + ".", self.bankruptcy.bind(self));
-				} else {
-					self.bankruptcy();
-				}
-			} else if (areDiceRolled && state.doublecount === 0) {
-				if (typeof self.play === 'function') self.play();
-			} else {
-				if (typeof self.roll === 'function') self.roll();
-			}
-		} else if (areDiceRolled && state.doublecount === 0) {
-			if (typeof self.play === 'function') self.play();
-		} else {
-			if (typeof self.roll === 'function') self.roll();
-		}
-	};
+	this.next = function() { return self.submitPlayerAction({ type: 'next' }); };
 
 	this.getDie = function(die) {
 		if (die === 1) {
@@ -87,13 +50,12 @@ function Game(ui, state) {
 
 	};
 
-	if (typeof this._initTradeInputHandlers === 'function' && (!this.ui || !this.ui.isHeadless)) {
-		this._initTradeInputHandlers();
-	}
+
 }
 
 var _global = typeof window !== 'undefined' ? window : globalThis;
 _global.Game = Game;
+PlayerControllers.install(Game);
 
 if (typeof module !== 'undefined' && module.exports) {
 	module.exports = { Game: Game };

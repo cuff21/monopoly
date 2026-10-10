@@ -17,12 +17,21 @@
     var SimBoard = SimModule.SimBoard;
     var DURATION_PENALTY_RATE = 0.5;
 
+    function seededRandom(seed) {
+        var value = (Number.isInteger(seed) ? seed : 1) >>> 0;
+        return function() {
+            value = (value * 1664525 + 1013904223) >>> 0;
+            return value / 4294967296;
+        };
+    }
+
     function Tournament(population, turnsPerMatch, matchRunner, options) {
         this.population = population;
         this.turnsPerMatch = turnsPerMatch || 100;
         this.matchRunner = matchRunner || null;
         this.options = options || {};
         this.setup = null;
+        this.random = this.options.random || (Number.isInteger(this.options.seed) ? seededRandom(this.options.seed) : Math.random);
         this.cancelled = false;
         this.results = {
             rounds: [],
@@ -40,7 +49,8 @@
             ? global.Monopoly.Editions.getNames()
             : ['Classic']);
         var playerCounts = this.options.playerCounts || [2, 3, 4, 5, 6, 7, 8];
-        var random = this.options.random || Math.random;
+        var random = this.random || Math.random;
+        this.random = random;
         var edition = this.options.edition || editions[Math.floor(random() * editions.length)];
         var playerCount = this.options.playerCount || playerCounts[Math.floor(random() * playerCounts.length)];
 
@@ -52,7 +62,14 @@
             throw new Error('Unknown tournament edition: ' + edition);
         }
 
-        this.setup = { edition: edition, playerCount: playerCount };
+        var seed = Number.isInteger(this.options.seed) ? this.options.seed : Math.floor(random() * 4294967296);
+        this.setup = {
+            edition: edition,
+            playerCount: playerCount,
+            seed: seed >>> 0,
+            boardRuleOverrides: Object.assign({}, this.options.boardRuleOverrides || {}),
+            roster: Array.isArray(this.options.roster) ? this.options.roster.slice() : null
+        };
         return this.setup;
     };
 
@@ -82,7 +99,7 @@
 
         // Shuffle contestants randomly
         for (var i = contestants.length - 1; i > 0; i--) {
-            var j = Math.floor(Math.random() * (i + 1));
+            var j = Math.floor(this.random() * (i + 1));
             var temp = contestants[i];
             contestants[i] = contestants[j];
             contestants[j] = temp;
@@ -109,10 +126,11 @@
             async function evaluateMatch(match) {
                 if (self.cancelled) throw new Error('Tournament cancelled.');
                 var matchResults;
+                var matchSetup = Object.assign({}, setup, { seed: (setup.seed + roundNum * 65537 + match.matchIndex) >>> 0 });
                 if (self.matchRunner) {
-                    matchResults = await self.matchRunner(match.bracket, self.turnsPerMatch, setup);
+                    matchResults = await self.matchRunner(match.bracket, self.turnsPerMatch, matchSetup);
                 } else {
-                    var board = new SimBoard(match.bracket, self.turnsPerMatch, setup);
+                    var board = new SimBoard(match.bracket, self.turnsPerMatch, matchSetup);
                     matchResults = await board.run();
                 }
 
@@ -134,7 +152,7 @@
                 var winnerResult = matchResults.find(function(result) {
                     return result.playerIndex < match.bracket.length;
                 });
-                if (winnerResult) nextRoundContestants.push(match.bracket[winnerResult.playerIndex]);
+                if (winnerResult) nextRoundContestants[match.matchIndex] = match.bracket[winnerResult.playerIndex];
                 matchesCompleted++;
                 if (progressCallback) {
                     progressCallback({
@@ -154,7 +172,7 @@
                     await evaluateMatch(pendingMatches[pendingIndex]);
                 }
             }
-            contestants = nextRoundContestants;
+            contestants = nextRoundContestants.filter(function(contestant) { return !!contestant; });
             roundNum++;
         }
 

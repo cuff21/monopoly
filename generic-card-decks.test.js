@@ -82,6 +82,7 @@ var p1 = new StateTypes.Player('One', 'red', game), p2 = new StateTypes.Player('
 Context.assignPlayerId(p1, 1); Context.assignPlayerId(p2, 2);
 p1.index = 1; p2.index = 2; p1.human = true; p2.human = true;
 state.player[1] = p1; state.player[2] = p2;
+require('./test-support/controllers').registerFixtures(game);
 
 async function run() {
 	// Draw from two arbitrary decks. Each physical card retains its source deck identity.
@@ -124,7 +125,7 @@ async function run() {
 	p1.heldCards = [Context.encodeCardId('deck alpha:extra', 2)];
 	firstSetup.cardDecks['deck alpha:extra'].order.splice(firstSetup.cardDecks['deck alpha:extra'].order.indexOf(2), 1);
 	p1.money = -1; p1.creditor = Context.BANK_ID; state.turn = 1;
-	game.bankruptcy();
+	await game.bankruptcy();
 	assert.ok(firstSetup.cardDecks['deck alpha:extra'].order.includes(2), 'bankruptcy should return a held card to its source deck');
 	console.log('Generic card deck isolation, draw, trade, and return behavior pass.');
 }

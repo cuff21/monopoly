@@ -23,10 +23,18 @@
                 (contestant.kind === 'baseline' && contestant.ai === 'gen5'));
         },
         createPlayerAI: function(contestant, player) {
-            return new Gen5AI(player, { name: contestant.profile || 'Tactician' });
+            var params = contestant.params ? Object.assign({}, contestant.params) :
+                global.AIGen5.ParameterGenerator.generate({
+                    random: player.game.state.random,
+                    history: contestant.history || []
+                });
+            return new Gen5AI(player, { name: contestant.profile || 'Tactician' }, params);
         },
         serialize: function(contestant) {
-            return { kind: 'baseline', ai: 'gen5', profile: contestant.profile || 'Tactician' };
+            var serialized = { kind: 'baseline', ai: 'gen5', profile: contestant.profile || 'Tactician' };
+            if (contestant.params) serialized.params = Object.assign({}, contestant.params);
+            if (contestant.history) serialized.history = JSON.parse(JSON.stringify(contestant.history));
+            return serialized;
         }
     };
 

@@ -3,25 +3,26 @@
     var AIGen5 = global.AIGen5 = global.AIGen5 || {};
 
     function buildDebtCandidates(p) {
-        var square = AIGen5.getSquares(p);
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
         var candidates = [];
 
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || s.owner !== p.index) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            if (!s || view.getSquareState(s.id).ownerId !== p.playerId) {
                 continue;
             }
 
-            if (!s.mortgage && s.house === 0 && s.hotel !== 1) {
-                var mortgageCash = Math.max(1, Math.round((s.price || 0) * 0.5));
-                var mortgageDamage = AIGen5.Valuation ? AIGen5.Valuation.expectedRentValue(i, p.index, null, 2, p) : (s.baserent || 0);
-                candidates.push({ type: 'mortgage', index: i, cash: mortgageCash, damage: mortgageDamage });
+            if (!view.getSquareState(s.id).mortgage && view.getSquareState(s.id).house === 0 && view.getSquareState(s.id).hotel !== 1) {
+                var mortgageCash = Math.max(1, s.rules.mortgageValue);
+                var mortgageDamage = AIGen5.Valuation ? AIGen5.Valuation.expectedRentValue(i, p.playerId, null, 2, p) : (s.rules.baseRent || 0);
+                candidates.push({ type: 'mortgage', squareId: i, cash: mortgageCash, damage: mortgageDamage });
             }
 
-            if ((s.house > 0 || s.hotel === 1) && p.game && typeof p.game.canSellHouse === 'function' && p.game.canSellHouse(i)) {
-                var saleCash = Math.max(1, Math.round((s.houseprice || 0) * 0.5));
-                var saleDamage = AIGen5.Valuation ? AIGen5.Valuation.expectedRentValue(i, p.index, null, 1, p) : (s.baserent || 0);
-                candidates.push({ type: 'sellHouse', index: i, cash: saleCash, damage: saleDamage });
+            if ((view.getSquareState(s.id).house > 0 || view.getSquareState(s.id).hotel === 1) && p.game && typeof p.game.canSellHouse === 'function' && p.game.canSellHouse(i)) {
+                var saleCash = Math.max(1, Math.round((s.rules.houseCost || 0) * 0.5));
+                var saleDamage = AIGen5.Valuation ? AIGen5.Valuation.expectedRentValue(i, p.playerId, null, 1, p) : (s.rules.baseRent || 0);
+                candidates.push({ type: 'sellHouse', squareId: i, cash: saleCash, damage: saleDamage });
             }
         }
 
@@ -30,7 +31,7 @@
 
     // Repeatedly performs whichever available action (mortgage or house sale) loses the least
     // probability-weighted rent value per dollar raised, instead of always selling houses first.
-    function resolveDebt(p) {
+    function* resolveDebt(p) {
         var executed = [];
         var guard = 0;
 
@@ -45,11 +46,7 @@
             for (var i = 0; i < candidates.length; i++) {
                 var candidate = candidates[i];
                 var success = false;
-                if (candidate.type === 'mortgage' && p.game && typeof p.game.mortgage === 'function') {
-                    success = p.game.mortgage(candidate.index);
-                } else if (candidate.type === 'sellHouse' && p.game && typeof p.game.sellHouse === 'function') {
-                    success = p.game.sellHouse(candidate.index);
-                }
+                success = yield [{ type: candidate.type, squareId: candidate.squareId }];
                 if (success) {
                     executed.push(candidate);
                     actedThisRound = true;
@@ -66,21 +63,22 @@
     }
 
     // Unmortgages in ROI order, but only while cash stays above the (safety-margin scaled) dynamic reserve.
-    function planUnmortgage(p, profile, params) {
+    function* planUnmortgage(p, profile, params) {
         params = params || {};
         var roiThreshold = params.unmortgageROIThreshold || 0.12;
         var safetyMargin = params.reserveSafetyMargin || 1.15;
-        var square = AIGen5.getSquares(p);
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
         var candidates = [];
 
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || s.owner !== p.index || !s.mortgage) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            if (!s || view.getSquareState(s.id).ownerId !== p.playerId || !view.getSquareState(s.id).mortgage) {
                 continue;
             }
-            var cost = Math.round((s.price || 0) * 0.55);
-            var value = AIGen5.Valuation ? AIGen5.Valuation.expectedRentValue(i, p.index, null, 2, p) : (s.baserent || 0);
-            candidates.push({ index: i, cost: Math.max(1, cost), roi: value / Math.max(1, cost) });
+            var cost = Math.round((s.rules.purchasePrice || 0) * 0.55);
+            var value = AIGen5.Valuation ? AIGen5.Valuation.expectedRentValue(i, p.playerId, null, 2, p) : (s.rules.baseRent || 0);
+            candidates.push({ squareId: i, cost: Math.max(1, cost), roi: value / Math.max(1, cost) });
         }
         candidates.sort(function(a, b) { return b.roi - a.roi; });
 
@@ -94,8 +92,8 @@
             if (p.money - candidate.cost < reserve) {
                 continue;
             }
-            if (p.game && typeof p.game.unmortgage === 'function' && p.game.unmortgage(candidate.index)) {
-                executed.push(candidate.index);
+            if (yield [{ type: 'unmortgage', squareId: candidate.squareId }]) {
+                executed.push(candidate.squareId);
             }
         }
 

@@ -1,3 +1,4 @@
+if (typeof module !== 'undefined' && module.exports) require('../../application/player-controllers');
 /**
  * Gen6 NEAT AI Player for Monopoly
  * Implements the standard Monopoly AI interface contract using recurrent neural networks
@@ -22,7 +23,8 @@
     var Genotype = GenotypeModule.Genotype;
 
     function Gen6AI(player, brain) {
-        this.player = player;
+        this.player = player.game ? PlayerControllers.policyPlayer(player) : player;
+        if (player.game) PlayerControllers.bindPolicy(this, this.player);
         this.alertList = "";
         this.aiType = "gen6";
 
@@ -57,6 +59,7 @@
      */
     Gen6AI.prototype.getDecision = function(selectedPropertyIndex, contextMoney, contextProperties) {
         var state = this.player && this.player.game && this.player.game.state;
+        if (typeof selectedPropertyIndex === 'string' && state && state.board) selectedPropertyIndex = global.getSquareIds(state.board).indexOf(selectedPropertyIndex);
         var players = [];
         var inputCount = this.phenotype.inputCount;
         var playerSlots = inputCount === 126 ? 4 : 8;
@@ -92,6 +95,7 @@
      */
     Gen6AI.prototype.buyProperty = function(index) {
         var state = this.player && this.player.game && this.player.game.state;
+        if (typeof index === 'string' && state && state.board) index = global.getSquareIds(state.board).indexOf(index);
         var s = state ? state.square[index] : null;
         if (!s || this.player.money < s.price) {
             return false;
@@ -124,7 +128,7 @@
      * Handles unmortgaging and building houses.
      * @returns {boolean} true if trade proposed
      */
-    Gen6AI.prototype.beforeTurn = function() {
+    Gen6AI.prototype.beforeTurn = function*() {
         var game = this.player && this.player.game;
         var state = game && game.state;
         if (!state) return false;
@@ -139,10 +143,10 @@
             if (sq.mortgage) {
                 var unmortgagePrice = Math.round(sq.price * 0.55);
                 if (d.unmortgage && this.player.money >= unmortgagePrice) {
-                    game.unmortgage(squareId);
+                    yield [{ type: 'unmortgage', squareId: squareId }];
                 }
             } else if (d.mortgage && !sq.house && !sq.hotel) {
-                game.mortgage(squareId);
+                yield [{ type: 'mortgage', squareId: squareId }];
             }
         }
 
@@ -159,7 +163,7 @@
                     if (ownsAll && sq.house < 5 && this.player.money >= sq.houseprice) {
                         var d = this.getDecision(i);
                         if (d.buildHouseCount > 0) {
-                            game.buyHouse(squareId);
+                            yield [{ type: 'buyHouse', squareId: squareId }];
                         }
                     }
                 }
@@ -173,10 +177,10 @@
      * Called when landing on property.
      * @returns {boolean} true if trade proposed
      */
-    Gen6AI.prototype.onLand = function() {
+    Gen6AI.prototype.onLand = function*() {
         var game = this.player && this.player.game;
         var state = game && game.state;
-        if (!state || typeof Trade !== 'function' || typeof game.trade !== 'function') return false;
+        if (!state || typeof Trade !== 'function') return false;
 
         var groups = [];
         var seenGroups = {};
@@ -245,7 +249,7 @@
                     if (direction === 1) offeredSquareIds.push(squareIds[index]);
                     else if (direction === -1) requestedSquareIds.push(squareIds[index]);
                 });
-                game.trade(new Trade(this.player.playerId || this.player, state.player[opponentIndex].playerId || state.player[opponentIndex], 0, offeredSquareIds, requestedSquareIds, []));
+                yield [{ type: 'proposeTrade', offer: new Trade(this.player.playerId || this.player, state.player[opponentIndex].playerId || state.player[opponentIndex], 0, offeredSquareIds, requestedSquareIds, []) }];
                 return true;
             }
         }
@@ -255,7 +259,7 @@
     /**
      * Called when player money is negative before bankruptcy check.
      */
-    Gen6AI.prototype.payDebt = function() {
+    Gen6AI.prototype.payDebt = function*() {
         var game = this.player && this.player.game;
         var state = game && game.state;
         if (!state) return;
@@ -269,7 +273,7 @@
                 var decision = this.getDecision(i, this.player.money);
                 var sellCount = decision.sellHouseCount;
                 while (sellCount > 0 && game.canSellHouse(squareId) && this.player.money < 0) {
-                    if (!game.sellHouse(squareId)) break;
+                    if (!(yield [{ type: 'sellHouse', squareId: squareId }])) break;
                     sellCount--;
                 }
             }
@@ -280,27 +284,39 @@
             if (this.player.money >= 0) break;
             var sq = state.square[i];
             if (sq && sq.owner === this.player.index && !sq.mortgage && sq.house === 0 && sq.hotel === 0) {
-                game.mortgage(sq.id === undefined ? i : sq.id);
+                yield [{ type: 'mortgage', squareId: sq.id === undefined ? i : sq.id }];
             }
         }
     };
 
     /**
      * Called during auction rounds when it is AI's turn to bid.
-     * @param {number} property - Property index
+     * @param {string|number} property - Stable square ID or network ordinal
      * @param {number} currentBid - Current highest bid
      * @returns {number} -1 (exit), 0 (pass), or positive bid amount
      */
+    Gen6AI.prototype.inherit = function(squareIds) {
+        var player = this.player, view = player.game.decisionView;
+        var floor = Math.max(100, player.money * 0.25);
+        var id = squareIds.find(function(id) {
+            return view.getSquareState(id).mortgage && player.money - Math.round(view.getSquare(id).rules.purchasePrice * 0.5) >= floor;
+        });
+        return id ? [{ type: 'inheritUnmortgage', squareId: id }] : [];
+    };
+
     Gen6AI.prototype.bid = function(property, currentBid) {
-        if (currentBid >= this.player.money) {
-            return -1;
+        var state = this.player.game && this.player.game.state;
+        if (!Number.isFinite(this.player.money) || !Number.isInteger(currentBid) || currentBid < 0 || currentBid >= Math.floor(this.player.money)) return -1;
+        if (state && state.board) {
+            var ids = global.getSquareIds(state.board);
+            var id = typeof property === 'string' ? property : ids[property];
+            if (!state.board.squaresById[id] || state.squareStateById[id].ownerId !== null || state.board.squaresById[id].rules.purchasePrice <= 0) return -1;
+            property = ids.indexOf(id);
         }
+        if (!Number.isInteger(property) || property < 0 || property >= 40) return -1;
         var decisions = this.getDecision(property, currentBid);
-        var intendedBid = decisions.bidValue;
-        if (intendedBid <= currentBid) {
-            return 0;
-        }
-        var maxBid = Math.min(this.player.money, intendedBid);
+        if (!Number.isFinite(decisions.bidValue)) return -1;
+        var maxBid = Math.min(Math.floor(this.player.money), Math.floor(decisions.bidValue));
         return maxBid > currentBid ? maxBid : 0;
     };
 

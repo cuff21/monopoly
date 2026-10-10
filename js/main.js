@@ -8,10 +8,14 @@ function sleep(ms) {
 }
 
 function bindBrowserGameState(gameInstance) {
+	var renderDeed = window.showdeed._renderStructuredDeed || window.showdeed;
+	var showDeedForGame = function(squareId) { return renderDeed(squareId, gameInstance); };
+	showDeedForGame._renderStructuredDeed = renderDeed;
+	window.showdeed = showDeedForGame;
 	var stateKeys = [
-		'player', 'square', 'cardDecks', 'playersGame', 'pcount',
+		'player', 'cardDecks', 'playersGame', 'pcount',
 		'auctionEnabled', 'pendingAuction', 'freeParkingTaxes', 'freeParkingPot', 'turn',
-		'doublecount', 'lastGamePlayerCount', 'lastKnownPosition', 'lastKnownJail',
+		'doublecount', 'lastGamePlayerCount', 'lastKnownSquareByPlayerId', 'lastKnownJailByPlayerId',
 		'playerOverlays', 'nextMoveDirection'
 	];
 	stateKeys.forEach(function(key) {
@@ -22,12 +26,12 @@ function bindBrowserGameState(gameInstance) {
 			set: function(value) { gameInstance.state[key] = value; }
 		});
 	});
-	window.buy = function() { return gameInstance.buy(); };
-	window.mortgage = function(index) { return gameInstance.mortgage(index); };
-	window.unmortgage = function(index) { return gameInstance.unmortgage(index); };
-	window.buyHouse = function(index) { return gameInstance.buyHouse(index); };
-	window.sellHouse = function(index) { return gameInstance.sellHouse(index); };
-	window.canSellHouse = function(index) { return gameInstance.canSellHouse(index); };
+	window.buy = function(squareId) { if (typeof squareId !== 'string') throw new TypeError('Buying requires a square ID.'); return gameInstance.submitPlayerAction({ type: 'buy', squareId: squareId }); };
+	window.mortgage = function(squareId) { return gameInstance.submitPlayerAction({ type: 'mortgage', squareId: squareId }); };
+	window.unmortgage = function(squareId) { return gameInstance.submitPlayerAction({ type: 'unmortgage', squareId: squareId }); };
+	window.buyHouse = function(squareId) { return gameInstance.submitPlayerAction({ type: 'buyHouse', squareId: squareId }); };
+	window.sellHouse = function(squareId) { return gameInstance.submitPlayerAction({ type: 'sellHouse', squareId: squareId }); };
+	window.canSellHouse = function(squareId) { return gameInstance.canSellHouse(squareId); };
 	window.getHouseHotelSupply = function() { return gameInstance.getHouseHotelSupply(); };
 }
 
@@ -50,9 +54,10 @@ function createBoardSurface(board) {
 	ids.forEach(function(id, index) {
 		var square = board.squaresById[id];
 		var cell = document.createElement('div');
-		cell.id = 'cell' + index;
+		cell.id = 'square-' + id;
 		cell.className = 'cell board-dynamic-cell';
 		cell.dataset.squareId = id;
+		if (square.groupId) cell.dataset.groupId = square.groupId;
 		cell.style.cssText = 'position:absolute;left:' + square.presentation.x + '%;top:' + square.presentation.y + '%;width:7%;height:7%;transform:translate(-50%,-50%) rotate(' + (square.presentation.rotationDegrees || 0) + 'deg);background:' + (square.presentation.color || '#fff') + ';border:1px solid #222;box-sizing:border-box;';
 		surface.appendChild(cell);
 	});
@@ -64,26 +69,8 @@ function createBoardSurface(board) {
 	oldBoard.parentNode.replaceChild(surface, oldBoard);
 }
 
-// Overwrite an array with numbers from one to the array's length in a random order.
-Array.prototype.randomize = function(length) {
-	length = (length || this.length);
-	var num;
-	var indexArray = [];
-
-	for (var i = 0; i < length; i++) {
-		indexArray[i] = i;
-	}
-
-	for (var i = 0; i < length; i++) {
-		// Generate random number between 0 and indexArray.length - 1.
-		num = Math.floor(Math.random() * indexArray.length);
-		this[i] = indexArray[num] + 1;
-
-		indexArray.splice(num, 1);
-	}
-};
-
 function onloadBehavior() {
+	if (typeof game !== 'undefined' && game) resetTokenOverlays(game);
 	GameSetupService.configure({
 		aiRegistry: AISetupRegistry,
 		gen6Trainer: Gen6Trainer,
@@ -106,16 +93,18 @@ function onloadBehavior() {
 		turn: 0,
 		doublecount: 0,
 		lastGamePlayerCount: 2,
-		lastKnownPosition: [],
-		lastKnownJail: [],
-		playerOverlays: [],
+		lastKnownSquareByPlayerId: Object.create(null),
+		lastKnownJailByPlayerId: Object.create(null),
+		playerOverlays: Object.create(null),
 		nextMoveDirection: 1
 	});
 	GameStateContext.initializeBoardState(initialState, structuredBoard, editionId);
+	initialState.seed = (window.crypto && window.crypto.getRandomValues) ? window.crypto.getRandomValues(new Uint32Array(1))[0] : Date.now() >>> 0;
+	initialState.random = (function(seed) { var value = seed >>> 0; return function() { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; })(initialState.seed);
 	game = new Game(undefined, initialState);
 	createBoardSurface(structuredBoard);
 	bindBrowserGameState(game);
-	resetTokenOverlays();
+	resetTokenOverlays(game);
 	var drawnCards = document.getElementById('drawn-cards');
 	if (drawnCards) {
 		drawnCards.innerHTML = '';
@@ -159,8 +148,11 @@ function onloadBehavior() {
 	player[1].human = true;
 	player[0].name = "the bank";
 
-	Object.keys(cardDecks).forEach(function(deckId) {
-		cardDecks[deckId].order.sort(function() { return Math.random() - 0.5; });
+	Object.keys(initialState.cardDecks).forEach(function(deckId) {
+		var order = initialState.cardDecks[deckId].order;
+		for (var i = order.length - 1; i > 0; i--) {
+			var j = Math.floor(initialState.random() * (i + 1)), swap = order[i]; order[i] = order[j]; order[j] = swap;
+		}
 	});
 
 	createPlayerInputs();
@@ -176,12 +168,14 @@ function onloadBehavior() {
 	enlargeWrap.id = "enlarge-wrap";
 
 	var HTML = "";
-	var boardSquareCount = square.length;
+	var boardOrderIds = getSquareIds(structuredBoard);
+	var boardSquareCount = boardOrderIds.length;
 	for (var i = 0; i < boardSquareCount; i++) {
-		HTML += "<div id='enlarge" + i + "' class='enlarge'>";
-		HTML += "<div id='enlarge" + i + "color' class='enlarge-color'></div><br /><div id='enlarge" + i + "name' class='enlarge-name'></div>";
-		HTML += "<br /><div id='enlarge" + i + "price' class='enlarge-price'></div>";
-		HTML += "<br /><div id='enlarge" + i + "token' class='enlarge-token'></div></div>";
+		var squareId = boardOrderIds[i];
+		HTML += "<div id='deed-" + squareId + "' class='enlarge' data-square-id='" + squareId + "'>";
+		HTML += "<div id='deed-" + squareId + "-color' class='enlarge-color'></div><br /><div id='deed-" + squareId + "-name' class='enlarge-name'></div>";
+		HTML += "<br /><div id='deed-" + squareId + "-price' class='enlarge-price'></div>";
+		HTML += "<br /><div id='deed-" + squareId + "-token' class='enlarge-token'></div></div>";
 	}
 
 	enlargeWrap.innerHTML = HTML;
@@ -193,80 +187,82 @@ function onloadBehavior() {
 	var currentCellOwner;
 
 	for (var i = 0; i < boardSquareCount; i++) {
-		s = square[i];
+		var squareId = boardOrderIds[i];
+		var s = structuredBoard.squaresById[squareId];
+		var displayName = s.presentation.boardName || s.presentation.label;
+		var displayColor = s.presentation.color;
+		var priceText = s.presentation.priceText || '';
 
-		currentCell = document.getElementById("cell" + i);
+		currentCell = document.getElementById("square-" + squareId);
 		currentCell.innerHTML = "";
 
 		currentCellAnchor = currentCell.appendChild(document.createElement("div"));
-		currentCellAnchor.id = "cell" + i + "anchor";
+		currentCellAnchor.id = "square-" + squareId + "-anchor";
 		currentCellAnchor.className = "cell-anchor";
 
 		currentCellPositionHolder = currentCellAnchor.appendChild(document.createElement("div"));
-		currentCellPositionHolder.id = "cell" + i + "positionholder";
+		currentCellPositionHolder.id = "square-" + squareId + "-tokens";
 		currentCellPositionHolder.className = "cell-position-holder";
-		currentCellPositionHolder.enlargeId = "enlarge" + i;
+		currentCellPositionHolder.enlargeId = "deed-" + squareId;
 
-		if (i === 20) {
+		if (squareId === 'free-parking') {
 			var currentCellPot = currentCellAnchor.appendChild(document.createElement("div"));
 			currentCellPot.id = "freeparkingpot";
 			currentCellPot.className = "free-parking-pot";
 		}
 
 		currentCellName = currentCellAnchor.appendChild(document.createElement("div"));
-		currentCellName.id = "cell" + i + "name";
+		currentCellName.id = "square-" + squareId + "-name";
 		currentCellName.className = "cell-name";
-		currentCellName.textContent = s.name;
+		currentCellName.textContent = displayName;
 
-		if (square[i].groupNumber) {
+		if (s.groupId) {
 			currentCellOwner = currentCellAnchor.appendChild(document.createElement("div"));
-			currentCellOwner.id = "cell" + i + "owner";
+			currentCellOwner.id = "square-" + squareId + "-owner";
 			currentCellOwner.className = "cell-owner";
+			currentCellOwner.setAttribute('data-square-owner', '');
 		}
 
-		document.getElementById("enlarge" + i + "color").style.backgroundColor = s.color;
-		document.getElementById("enlarge" + i + "name").textContent = s.name;
-		document.getElementById("enlarge" + i + "price").textContent = s.pricetext;
+		document.getElementById("deed-" + squareId + "-color").style.backgroundColor = displayColor;
+		document.getElementById("deed-" + squareId + "-name").textContent = displayName;
+		document.getElementById("deed-" + squareId + "-price").textContent = priceText;
 
-		if (s.groupNumber === 1 || s.groupNumber === 2) {
-			document.getElementById("enlarge" + i).classList.add("enlarge-icon");
+		if (s.kind === 'railroad' || s.kind === 'utility') {
+			document.getElementById("deed-" + squareId).classList.add("enlarge-icon");
 		}
 	}
-	updateFreeParkingDisplay();
+	updateFreeParkingDisplay(game);
 
 
 	// Add images to enlarges.
-	document.getElementById("enlarge0token").innerHTML += '<img src="images/arrow_icon.png" height="40" width="136" alt="" />';
-	var freeParkingIndex = square.findIndex(function(item) { return item.id === 'free-parking'; });
-	var taxIndex = square.findIndex(function(item) { return item.id === 'luxury-tax' || item.id === 'city-tax'; });
-	if (freeParkingIndex !== -1) document.getElementById("enlarge" + freeParkingIndex + "price").innerHTML += "<img src='images/free_parking_icon.png' height='80' width='72' alt='' style='position: relative; top: -20px;' />";
-	if (taxIndex !== -1) document.getElementById("enlarge" + taxIndex + "token").innerHTML += '<img src="images/tax_icon.png" height="60" width="70" alt="" style="position: relative; top: -20px;" />';
+	document.getElementById("deed-go-token").innerHTML += '<img src="images/arrow_icon.png" height="40" width="136" alt="" />';
+	if (structuredBoard.squaresById['free-parking']) document.getElementById("deed-free-parking-price").innerHTML += "<img src='images/free_parking_icon.png' height='80' width='72' alt='' style='position: relative; top: -20px;' />";
+	var taxSquareId = boardOrderIds.find(function(id) { return id === 'luxury-tax' || id === 'city-tax'; });
+	if (taxSquareId) document.getElementById("deed-" + taxSquareId + "-token").innerHTML += '<img src="images/tax_icon.png" height="60" width="70" alt="" style="position: relative; top: -20px;" />';
+	if (structuredBoard.squaresById.jail) document.getElementById("deed-jail-price").innerHTML += '<img src="images/jake_icon.png" height="80" width="80" alt="" style="position: relative; top: -20px;" />';
 
-	EditionRenderer.renderSquareDisplay(square);
+	EditionRenderer.renderSquareDisplay(boardOrderIds.map(function(id) { return structuredBoard.squaresById[id]; }));
 
 	// Jail corrections
 	if (!document.getElementById("jailpositionholder")) $("<div>", {id: "jailpositionholder" }).appendTo("#jail");
 	$("<span>").text("Jail").appendTo("#jail");
 
-	document.getElementById("jail").enlargeId = "enlarge" + boardSquareCount;
-
-	document.getElementById("enlarge-wrap").innerHTML += "<div id='enlarge" + boardSquareCount + "' class='enlarge'><div id='enlarge" + boardSquareCount + "color' class='enlarge-color'></div><br /><div id='enlarge" + boardSquareCount + "name' class='enlarge-name'>Jail</div><br /><div id='enlarge" + boardSquareCount + "price' class='enlarge-price'><img src='images/jake_icon.png' height='80' width='80' alt='' style='position: relative; top: -20px;' /></div><br /><div id='enlarge" + boardSquareCount + "token' class='enlarge-token'></div></div>";
-
-	document.getElementById("enlarge" + boardSquareCount + "name").innerHTML = "Jail";
+	document.getElementById("jail").enlargeId = "deed-jail";
+	if (document.getElementById("deed-jail-name")) document.getElementById("deed-jail-name").textContent = "Jail";
 
 	// Create event handlers for hovering and draging.
 
 	var drag, dragX, dragY, dragObj, dragTop, dragLeft;
 
 	$(".cell-position-holder, #jail").on("mouseover", function(){
-		var property = parseInt(this.id.replace("cell", "").replace("positionholder", ""), 10);
-		var s = isNaN(property) ? null : square[property];
-		var rent = isNaN(property) ? null : getCurrentRent(property);
+		var cellId = this.parentElement.parentElement.dataset.squareId;
+		var s = cellId ? structuredBoard.squaresById[cellId] : null;
+		var rent = cellId ? getCurrentRent(game, cellId) : null;
 		if (s && rent !== null) {
 			var rentText = EditionRenderer.formatRentText(s, rent);
-			document.getElementById(this.enlargeId + "price").innerHTML = "Price: " + s.pricetext + "<br />Rent: " + rentText;
+			document.getElementById(this.enlargeId + "-price").innerHTML = "Price: " + (s.presentation.priceText || '') + "<br />Rent: " + rentText;
 		} else if (s) {
-			document.getElementById(this.enlargeId + "price").textContent = s.pricetext;
+			document.getElementById(this.enlargeId + "-price").textContent = s.presentation.priceText || '';
 		}
 		$("#" + this.enlargeId).show();
 
@@ -360,19 +356,22 @@ function onloadBehavior() {
 
 	$("#mortgagebutton").off("click").on("click", function() {
 		var checkedProperty = getCheckedProperty();
-		var s = square[checkedProperty];
+		var s = game.state.board.squaresById[checkedProperty];
+		var propertyState = GameStateContext.getSquareState(game.state, checkedProperty);
+		var ownerId = GameStateContext.getSquareState(game.state, checkedProperty).ownerId;
+		var propertyOwner = GameStateContext.getPlayerById(game.state, ownerId);
 
-		if (s.mortgage) {
-			if (player[s.owner].money < Math.round(s.price * 0.55)) {
-				game.ui.showMessage("You need $" + (Math.round(s.price * 0.55) - player[s.owner].money) + " more to unmortgage " + s.name + ".");
+		if (propertyState.mortgage) {
+			if (propertyOwner.money < Math.round(s.rules.purchasePrice * 0.55)) {
+				game.ui.showMessage("You need $" + (Math.round(s.rules.purchasePrice * 0.55) - propertyOwner.money) + " more to unmortgage " + s.presentation.label + ".");
 
 			} else {
-				game.ui.confirm(player[s.owner].name + ", are you sure you want to unmortgage " + s.name + " for $" + Math.round(s.price * 0.55) + "?", function() {
+				game.ui.confirm(propertyOwner.name + ", are you sure you want to unmortgage " + s.presentation.label + " for $" + Math.round(s.rules.purchasePrice * 0.55) + "?", function() {
 					unmortgage(checkedProperty);
 				}, "Yes/No");
 			}
 		} else {
-			game.ui.confirm(player[s.owner].name + ", are you sure you want to mortgage " + s.name + " for $" + Math.round(s.price * 0.5) + "?", function() {
+			game.ui.confirm(propertyOwner.name + ", are you sure you want to mortgage " + s.presentation.label + " for $" + Math.round(s.rules.purchasePrice * 0.5) + "?", function() {
 				mortgage(checkedProperty);
 			}, "Yes/No");
 		}
@@ -381,25 +380,26 @@ function onloadBehavior() {
 
 	$("#buyhousebutton").off("click").on("click", function() {
 		var checkedProperty = getCheckedProperty();
-		var s = square[checkedProperty];
-		var p = player[s.owner];
+		var s = game.state.board.squaresById[checkedProperty];
+		var squareState = GameStateContext.getSquareState(game.state, checkedProperty);
+		var p = GameStateContext.getPlayerById(game.state, GameStateContext.getSquareState(game.state, checkedProperty).ownerId);
 
-		if (p.money < s.houseprice) {
-			if (s.house === 4) {
-				game.ui.popup("<p>You need $" + (s.houseprice - player[s.owner].money) + " more to buy a hotel for " + s.name + ".</p>");
+		if (p.money < s.rules.houseCost) {
+			if (squareState.house === 4) {
+				game.ui.popup("<p>You need $" + (s.rules.houseCost - p.money) + " more to buy a hotel for " + s.presentation.label + ".</p>");
 				return;
 			} else {
-				game.ui.popup("<p>You need $" + (s.houseprice - player[s.owner].money) + " more to buy a house for " + s.name + ".</p>");
+				game.ui.popup("<p>You need $" + (s.rules.houseCost - p.money) + " more to buy a house for " + s.presentation.label + ".</p>");
 				return;
 			}
 		}
 
 		var supply = getHouseHotelSupply();
 
-		if (s.house < 4 && supply.housesAvailable <= 0) {
+		if (squareState.house < 4 && supply.housesAvailable <= 0) {
 			game.ui.popup("<p>All 32 houses are owned. You must wait until one becomes available.</p>");
 			return;
-		} else if (s.house === 4 && supply.hotelsAvailable <= 0) {
+		} else if (squareState.house === 4 && supply.hotelsAvailable <= 0) {
 			game.ui.popup("<p>All 12 hotels are owned. You must wait until one becomes available.</p>");
 			return;
 		}
@@ -411,7 +411,7 @@ function onloadBehavior() {
 
 	$("#sellhousebutton").off("click").on("click", function() { sellHouse(getCheckedProperty()); });
 
-	$("#viewstats").on("click", showStats);
+	$("#viewstats").on("click", function() { showStats(game); });
 	$("#statsclose, #statsbackground").on("click", function() {
 		$("#statswrap").hide();
 		$("#statsbackground").fadeOut(400);
@@ -432,15 +432,15 @@ function onloadBehavior() {
 	});
 
 
-	$("#trade-menu-item").click(game.trade);
+	$("#trade-menu-item").off("click").on("click", function() { game.ui.editTrade(); });
 
     for(let i = 0; i < boardSquareCount; i++) {
-        let c = square[i].color;
+        let c = structuredBoard.squaresById[boardOrderIds[i]].presentation.color;
         if(/^#[0-9a-f]{6}$/i.test(c) && c.toUpperCase() !== '#FFFFFF') {
-            document.querySelector('#cell'+i).style.backgroundColor = 'rgba('+(parseInt(c.substr(1,2),16))+','+(parseInt(c.substr(3,2),16))+','+(parseInt(c.substr(5,2),16))+',0.25)';
+		document.getElementById('square-' + boardOrderIds[i]).style.backgroundColor = 'rgba('+(parseInt(c.substr(1,2),16))+','+(parseInt(c.substr(3,2),16))+','+(parseInt(c.substr(5,2),16))+',0.25)';
         }
         else {
-            document.querySelector('#cell'+i).style.backgroundColor = c;
+			document.getElementById('square-' + boardOrderIds[i]).style.backgroundColor = c;
         }
     }
 

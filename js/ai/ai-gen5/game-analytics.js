@@ -7,16 +7,13 @@
     }
 
     function isPlayerActive(p) {
-        return !!p && (p.money >= 0 || p.creditor === -1);
+        return !!p && (p.money >= 0 || p.creditor === null);
     }
 
     function getActivePlayers(subject) {
-        var state = AIGen5.getGameState(subject);
         var players = AIGen5.getPlayers(subject);
-        if (!state) return [];
-        var playerLimit = state.pcount > 0 ? Math.min(players.length, state.pcount + 1) : players.length;
         var active = [];
-        for (var i = 1; i < playerLimit; i++) {
+        for (var i = 0; i < players.length; i++) {
             if (isPlayerActive(players[i])) {
                 active.push(players[i]);
             }
@@ -24,40 +21,42 @@
         return active;
     }
 
-    function groupIsMonopoly(group, ownerIndex, subject) {
-        var square = AIGen5.getSquares(subject);
+    function groupIsMonopoly(group, ownerId, subject) {
+        var view = AIGen5.getDecisionView(subject);
         if (!group || !group.length) {
             return false;
         }
         for (var i = 0; i < group.length; i++) {
-            if (!square[group[i]] || square[group[i]].owner !== ownerIndex) {
+            if (!view.getSquare(group[i]) || view.getSquareState(group[i]).ownerId !== ownerId) {
                 return false;
             }
         }
         return true;
     }
 
-    function countMonopolies(ownerIndex, onlyBuildable, subject) {
-        var square = AIGen5.getSquares(subject);
-        if (!square.length || (ownerIndex !== 0 && !ownerIndex)) {
+    function countMonopolies(ownerId, onlyBuildable, subject) {
+        var view = AIGen5.getDecisionView(subject);
+        var squareIds = view.getSquareIds();
+        if (!squareIds.length || !ownerId) {
             return 0;
         }
-        var seenGroups = {};
+        var seenGroups = Object.create(null);
         var total = 0;
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || !s.group || s.group.length === 0) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            var sGroupIds = AIGen5.groupIds(view, s);
+            if (!s || sGroupIds.length === 0) {
                 continue;
             }
-            if (onlyBuildable && (!s.houseprice || s.houseprice <= 0)) {
+            if (onlyBuildable && (!s.rules.houseCost || s.rules.houseCost <= 0)) {
                 continue;
             }
-            var key = s.group.join(',');
+            var key = sGroupIds.join(',');
             if (seenGroups[key]) {
                 continue;
             }
             seenGroups[key] = true;
-            if (groupIsMonopoly(s.group, ownerIndex, subject)) {
+            if (groupIsMonopoly(sGroupIds, ownerId, subject)) {
                 total++;
             }
         }
@@ -65,46 +64,50 @@
     }
 
     function countBoardMonopolies(onlyBuildable, subject) {
-        var square = AIGen5.getSquares(subject);
-        if (!square.length) {
+        var view = AIGen5.getDecisionView(subject);
+        var squareIds = view.getSquareIds();
+        if (!squareIds.length) {
             return 0;
         }
-        var seenGroups = {};
+        var seenGroups = Object.create(null);
         var total = 0;
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || !s.group || s.group.length === 0 || s.owner === 0) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            var sGroupIds = AIGen5.groupIds(view, s);
+            if (!s || sGroupIds.length === 0 || view.getSquareState(s.id).ownerId === null) {
                 continue;
             }
-            if (onlyBuildable && (!s.houseprice || s.houseprice <= 0)) {
+            if (onlyBuildable && (!s.rules.houseCost || s.rules.houseCost <= 0)) {
                 continue;
             }
-            var key = s.group.join(',');
+            var key = sGroupIds.join(',');
             if (seenGroups[key]) {
                 continue;
             }
             seenGroups[key] = true;
-            if (groupIsMonopoly(s.group, s.owner, subject)) {
+            if (groupIsMonopoly(sGroupIds, view.getSquareState(s.id).ownerId, subject)) {
                 total++;
             }
         }
         return total;
     }
 
-    function projectedImmediateHouses(player, squareIndex, cashAfterTrade) {
-        var square = AIGen5.getSquares(player);
-        if (!player || !square.length) {
+    function projectedImmediateHouses(player, squareId, cashAfterTrade) {
+        var view = AIGen5.getDecisionView(player);
+        var squareIds = view.getSquareIds();
+        if (!player || !squareIds.length) {
             return 0;
         }
-        var s = square[squareIndex];
-        if (!s || !s.group || !s.houseprice || s.houseprice <= 0) {
+        var s = view.getSquare(squareId);
+        var sGroupIds = AIGen5.groupIds(view, s);
+        if (!s || !s.rules.houseCost || s.rules.houseCost <= 0) {
             return 0;
         }
         var cash = cashAfterTrade !== undefined ? cashAfterTrade : (player.money || 0);
         var reserve = AIGen5.Liquidity ? AIGen5.Liquidity.computeReserve(player, { riskTolerance: 0.6 }) : 120;
         var freeCash = Math.max(0, cash - reserve);
-        var maxTotalHouses = s.group.length * 5;
-        var affordableTotalHouses = Math.floor(freeCash / s.houseprice);
+        var maxTotalHouses = sGroupIds.length * 5;
+        var affordableTotalHouses = Math.floor(freeCash / s.rules.houseCost);
         var feasibleHouses = Math.min(maxTotalHouses, affordableTotalHouses);
         var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility(player) : 1;
         return Math.floor(feasibleHouses * buildFeasibility);
@@ -112,33 +115,35 @@
 
     // Projects build capacity over the next 2-4 turns, modeling passing GO, net rental income,
     // and whether the player will cross the critical 3-house inflection threshold within that window.
-    function projectedFutureBuildability(player, squareIndex, cashAfterTrade, turnsAhead) {
-        var square = AIGen5.getSquares(player);
-        if (!player || !square.length) {
+    function projectedFutureBuildability(player, squareId, cashAfterTrade, turnsAhead) {
+        var view = AIGen5.getDecisionView(player);
+        var squareIds = view.getSquareIds();
+        if (!player || !squareIds.length) {
             return { immediateHouses: 0, futureHouses: 0, reachesThreeHouses: false, futureRentThreat: 0 };
         }
-        var s = square[squareIndex];
-        if (!s || !s.group || !s.houseprice || s.houseprice <= 0) {
+        var s = view.getSquare(squareId);
+        var sGroupIds = AIGen5.groupIds(view, s);
+        if (!s || !s.rules.houseCost || s.rules.houseCost <= 0) {
             return { immediateHouses: 0, futureHouses: 0, reachesThreeHouses: false, futureRentThreat: 0 };
         }
         turnsAhead = turnsAhead || 3;
         var cash = cashAfterTrade !== undefined ? cashAfterTrade : (player.money || 0);
         var reserve = AIGen5.Liquidity ? AIGen5.Liquidity.computeReserve(player, { riskTolerance: 0.6 }) : 120;
         var freeCash = Math.max(0, cash - reserve);
-        var housePrice = s.houseprice;
-        var maxTotalHouses = s.group.length * 5;
+        var housePrice = s.rules.houseCost;
+        var maxTotalHouses = sGroupIds.length * 5;
 
         var immediateHouses = Math.min(maxTotalHouses, Math.floor(freeCash / housePrice));
         var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility(player) : 1;
         immediateHouses = Math.floor(immediateHouses * buildFeasibility);
 
         // Expected passing GO income (~$200 every 5 turns => ~$40/turn)
-        var expectedGoIncome = (square.length || 40) * turnsAhead;
+        var expectedGoIncome = (view.board.rules.startSalary / 5) * turnsAhead;
         var expectedRentIncome = 0;
-        for (var i = 0; i < square.length; i++) {
-            var tile = square[i];
-            if (tile && tile.owner === player.index && !tile.mortgage) {
-                var rentVal = AIGen5.Valuation && typeof AIGen5.Valuation.expectedRentValue === 'function' ? AIGen5.Valuation.expectedRentValue(i, player.index, null, turnsAhead, player) : (tile.baserent || 0);
+        for (var i of squareIds) {
+            var tile = view.getSquare(i);
+            if (tile && view.getSquareState(tile.id).ownerId === player.playerId && !view.getSquareState(tile.id).mortgage) {
+                var rentVal = AIGen5.Valuation && typeof AIGen5.Valuation.expectedRentValue === 'function' ? AIGen5.Valuation.expectedRentValue(i, player.playerId, null, turnsAhead, player) : (tile.rules.baseRent || 0);
                 expectedRentIncome += rentVal * 0.4;
             }
         }
@@ -148,20 +153,20 @@
         additionalFutureHouses = Math.floor(additionalFutureHouses * buildFeasibility);
 
         var totalFutureHouses = immediateHouses + additionalFutureHouses;
-        var targetThreeHousesTotal = s.group.length * 3;
+        var targetThreeHousesTotal = sGroupIds.length * 3;
         var reachesThreeHouses = totalFutureHouses >= targetThreeHousesTotal;
 
-        var houseLevel = Math.min(5, Math.floor(totalFutureHouses / s.group.length));
+        var houseLevel = Math.min(5, Math.floor(totalFutureHouses / sGroupIds.length));
         var avgRent = 0;
-        for (var g = 0; g < s.group.length; g++) {
-            var gsq = square[s.group[g]];
+        for (var g = 0; g < sGroupIds.length; g++) {
+            var gsq = view.getSquare(sGroupIds[g]);
             if (houseLevel > 0) {
-                avgRent += (gsq['rent' + houseLevel] || (gsq.baserent * 5));
+                avgRent += (gsq.rules.rentTiers[(houseLevel) - 1] || (gsq.rules.baseRent * 5));
             } else {
-                avgRent += (gsq.baserent * 2);
+                avgRent += (gsq.rules.baseRent * 2);
             }
         }
-        avgRent = avgRent / s.group.length;
+        avgRent = avgRent / sGroupIds.length;
 
         return {
             immediateHouses: immediateHouses,
@@ -172,8 +177,8 @@
         };
     }
 
-    function getPlayerByIndex(index, subject) {
-        return AIGen5.getPlayers(subject)[index] || null;
+    function getPlayerById(playerId, subject) {
+        return AIGen5.getDecisionView(subject).getPlayer(playerId);
     }
 
     // Approximate liquidation value of cash + properties + houses, used only for relative ranking between players.
@@ -182,15 +187,16 @@
             return 0;
         }
         var total = p.money || 0;
-        var square = AIGen5.getSquares(p);
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || s.owner !== p.index) {
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            if (!s || view.getSquareState(s.id).ownerId !== p.playerId) {
                 continue;
             }
-            total += (s.price || 0) * (s.mortgage ? 0.5 : 1) * 0.6;
-            var houseCount = s.hotel ? 5 : (s.house || 0);
-            total += houseCount * (s.houseprice || 0) * 0.5;
+            total += (s.rules.purchasePrice || 0) * (view.getSquareState(s.id).mortgage ? 0.5 : 1) * 0.6;
+            var houseCount = view.getSquareState(s.id).hotel ? 5 : (view.getSquareState(s.id).house || 0);
+            total += houseCount * (s.rules.houseCost || 0) * 0.5;
         }
         return total;
     }
@@ -220,20 +226,22 @@
         return 'Contender';
     }
 
-    // Estimates how dangerous it would be for `forPlayerIndex` to complete the color group containing `squareIndex`,
+    // Estimates how dangerous it would be for `forPlayerId` to complete the color group containing `squareId`,
     // combining their ability to afford houses with how often opponents are likely to land on that group.
-    function monopolyRisk(squareIndex, forPlayerIndex, cashAfterTrade, subject) {
-        var square = AIGen5.getSquares(subject);
-        if (!square.length) {
+    function monopolyRisk(squareId, forPlayerId, cashAfterTrade, subject) {
+        var view = AIGen5.getDecisionView(subject);
+        var squareIds = view.getSquareIds();
+        if (!squareIds.length) {
             return 0;
         }
-        var s = square[squareIndex];
-        if (!s || !s.group || s.group.length === 0) {
+        var s = view.getSquare(squareId);
+        var sGroupIds = AIGen5.groupIds(view, s);
+        if (!s || sGroupIds.length === 0) {
             return 0;
         }
 
-        var forPlayer = getPlayerByIndex(forPlayerIndex, subject);
-        var houseBudget = (s.houseprice || 100) * s.group.length * 3;
+        var forPlayer = getPlayerById(forPlayerId, subject);
+        var houseBudget = (s.rules.houseCost || 100) * sGroupIds.length * 3;
         var buildFeasibility = AIGen5.Valuation ? AIGen5.Valuation.houseBuildFeasibility(subject) : 1;
         var cash = cashAfterTrade !== undefined ? cashAfterTrade : (forPlayer ? forPlayer.money || 0 : 0);
         var reserve = forPlayer && AIGen5.Liquidity ? AIGen5.Liquidity.computeReserve(forPlayer, { riskTolerance: 0.6 }) : 120;
@@ -242,22 +250,22 @@
 
         var traffic = 0;
         if (AIGen5.Probability) {
-            for (var i = 0; i < s.group.length; i++) {
-                traffic += AIGen5.Probability.aggregateBoardThreat(s.group[i], forPlayerIndex, 4, subject);
+            for (var i = 0; i < sGroupIds.length; i++) {
+                traffic += AIGen5.Probability.aggregateBoardThreat(sGroupIds[i], forPlayerId, 4, subject);
             }
-            traffic = traffic / s.group.length;
+            traffic = traffic / sGroupIds.length;
         }
 
         var boardBuildableMonopolies = countBoardMonopolies(true, subject);
         var soleMonopolyBonus = boardBuildableMonopolies === 0 ? 2.5 : (boardBuildableMonopolies === 1 ? 1.6 : 1.1);
 
-        var immediateHouses = s.houseprice > 0 ? Math.min(s.group.length * 5, Math.floor(freeCash / s.houseprice)) : 0;
-        var immediateHouseAvg = s.group.length > 0 ? immediateHouses / s.group.length : 0;
+        var immediateHouses = s.rules.houseCost > 0 ? Math.min(sGroupIds.length * 5, Math.floor(freeCash / s.rules.houseCost)) : 0;
+        var immediateHouseAvg = sGroupIds.length > 0 ? immediateHouses / sGroupIds.length : 0;
         var buildPressure = 1 + immediateHouseAvg * 0.5;
 
         // Future turn buildability modeling (2-4 turns):
-        var futureBuild = projectedFutureBuildability(forPlayer, squareIndex, cash, 3);
-        var futureMultiplier = futureBuild.reachesThreeHouses ? 1.75 : (futureBuild.futureHouses >= s.group.length * 2 ? 1.3 : 1.0);
+        var futureBuild = projectedFutureBuildability(forPlayer, squareId, cash, 3);
+        var futureMultiplier = futureBuild.reachesThreeHouses ? 1.75 : (futureBuild.futureHouses >= sGroupIds.length * 2 ? 1.3 : 1.0);
 
         return (0.4 + affordability * 0.8) * (0.5 + traffic) * soleMonopolyBonus * buildPressure * futureMultiplier;
     }
@@ -266,8 +274,9 @@
     // Stagnation rises when many turns have elapsed, nearly all buyable properties are owned,
     // and no player holds a buildable monopoly to advance the game.
     function getStagnationFactor(p, turnNumber) {
-        var square = AIGen5.getSquares(p);
-        if (!square.length) {
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
+        if (!squareIds.length) {
             return 0;
         }
 
@@ -277,9 +286,9 @@
         }
 
         var unownedCount = 0;
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (s && s.price > 0 && s.owner === 0) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            if (s && s.rules.purchasePrice > 0 && view.getSquareState(s.id).ownerId === null) {
                 unownedCount++;
             }
         }
@@ -289,7 +298,7 @@
             return 0;
         }
 
-        var turns = turnNumber || (p && p.AI && p.AI.turnNumber) || 0;
+        var turns = turnNumber || (p && p.policyMetadata && p.policyMetadata.turnNumber) || 0;
         var turnComponent = clamp((turns - 8) / 16, 0, 1.0); // Starts at turn 8, reaches full effect at turn 24
         var propertyDistributionComponent = clamp((4 - unownedCount) / 4, 0.2, 1.0);
 
@@ -363,7 +372,7 @@
         getStagnationFactor: getStagnationFactor,
         getDeadlockState: getDeadlockState,
         getActivePlayers: getActivePlayers,
-        getPlayerByIndex: getPlayerByIndex
+        getPlayerById: getPlayerById
     };
 
     if (typeof module !== 'undefined' && module.exports) {

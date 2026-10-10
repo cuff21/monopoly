@@ -1,3 +1,4 @@
+async function runContractTests() {
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -206,6 +207,11 @@ function createTaxFixture(board) {
             onChoose(percentageAmount);
         }
     };
+    game.requestDecision = async (kind, id, options) => {
+        let amount;
+        ui.chooseTax(options.fixedAmount, options.percentageAmount, value => { amount = value; });
+        return { type: 'tax', amount };
+    };
     return { player, state, game, ui, taxEvents };
 }
 
@@ -213,7 +219,7 @@ const nycTaxBoard = Editions.get('NYC').buildBoard();
 const nycTaxFixture = createTaxFixture(nycTaxBoard);
 GameStateApi.setSquareOwner(nycTaxFixture.state, 'port-authority-bus-terminal', 'player-1');
 GameStateApi.getSquareState(nycTaxFixture.state, 'port-authority-bus-terminal').house = 1;
-nycTaxBoard.squaresById['city-tax'].behavior.onLand({
+await nycTaxBoard.squaresById['city-tax'].behavior.onLand({
     game: nycTaxFixture.game,
     state: nycTaxFixture.state,
     playerId: 'player-1',
@@ -476,3 +482,6 @@ apiSquareIds.forEach(squareId => {
 });
 assert.deepStrictEqual(firstStateFixture.players.map(player => player.playerId), ['player-1', 'player-3']);
 console.log('Structured Board catalogs and contract fixtures are internally consistent.');
+
+}
+runContractTests().catch(error => { console.error(error); process.exitCode = 1; });

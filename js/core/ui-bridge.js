@@ -61,6 +61,7 @@
 	GameUI.prototype.updateAuctionBid = function(amount, playerName) {};
 	GameUI.prototype.focusAuctionBid = function() {};
 	GameUI.prototype.closeAuction = function() {};
+	GameUI.prototype.closeDecisionPopup = function() {};
 	GameUI.prototype.onAuctionBid = function(playerIndex, amount) {};
 	GameUI.prototype.onAuctionEnd = function(highestBidder, highestBid) {};
 	GameUI.prototype.removePlayerToken = function(playerIndex) {};

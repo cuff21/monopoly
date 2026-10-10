@@ -1,405 +1,225 @@
-// The purpose of this AI is not to be a relistic opponant, but to give an example of a vaild AI player.
+if (typeof module !== 'undefined' && module.exports) require('../application/player-controllers');
+// Genetic AI's original policy, using its owning Game's structured decision view.
 function AITest3(p, params) {
-	var game = p && p.game;
-	var state = game && game.state || {};
-	var square = state.square || [];
-	var player = state.player || [];
+    'use strict';
+    var game = p && p.game;
+    if (!game || !game.decisionView) throw new TypeError('Genetic AI requires a structured Game decision view.');
+    var view = game.decisionView, squareIds = view.getSquareIds();
+    var random = typeof game.state.random === 'function' ? game.state.random : Math.random;
+    var utilityForRailroadFlag = true, ai = this;
     this.params = params;
-    // Discriminates this AI's entries within the shared localStorage gameHistory pool.
     this.aiType = 'genetic3';
-	// When purchasing, what is the least amount of money the user should keep?
-	this.purchaseThreshold = params.purchaseThreshold;
-	// When buying at home, what is the least amount of money the user should keep?
-	this.housePurchaseThreshold = params.housePurchaseThreshold;
-	// If bid needs to be upped, by how much?
-	this.bidUp = params.bidUp;
-	// At what value do we consider trade to be good enough?
-	this.tradeAcceptanceThreshold = params.tradeAcceptanceThreshold;
-	// At what value is the trade not worthy of countering?
-	this.tradeRejectionThreshold = params.tradeRejectionThreshold;
-	// How many spots behind is the agent willing to trade?
-	this.spotsBehind = params.spotsBehind;
-	// How many spots in front of is the agent willing to trade?
-	this.spotsAhead = params.spotsAhead;
-	// Value of a Community Get Out Of Jail Card
-	this.communityChestJailCardValue = params.communityChestJailCardValue;
-	// Value of a Chance Get Out of Jail Card
-	this.chanceJailCardValue = params.chanceJailCardValue;
+    // Preserve the evolvable parameter schema and public controls.
+    ['purchaseThreshold', 'housePurchaseThreshold', 'bidUp', 'tradeAcceptanceThreshold',
+        'tradeRejectionThreshold', 'spotsBehind', 'spotsAhead', 'communityChestJailCardValue',
+        'chanceJailCardValue', 'maxAmountOfRejections', 'firstBuildingOdds', 'lastBuildingOdds'
+    ].forEach(function(key) { ai[key] = params[key]; });
+    this.amountOfRejections = 0;
+    this.alertList = '';
+    this.currentTileTrade = []; // [requested square ID, offered square ID]
+    this.doNotOfferThose = [];
+    this.constructor.count = (this.constructor.count || 0) + 1;
+    p.name = 'AI 3 Player ' + this.constructor.count;
 
-	// Trade rejection amount
-	this.amountOfRejections = 0;
-	// Cap maximal amount of rejections
-	this.maxAmountOfRejections = params.maxAmountOfRejections;
-	//Odds of buying the first buildings
-	this.firstBuildingOdds = params.firstBuildingOdds;
-	//Odds of buying the last buildings
-	this.lastBuildingOdds = params.lastBuildingOdds;
+    p = PlayerControllers.policyPlayer(p);
+    PlayerControllers.bindPolicy(this, p);
+    game = p.game; view = game.decisionView;
 
-	this.alertList = "";
+    function members(id) {
+        var definition = view.getSquare(id);
+        return definition.groupId ? view.getGroupSquareIds(definition.groupId) : [];
+    }
+    function ownedCount(ids) {
+        return ids.filter(function(id) { return view.getSquareOwner(id) === p.playerId; }).length;
+    }
+    function undeveloped(id) {
+        return members(id).every(function(memberId) {
+            var state = view.getSquareState(memberId);
+            return state.house === 0 && state.hotel === 0;
+        });
+    }
+    function canOffer(id) {
+        var definition = view.getSquare(id), state = view.getSquareState(id), group = members(id);
+        return state.ownerId === p.playerId && !state.mortgage && definition.kind !== 'railroad'
+            && group.length > 0 && ownedCount(group) < group.length - 1 && undeveloped(id);
+    }
+    function canRequest(id) {
+        var state = view.getSquareState(id), group = members(id);
+        return state.ownerId !== null && state.ownerId !== p.playerId && !state.mortgage
+            && group.length > 0 && ownedCount(group) === group.length - 1 && undeveloped(id);
+    }
+    function clearNegotiation(success) {
+        ai.amountOfRejections = 0;
+        ai.currentTileTrade = [];
+        if (success) ai.doNotOfferThose = [];
+    }
+    function* submit(requestedId, offeredId, money) {
+        yield [{ type: 'proposeTrade', offer: new Trade(p.playerId, view.getSquareOwner(requestedId), money, [offeredId], [requestedId], []) }];
+        // The controller resumes this planner only after negotiation completes.
+        return false;
+    }
 
-	this.currentTileTrade = [];
+    this.buyProperty = function(squareId) {
+        var definition = view.getSquare(squareId);
+        if (!definition.rules.purchasePrice || view.getSquareOwner(squareId) !== null
+            || p.money <= definition.rules.purchasePrice + this.purchaseThreshold) return false;
+        if (definition.kind === 'railroad' || definition.kind === 'utility') return true;
+        // Traversal ordinal is used only for the original early/late purchase preference.
+        var coefficient = squareIds.indexOf(squareId) / squareIds.length * (this.lastBuildingOdds - this.firstBuildingOdds);
+        return this.firstBuildingOdds + coefficient >= Math.floor(random() * 100);
+    };
 
-	// Blacklist of spots that you do not want to exchange because of maxAmountOfRejections for example 
-	this.doNotOfferThose = [];
+    this.acceptTrade = function(offer) {
+        var incoming = offer.getOfferedSquareIds(), outgoing = offer.getRequestedSquareIds();
+        var heldCards = offer.getHeldCards(), money = offer.getMoney(), value = money;
+        function assetValue(id) {
+            return view.getSquare(id).rules.purchasePrice * (view.getSquareState(id).mortgage ? 0.5 : 1);
+        }
+        incoming.forEach(function(id) { value += assetValue(id); });
+        outgoing.forEach(function(id) { value -= assetValue(id); });
+        heldCards.forEach(function(card) {
+            var deckId = GameStateContext.parseCardId(card.cardId).deckId;
+            var cardValue = deckId === 'community-chest' ? ai.communityChestJailCardValue
+                : deckId === 'chance' ? ai.chanceJailCardValue
+                : (ai.communityChestJailCardValue + ai.chanceJailCardValue) / 2;
+            value += cardValue * card.direction;
+        });
+        if (value >= this.tradeAcceptanceThreshold) return true;
+        // Preserve the original bidUp target; trade cash must be whole dollars.
+        var proposedMoney = this.bidUp - value + money, roundedMoney = Math.round(proposedMoney);
+        var initiator = view.getPlayer(offer.getInitiator()), recipient = view.getPlayer(offer.getRecipient());
+        if (value >= this.tradeRejectionThreshold && initiator.money > proposedMoney
+            && initiator.money >= roundedMoney && recipient.money >= -roundedMoney) {
+            return new Trade(offer.getInitiator(), offer.getRecipient(), roundedMoney, incoming, outgoing, heldCards);
+        }
+        return false;
+    };
 
-	// This variable is static, it is not related to each instance.
-	this.constructor.count++;
+    this.beforeTurn = function*() {
+        for (var id of squareIds) {
+            var definition = view.getSquare(id), state = view.getSquareState(id);
+            if (state.ownerId !== p.playerId || definition.kind !== 'street') continue;
+            var group = members(id), leastId, leastHouses = 6;
+            for (var j = group.length - 1; j >= 0; j--) {
+                var member = view.getSquareState(group[j]);
+                if (member.ownerId !== p.playerId) { leastId = null; break; }
+                if (member.house < leastHouses) { leastId = group[j]; leastHouses = member.house; }
+            }
+            if (state.hotel === 0 && leastId && p.money > view.getSquare(leastId).rules.houseCost + ai.housePurchaseThreshold) {
+                yield [{ type: 'buyHouse', squareId: leastId }];
+            }
+        }
+        for (var i = squareIds.length - 1; i >= 0; i--) {
+            var id = squareIds[i], state = view.getSquareState(id);
+            if (state.ownerId === p.playerId && state.mortgage && p.money > view.getSquare(id).rules.purchasePrice) yield [{ type: 'unmortgage', squareId: id }];
+        }
+        return false;
+    };
 
-	p.name = "AI 3 Player " + this.constructor.count;
+    this.onLand = function*() {
+        var requestedId, offeredId;
+        if (this.currentTileTrade.length) {
+            requestedId = this.currentTileTrade[0];
+            offeredId = this.currentTileTrade[1];
+            if (view.getSquareOwner(requestedId) === p.playerId) clearNegotiation(true);
+            else if (!canRequest(requestedId) || !canOffer(offeredId)) {
+                clearNegotiation(false);
+                return false;
+            }
+        }
+        for (var i = 0; i < squareIds.length; i++) {
+            var group = members(squareIds[i]);
+            if (!group.length || ownedCount(group) !== group.length - 1) continue;
+            requestedId = group.find(function(id) { return view.getSquareOwner(id) !== p.playerId; });
+            if (!canRequest(requestedId) || this.doNotOfferThose.includes(requestedId)) continue;
+            if (this.currentTileTrade.length && requestedId !== this.currentTileTrade[0]) continue;
+            offeredId = this.currentTileTrade.length ? this.currentTileTrade[1] : null;
+            // Clip an inclusive window once. Fractional evolved distances are valid.
+            var start = Math.max(1, Math.ceil(i - this.spotsBehind));
+            var end = Math.min(squareIds.length - 1, Math.floor(i + this.spotsAhead));
+            for (var j = start; !offeredId && j <= end; j++) {
+                if (!this.doNotOfferThose.includes(squareIds[j]) && canOffer(squareIds[j])) offeredId = squareIds[j];
+            }
+            if (!offeredId) continue;
+            var money = Math.round(Math.max(view.getSquare(requestedId).rules.purchasePrice
+                - view.getSquare(offeredId).rules.purchasePrice + this.bidUp * this.amountOfRejections, 0));
+            if (this.amountOfRejections >= this.maxAmountOfRejections) {
+                this.doNotOfferThose.push(requestedId);
+                clearNegotiation(false);
+                return false;
+            }
+            if (p.money < money + this.tradeAcceptanceThreshold || p.money < money) return false;
+            this.currentTileTrade = [requestedId, offeredId];
+            this.amountOfRejections++;
+            var pending = yield* submit(requestedId, offeredId, money);
+            if (view.getSquareOwner(requestedId) === p.playerId) clearNegotiation(true);
+            else if (!pending && this.amountOfRejections >= this.maxAmountOfRejections) {
+                this.doNotOfferThose.push(requestedId);
+                clearNegotiation(false);
+            }
+            return pending;
+        }
+        var railroads = squareIds.filter(function(id) { return view.getSquare(id).kind === 'railroad'; });
+        requestedId = railroads.find(function(id) {
+            var owner = view.getSquareOwner(id);
+            return owner !== null && owner !== p.playerId;
+        });
+        var utilities = squareIds.filter(function(id) { return view.getSquare(id).kind === 'utility'; });
+        var ownedUtilities = utilities.filter(function(id) { return view.getSquareOwner(id) === p.playerId; });
+        if (utilityForRailroadFlag && game.getDie(1) !== game.getDie(2) && requestedId
+            && ownedUtilities.length === 1 && undeveloped(requestedId) && undeveloped(ownedUtilities[0])) {
+            utilityForRailroadFlag = false;
+            return yield* submit(requestedId, ownedUtilities[0], 0);
+        }
+        return false;
+    };
 
-	// Decide whether to buy a property the AI landed on.
-	// Return: boolean (true to buy).
-	// Arguments:
-	// index: the property's index (0-39).
-	this.buyProperty = function(index) {
-		//console.log("buyProperty");
-		var s = square[index];
+    this.postBail = function() {
+        return p.heldCards.length > 0 && p.jailroll === 2;
+    };
 
-		if (p.money > s.price + this.purchaseThreshold) {
-			if (index==5 || index==15 || index==25 || index==35 /*railroads*/|| index==12 /*electric company*/ || index==28 /*waterworks*/)
-				return true;
-			else {
-				//Favor more expensive buildings
-				var randomValue = Math.floor(Math.random() * 100);
-				//How likely is the bot to buy the property
-				var indexCoefficient = index/40 * (this.lastBuildingOdds - this.firstBuildingOdds);
-				//35% odds on the first building, 100% odds on the final one
-				if (this.firstBuildingOdds+indexCoefficient>=randomValue) {
-					console.log("Bought property " + s.name + "!");
-					return true;
-				} else {
-					console.log("Decided not to buy");
-					return false;
-				}
-			}
-		} else {
-			console.log("Not enough money to buy");
-			return false;
-		}
-
-	}
-
-	// Determine the response to an offered trade.
-	// Return: boolean/instanceof Trade: a valid Trade object to counter offer (with the AI as the recipient); false to decline; true to accept.
-	// Arguments:
-	// tradeObj: the proposed trade, an instanceof Trade, has the AI as the recipient.
-	this.acceptTrade = function(tradeObj) {
-		//console.log("acceptTrade");
-
-		var tradeValue = 0;
-		var money = tradeObj.getMoney();
-		var initiator = tradeObj.getInitiator();
-		var recipient = tradeObj.getRecipient();
-		var property = [];
-
-		tradeValue += this.communityChestJailCardValue * tradeObj.getCommunityChestJailCard();
-		tradeValue += this.chanceJailCardValue * tradeObj.getChanceJailCard();
-
-		tradeValue += money;
-
-		for (var i = 0; i < 40; i++) {
-			property[i] = tradeObj.getProperty(i);
-			tradeValue += tradeObj.getProperty(i) * square[i].price * (square[i].mortgage ? 0.5 : 1);
-		}
-
-		console.log("Trading loss/gain: " + tradeValue);
-
-		var proposedMoney = this.bidUp - tradeValue + money;
-
-		if (tradeValue >= this.tradeAcceptanceThreshold) {
-			console.log("Traded!");
-			return true;
-		} else if (tradeValue >= this.tradeRejectionThreshold && initiator.money > proposedMoney) {	
-			return new Trade(initiator, recipient, proposedMoney, property, tradeObj.getCommunityChestJailCard(), tradeObj.getChanceJailCard());
-		}
-
-		return false;
-	}
-
-	// This function is called at the beginning of the AI's turn, before any dice are rolled. The purpose is to allow the AI to manage property and/or initiate trades.
-	// Return: boolean: Must return true if and only if the AI proposed a trade.
-	this.beforeTurn = function() {
-		//console.log("AI 3!");
-		//console.log("beforeTurn");
-		var s;
-		var allGroupOwned;
-		var max;
-		var leastHouseProperty;
-		var leastHouseNumber;
-		var amountOfRejections;
-
-		// Buy houses.
-		for (var i = 0; i < 40; i++) {
-			s = square[i];
-
-			if (s.owner === p.index && s.groupNumber >= 3) {
-				max = s.group.length;
-				allGroupOwned = true;
-				leastHouseNumber = 6; // No property will ever have 6 houses.
-
-				for (var j = max - 1; j >= 0; j--) {
-					if (square[s.group[j]].owner !== p.index) {
-						allGroupOwned = false;
-						break;
-					}
-
-					if (square[s.group[j]].house < leastHouseNumber) {
-						leastHouseProperty = square[s.group[j]];
-						leastHouseNumber = leastHouseProperty.house;
-					}
-				}
-
-				if (!allGroupOwned) {
-					continue;
-				}
-
-				if (s.hotel === 0 && p.money > leastHouseProperty.houseprice + this.housePurchaseThreshold) {
-					console.log("Bought house!");
-					if (game && typeof game.buyHouse === 'function') game.buyHouse(leastHouseProperty.index);
-				}
-
-
-			}
-		}
-
-		// Unmortgage property
-		for (var i = 39; i >= 0; i--) {
-			s = square[i];
-
-			if (s.owner === p.index && s.mortgage && p.money > s.price) {
-				if (game && typeof game.unmortgage === 'function') game.unmortgage(i);
-			}
-		}
-
-		return false;
-	}
-
-	var utilityForRailroadFlag = true; // Don't offer this trade more than once.
-
-
-	// This function is called every time the AI lands on a square. The purpose is to allow the AI to manage property and/or initiate trades.
-	// Return: boolean: Must return true if and only if the AI proposed a trade.
-	this.onLand = function() {
-		//console.log("onLand");
-		var proposedTrade;
-		var property = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-		var railroadIndexes = [5, 15, 25, 35];
-		var requestedRailroad;
-		var offeredUtility = 0;
-		var indexOfValueToTrade = 0;
-		var s;
-
-		// If AI owns exactly one utility, try to trade it for a railroad.
-		for (var i = 0; i < 4; i++) {
-			s = square[railroadIndexes[i]];
-
-			if (s.owner !== 0 && s.owner !== p.index) {
-				requestedRailroad = s.index;
-				break;
-			}
-		}
-
-		//Check if trade was a success
-		if (typeof this.currentTileTrade[1] !== 'undefined' && square[this.currentTileTrade[1]].owner == p.index) {
-			this.amountOfRejections = 0;
-			this.currentTileTrade = [];
-			// We can check the trade again after a couple of offers have been made
-			this.doNotOfferThose = [];
-			console.log("Trade succeeded!");
-		}
-
-		//Check if it's worth to trade properties
-		for (var i=0; i<40; i++) {
-			s = square[i];
-			
-			if (typeof s.group !== 'undefined')  {
-				var sum = 0;
-				//Find if a person owns all propertes but one
-				s.group.forEach(function(element) {
-					if (square[element].owner == p.index) {
-						sum++;
-					} else {
-						indexOfValueToTrade = element;
-					}
-				});
-
-				//Attempt to find a spot it already owns to trade with other player
-				if (sum == s.group.length-1 && square[indexOfValueToTrade].owner != 0 && square[indexOfValueToTrade].mortgage == false) {
-					console.log("Found a group of n-1! " + s.group);
-
-					//Find out if he has any properties he would like to give away, make it fair
-					var j = Math.max(i-this.spotsBehind, 1);
-					for (j; j<j+this.spotsAhead+this.spotsBehind; j++) {
-
-						//If it gets out of bounds, finish the search
-						if (j>40) break;
-						//If the value was blacklisted, don't consider it
-						if (this.doNotOfferThose.includes(j)) continue;
-
-						var sj = square[j];
-                        if(sj) {
-                            if (typeof sj.group !== 'undefined') {
-                                var sum2 = 0;
-                                //Find if he owns any property from a group that has exactly one property
-                                sj.group.forEach(function(element) {
-                                    if (square[element].owner == p.index) {
-                                        sum2++;
-                                    }
-                                }); 
-                                //And don't make it a railroad, this is in a different spot below
-                                if (sum2 < sj.group.length-1) {
-                                    if (j!=5 && j!=15 && j!=25 && j!=35) {
-                                        offeredUtility = j;
-                                        break;
-                                    }	
-                                }
-                            }
-                        }
-					}
-					console.log("Offered utility = " + offeredUtility);
-					//Keep increasing the value of a bid until the other side agrees
-					var differenceInMoneyCosts = Math.max(square[indexOfValueToTrade].price-square[offeredUtility].price+this.bidUp*this.amountOfRejections, 0);
-					//Finally run the trade
-					if (offeredUtility!=0 && square[offeredUtility].mortgage==false && p.money>=differenceInMoneyCosts + this.tradeAcceptanceThreshold && this.amountOfRejections < this.maxAmountOfRejections) {
-						//console.log(p.money + " " + differenceInMoneyCosts + " " + this.tradeAcceptanceThreshold);
-						if (typeof this.currentTileTrade[0] !== 'undefined' && this.currentTileTrade[0]!=indexOfValueToTrade && this.amountOfRejections!=0) {
-							//It always attempts to follow the same trade
-							break;
-						} else {
-							//Register as a new trade
-							this.currentTileTrade[0] = indexOfValueToTrade, 
-							this.currentTileTrade[1] = offeredUtility
-						}
-
-						//Propose a new trade
-						property[indexOfValueToTrade] = -1;
-						property[offeredUtility] = 1;	
-						console.log("Trading " + square[indexOfValueToTrade].name + " for your " + square[offeredUtility].name);
-						proposedTrade = new Trade(p, player[square[indexOfValueToTrade].owner], differenceInMoneyCosts, property, 0, 0);
-						this.amountOfRejections++;
-
-						if (game && typeof game.trade === 'function') game.trade(proposedTrade);
-						else return false;
-						return true;
-					} else if (this.amountOfRejections >= this.maxAmountOfRejections) {
-						console.log("Too many rejections...");
-						this.amountOfRejections = 0;
-						this.doNotOfferThose.push(indexOfValueToTrade);
-						break;
-					} else {
-						console.log("Not enough money...");
-						break;
-					}
-				}
-			}
-		}
-
-		if (square[12].owner === p.index && square[28].owner !== p.index) {
-			offeredUtility = 12;
-		} else if (square[28].owner === p.index && square[12].owner !== p.index) {
-			offeredUtility = 28;
-		}
-
-		if (utilityForRailroadFlag && game && game.getDie(1) !== game.getDie(2) && requestedRailroad && offeredUtility) {
-			utilityForRailroadFlag = false;
-			property[requestedRailroad] = -1;
-			property[offeredUtility] = 1;
-
-			proposedTrade = new Trade(p, player[square[requestedRailroad].owner], 0, property, 0, 0)
-			console.log("Trying to buy railroads!");
-			if (typeof game.trade === 'function') game.trade(proposedTrade);
-			else return false;
-			return true;
-		}
-
-		if (utilityForRailroadFlag && game && game.getDie(1) !== game.getDie(2) && requestedRailroad && offeredUtility) {
-			utilityForRailroadFlag = false;
-			property[requestedRailroad] = -1;
-			property[offeredUtility] = 1;
-
-			proposedTrade = new Trade(p, player[square[requestedRailroad].owner], 0, property, 0, 0)
-			console.log("Trying to buy railroads!");
-			if (typeof game.trade === 'function') game.trade(proposedTrade);
-			else return false;
-			return true;
-		}
-
-		return false;
-	}
-
-	// Determine whether to post bail/use get out of jail free card (if in possession).
-	// Return: boolean: true to post bail/use card.
-	this.postBail = function() {
-		console.log("postBail");
-
-		// p.jailroll === 2 on third turn in jail.
-		if ((p.communityChestJailCard || p.chanceJailCard) && p.jailroll === 2) {
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	// Mortgage enough properties to pay debt.
-	// Return: void: don't return anything, just call the functions mortgage()/sellhouse()
-	this.payDebt = function() {
-		console.log("payDebt");
-        // Houses must be sold evenly across a color-group, so re-scan for an
-        // eligible property (one with the most houses in its group) each time.
+    this.payDebt = function*() {
+        // Re-scan after each sale to respect even building and hotel supply rules.
         var sold = true;
         while (p.money < 0 && sold) {
             sold = false;
-            for (var i = 39; i >= 0; i--) {
-                s = square[i];
-
-				if (s.owner === p.index && !s.mortgage && s.house > 0 && game && game.canSellHouse(i)) {
-					game.sellHouse(i);
-                    console.log("Selling house on " + s.name);
-                    sold = true;
-                    break;
+            for (var i = squareIds.length - 1; i >= 0; i--) {
+                var id = squareIds[i], state = view.getSquareState(id);
+                if (state.ownerId === p.playerId && !state.mortgage && state.house > 0 && game.canSellHouse(id)) {
+                    sold = yield [{ type: 'sellHouse', squareId: id }];
+                    if (sold) break;
                 }
             }
         }
-
-        if (p.money >= 0) {
-            return;
+        for (var j = squareIds.length - 1; p.money < 0 && j >= 0; j--) {
+            var squareId = squareIds[j], squareState = view.getSquareState(squareId);
+            if (squareState.ownerId === p.playerId && !squareState.mortgage && squareState.house === 0) yield [{ type: 'mortgage', squareId: squareId }];
         }
+    };
 
-		for (var i = 39; i >= 0; i--) {
-			s = square[i];
+    this.inherit = function(squareIds) {
+        var floor = Math.max(100, p.money * 0.25);
+        var view = p.game.decisionView;
+        var id = squareIds.find(function(id) {
+            return view.getSquareState(id).mortgage && p.money - Math.round(view.getSquare(id).rules.purchasePrice * 0.5) >= floor;
+        });
+        return id ? [{ type: 'inheritUnmortgage', squareId: id }] : [];
+    };
 
-			if (s.owner === p.index && !s.mortgage && s.house === 0) {
-				if (game && typeof game.mortgage === 'function') game.mortgage(i);
-				console.log("Mortgaging property " + s.name);
-			}
-
-			if (p.money >= 0) {
-				return;
-			}
-		}
-
-	}
-
-	// Determine what to bid during an auction.
-	// Return: integer: -1 for exit auction, 0 for pass, a positive value for the bid.
-	this.bid = function(property, currentBid) {
-		console.log("bid");
-		var bid;
-
-		bid = currentBid + Math.round(Math.random() * 20 + 10);
-
-		if (p.money < bid + 50 || bid > square[property].price * 1.5) {
-			return -1;
-		} else {
-			return bid;
-		}
-
-	}
+    this.bid = function(squareId, currentBid) {
+        if (!Number.isFinite(p.money) || !Number.isInteger(currentBid) || currentBid < 0 || !view.board.squaresById[squareId]) return -1;
+        var definition = view.getSquare(squareId);
+        var bid = currentBid + Math.round(random() * 20 + 10);
+        return !definition.rules.purchasePrice || view.getSquareOwner(squareId) !== null
+            || !Number.isInteger(bid) || !Number.isFinite(definition.rules.purchasePrice) || p.money < bid + 50 || bid > definition.rules.purchasePrice * 1.5 ? -1 : bid;
+    };
 }
 
 if (typeof AISetupRegistry !== 'undefined') AISetupRegistry.register({
-	id: "3",
-	label: "AI 3",
-	trackResults: true,
-	createPlayer: function(player) { return new AITest3(player, generateParameters()); }
+    id: '3',
+    label: 'AI 3',
+    trackResults: true,
+    createPlayer: function(player, selection, random) { return new AITest3(player, generateParameters(random)); }
 });
+
+if (typeof module !== 'undefined' && module.exports) module.exports = AITest3;

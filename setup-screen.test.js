@@ -64,17 +64,13 @@ async function runTests() {
 	GameSetupService.configure({
 		aiRegistry: AISetupRegistry
 	});
-	const composedPlayers = [{}, {}];
-	const originalRandom = Math.random;
-	Math.random = () => 0.999;
-	try {
-		GameSetupService.createPlayers({ players: [
+	const setupControllers = new Map();
+	const seededGame = { registerController(id, controller) { setupControllers.set(id, controller); }, state: { random: () => 0.999, board: { squaresById: {} } } };
+	const composedPlayers = [{ playerId: 'player-1', game: seededGame }, { playerId: 'player-2', game: seededGame }];
+	GameSetupService.createPlayers({ players: [
 			{ ai: '0', color: 'RED', name: 'Human', profile: 'Random' },
 			{ ai: '4', color: 'blue', name: 'Bot', profile: 'Balanced' }
 		] }, composedPlayers);
-	} finally {
-		Math.random = originalRandom;
-	}
 	assert.strictEqual(composedPlayers[0].name, 'Human');
 	assert.strictEqual(composedPlayers[0].human, true);
 	assert.strictEqual(composedPlayers[1].AI instanceof FixtureAI, true);

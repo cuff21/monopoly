@@ -2,6 +2,10 @@
 	'use strict';
 
 	var BANK_ID = 'bank';
+	var getSquare = global.getSquare;
+	var getGroup = global.getGroup;
+	var getGroupSquareIds = global.getGroupSquareIds;
+	var getSquareIds = global.getSquareIds;
 
 	function createSquareStateById(board) {
 		var squareStateById = {};
@@ -17,52 +21,28 @@
 		return squareStateById;
 	}
 
-	function createSquareViews(state) {
-		var board = state.board, ids = [], indexById = Object.create(null), currentId = board.startSquareId;
-		for (var i = 0; i < Object.keys(board.squaresById).length; i++) {
-			ids.push(currentId); indexById[currentId] = i; currentId = board.squaresById[currentId].nextId;
-		}
-		return ids.map(function(squareId, index) {
-			var square = board.squaresById[squareId], rules = square.rules;
-			var group = square.groupId ? board.groupsById[square.groupId] : null;
-			var rentRule = !group ? null : square.kind === 'street'
-				? { mode: 'colorGroup', monopolyMultiplier: group.rules.monopolyMultiplier }
-				: { mode: square.kind === 'utility' ? 'diceMultiplier' : 'ownershipTier', tiers: group.rules.rentTiers };
-			var view = {
-				index: index, id: squareId, name: square.presentation.label, color: square.presentation.color,
-				pricetext: square.presentation.priceText || '', price: rules.purchasePrice, baserent: rules.baseRent,
-				rent1: rules.rentTiers[0] || 0, rent2: rules.rentTiers[1] || 0, rent3: rules.rentTiers[2] || 0,
-				rent4: rules.rentTiers[3] || 0, rent5: rules.rentTiers[4] || 0, houseprice: rules.houseCost,
-				groupNumber: square.groupId || 0,
-				group: group ? group.squareIds.map(function(id) { return indexById[id]; }) : [],
-				groupProfile: rentRule ? { kind: square.kind, rentRule: rentRule } : null,
-				display: { boardName: square.presentation.boardName, tokenImage: square.presentation.tokenImage, rentText: square.presentation.rentText }
-			};
-			Object.defineProperty(view, 'owner', {
-				enumerable: true,
-				get: function() {
-					var ownerId = state.squareStateById[squareId].ownerId;
-					return ownerId === null ? 0 : state.player.findIndex(function(player) { return player && player.playerId === ownerId; });
-				},
-				set: function(seat) { state.squareStateById[squareId].ownerId = seat ? state.player[seat].playerId : null; }
-			});
-			['mortgage', 'house', 'hotel', 'landcount'].forEach(function(field) {
-				Object.defineProperty(view, field, {
-					enumerable: true,
-					get: function() { return state.squareStateById[squareId][field]; },
-					set: function(value) { state.squareStateById[squareId][field] = value; }
-				});
-			});
-			return view;
-		});
-	}
-
 	function initializeBoardState(state, board, editionId) {
 		state.board = board;
 		state.editionId = editionId || board.editionId;
 		state.squareStateById = createSquareStateById(board);
-		state.square = createSquareViews(state);
 		return state;
+	}
+
+	function getDecisionView(state) {
+		if (!state || !state.board || !state.squareStateById) throw new TypeError('A structured Game state is required.');
+		var GameStateContext = api;
+		return Object.freeze({
+			board: state.board,
+			editionId: state.editionId,
+			getSquare: function(squareId) { return getSquare(state.board, squareId); },
+			getSquareState: function(squareId) { return getSquareState(state, squareId); },
+			getGroup: function(groupId) { return getGroup(state.board, groupId); },
+			getGroupSquareIds: function(groupId) { return getGroupSquareIds(state.board, groupId); },
+			getPlayer: function(playerId) { return GameStateContext.getPlayerById(state, playerId); },
+			getPlayers: function() { return GameStateContext.getActivePlayers(state).slice(); },
+			getSquareOwner: function(squareId) { return getSquareState(state, squareId).ownerId; },
+			getSquareIds: function() { return getSquareIds(state.board); }
+		});
 	}
 
 	function getSquareState(state, squareId) {
@@ -183,7 +163,6 @@
 	function createState(overrides) {
 		return Object.assign({
 			player: [],
-			square: [],
 			board: null,
 			editionId: null,
 			squareStateById: {},
@@ -196,30 +175,31 @@
 			auctionEnabled: true,
 			freeParkingTaxes: true,
 			freeParkingPot: 0,
-			playerOverlays: [],
-			lastKnownPosition: [],
-			lastKnownJail: [],
+			playerOverlays: Object.create(null),
+			lastKnownSquareByPlayerId: Object.create(null),
+			lastKnownJailByPlayerId: Object.create(null),
 			nextMoveDirection: 1,
 			lastGamePlayerCount: 2
 		}, overrides || {});
 	}
 
-	var GameStateContext = {
+	var api = {
 		BANK_ID: BANK_ID,
 		createState: createState,
 		createSquareStateById: createSquareStateById,
-		createSquareViews: createSquareViews,
 		initializeBoardState: initializeBoardState,
 		getSquareState: getSquareState,
 		setSquareOwner: setSquareOwner,
 		getPlayerById: getPlayerById,
 		getPlayerAtSeat: getPlayerAtSeat,
+		getActivePlayers: getActivePlayers,
+		getDecisionView: getDecisionView,
 		encodeCardId: encodeCardId,
 		parseCardId: parseCardId,
 		returnHeldCard: returnHeldCard,
 		assignPlayerId: assignPlayerId
 	};
 
-	global.GameStateContext = GameStateContext;
-	if (typeof module !== 'undefined' && module.exports) module.exports = GameStateContext;
+	global.GameStateContext = api;
+	if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

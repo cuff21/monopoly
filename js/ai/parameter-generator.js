@@ -9,25 +9,26 @@ function exportData() {
     document.querySelector('#textarea').value = GameStorage.exportHistory();
 }
 
-function generateParameters() {
+function generateParameters(random) {
+	random = random || Math.random;
     // Initial parameters
     const params = {
-        purchaseThreshold: normal(10, 2.5),
-        housePurchaseThreshold: normal(10, 2.5),
-        bidUp: normal(30, 6),
-        tradeAcceptanceThreshold: normal(0, 10),
-        tradeRejectionThreshold: normal(-100, 20),
-        spotsBehind: normal(10, 2.5),
-        spotsAhead: normal(10, 2.5),
-        communityChestJailCardValue: normal(10, 2.5),
-        chanceJailCardValue: normal(10, 2.5),
-        maxAmountOfRejections: normal(3, 1),
-        firstBuildingOdds: normal(35, 10),
-        lastBuildingOdds: normal(80, 10)
+        purchaseThreshold: normal(10, 2.5, random),
+        housePurchaseThreshold: normal(10, 2.5, random),
+        bidUp: normal(30, 6, random),
+        tradeAcceptanceThreshold: normal(0, 10, random),
+        tradeRejectionThreshold: normal(-100, 20, random),
+        spotsBehind: normal(10, 2.5, random),
+        spotsAhead: normal(10, 2.5, random),
+        communityChestJailCardValue: normal(10, 2.5, random),
+        chanceJailCardValue: normal(10, 2.5, random),
+        maxAmountOfRejections: normal(3, 1, random),
+        firstBuildingOdds: normal(35, 10, random),
+        lastBuildingOdds: normal(80, 10, random)
     };
     const gameHistory = GameStorage.getHistory();
     // 20% chance of making player from initial parameters
-    if(Math.random() < 0.8 && gameHistory.length > 1) {
+    if(random() < 0.8 && gameHistory.length > 1) {
         let newParamsMeans = {};
         let newParamsSDs = {};
         for(const param in params) {
@@ -62,7 +63,7 @@ function generateParameters() {
             newParamsSDs[param] = Math.sqrt(newParamsSDs[param]);
         }
         for(const param in params) {
-            params[param] = normal(newParamsMeans[param], newParamsSDs[param]);
+            params[param] = normal(newParamsMeans[param], newParamsSDs[param], random);
         }
         
         console.log('%c Created player from previous winners.', 'color: green;');
@@ -84,12 +85,13 @@ function generateParameters() {
     return params;
 }
 
-function normal(m, sd) {
+function normal(m, sd, random) {
+	random = random || Math.random;
     let u = 0, v = 0;
     const mean = m || 0;
     const st_d = sd || 1;
-    while(u === 0) u = Math.random();
-    while(v === 0) v = Math.random();
+    while(u === 0) u = random();
+    while(v === 0) v = random();
     const val = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
     return val * st_d + mean;
 }

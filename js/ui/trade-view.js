@@ -10,22 +10,23 @@
 	}
 	function playerId(player) { return player && player.playerId ? player.playerId : player; }
 	function idsFor(board) {
-		if (!board) return (global.square || []).map(function(square) { return square.id; });
+		if (!board) throw new TypeError('Trade view requires the owning Game board.');
 		var result = [], cursor = board.startSquareId;
 		for (var i = 0; i < Object.keys(board.squaresById).length; i++) { result.push(cursor); cursor = board.squaresById[cursor].nextId; }
 		return result;
 	}
 	function getPlayers(state, gameState) {
-		var players = gameState ? gameState.player : global.player;
+		if (!gameState || !global.GameStateContext) throw new TypeError('Trade view requires the owning Game state.');
 		return {
-			initiator: typeof state.initiator === 'object' ? state.initiator : (gameState && global.GameStateContext ? global.GameStateContext.getPlayerById(gameState, state.initiator) : players[state.initiator]),
-			recipient: typeof state.recipient === 'object' ? state.recipient : (gameState && global.GameStateContext ? global.GameStateContext.getPlayerById(gameState, state.recipient) : players[state.recipient])
+			initiator: typeof state.initiator === 'object' ? state.initiator : global.GameStateContext.getPlayerById(gameState, state.initiator),
+			recipient: typeof state.recipient === 'object' ? state.recipient : global.GameStateContext.getPlayerById(gameState, state.recipient)
 		};
 	}
 	function resetTrade(state, initiator, recipient, allowRecipientToBeChanged, gameState) {
-		var squares = gameState ? gameState.square : global.square;
-		var players = gameState ? gameState.player : global.player;
-		var boardIds = idsFor(gameState && gameState.board);
+		if (!gameState || !gameState.board || !gameState.squareStateById) throw new TypeError('Trade view requires the owning Game state.');
+		var boardIds = idsFor(gameState.board);
+		var players = gameState.player;
+		state.gameState = gameState;
 		state.initiator = initiator; state.recipient = recipient;
 		var leftProperties = document.getElementById('trade-leftp-property');
 		var rightProperties = document.getElementById('trade-rightp-property');
@@ -41,13 +42,15 @@
 			if (property.mortgage) { nameCell.title = 'Mortgaged'; nameCell.style.color = 'grey'; }
 			row.onclick = function(event) { if (event.target !== checkbox) checkbox.checked = !checkbox.checked; setButtons(true, false); };
 		}
-		boardIds.forEach(function(squareId, index) {
-			var property = squares[index];
-			if (!property || !property.groupNumber || property.owner === 0) return;
-			var group = property.group || [];
-			if (property.house > 0 || group.some(function(memberIndex) { return squares[memberIndex].house > 0; })) return;
-			if (property.owner === initiator.index) addRow(leftTable, 'left', squareId, property);
-			else if (property.owner === recipient.index) addRow(rightTable, 'right', squareId, property);
+		boardIds.forEach(function(squareId) {
+			var square = gameState.board.squaresById[squareId];
+			var squareState = gameState.squareStateById[squareId];
+			if (!square.groupId || squareState.ownerId === null) return;
+			var group = gameState.board.groupsById[square.groupId].squareIds;
+			if (squareState.house > 0 || group.some(function(memberId) { return gameState.squareStateById[memberId].house > 0; })) return;
+			var property = { id: squareId, name: square.presentation.label, color: square.presentation.color, mortgage: squareState.mortgage };
+			if (squareState.ownerId === initiator.playerId) addRow(leftTable, 'left', squareId, property);
+			else if (squareState.ownerId === recipient.playerId) addRow(rightTable, 'right', squareId, property);
 		});
 		function addCards(table, side, owner) {
 			(owner.heldCards || []).forEach(function(cardId) {
@@ -62,26 +65,28 @@
 		if (rightTable.rows.length) rightProperties.appendChild(rightTable); else rightProperties.textContent = recipient.name + ' has no properties to trade.';
 		document.getElementById('trade-leftp-name').textContent = initiator.name;
 		var rightName = document.getElementById('trade-rightp-name'); rightName.textContent = '';
-		if (allowRecipientToBeChanged && (gameState ? gameState.pcount : global.pcount) > 2) {
+		if (allowRecipientToBeChanged && gameState.pcount > 2) {
 			var select = document.createElement('select');
 			for (var playerIndex = 1; playerIndex < players.length; playerIndex++) {
 				if (!players[playerIndex] || players[playerIndex] === initiator) continue;
-				var option = document.createElement('option'); option.value = playerIndex; option.textContent = players[playerIndex].name;
+				var option = document.createElement('option'); option.value = players[playerIndex].playerId; option.textContent = players[playerIndex].name;
 				option.selected = players[playerIndex] === recipient; select.appendChild(option);
 			}
-			select.onchange = function() { resetTrade(state, initiator, players[parseInt(this.value, 10)], true, gameState); };
+			select.onchange = function() { resetTrade(state, initiator, global.GameStateContext.getPlayerById(gameState, this.value), true, gameState); };
 			rightName.appendChild(select);
 		} else rightName.textContent = recipient.name;
 		document.getElementById('trade-leftp-money').value = '0'; document.getElementById('trade-rightp-money').value = '0'; setButtons(true, false);
 	}
 
 	function readTrade(state) {
-		var squares = global.square || [], offered = [], requested = [], heldCards = [];
-		squares.forEach(function(square) {
-			var left = document.getElementById('tradeleftsquare-' + square.id), right = document.getElementById('traderightsquare-' + square.id);
-			if (left && left.checked) offered.push(square.id); else if (right && right.checked) requested.push(square.id);
+		var game = state.game, gameState = game && game.state || state.gameState;
+		if (!gameState) throw new TypeError('Trade submission requires the owning Game state.');
+		var squareIds = idsFor(gameState.board), offered = [], requested = [], heldCards = [];
+		squareIds.forEach(function(squareId) {
+			var left = document.getElementById('tradeleftsquare-' + squareId), right = document.getElementById('traderightsquare-' + squareId);
+			if (left && left.checked) offered.push(squareId); else if (right && right.checked) requested.push(squareId);
 		});
-		var parties = getPlayers(state);
+		var parties = getPlayers(state, gameState);
 		[parties.initiator, parties.recipient].forEach(function(owner, sideIndex) {
 			(owner.heldCards || []).forEach(function(cardId) {
 				var side = sideIndex === 0 ? 'left' : 'right', checkbox = document.getElementById('trade' + side + 'card-' + encodeURIComponent(cardId));

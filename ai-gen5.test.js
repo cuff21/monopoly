@@ -1,447 +1,286 @@
+async function runPolicyTests() {
+const { executePlanner } = require('./test-support/planners');
 const assert = require('assert');
-require('./js/core/storage.js');
 
-// --- Shared board/player mocks -------------------------------------------------------------
-globalThis.square = [];
-globalThis.square[0] = { index: 0, price: 100, group: [0, 1, 2], owner: 8, mortgage: false, house: 0, hotel: 0, baserent: 6, houseprice: 50, rent1: 30, rent2: 90, rent3: 270, rent4: 400, rent5: 550 };
-globalThis.square[1] = { index: 1, price: 100, group: [0, 1, 2], owner: 8, mortgage: false, house: 0, hotel: 0, baserent: 6, houseprice: 50, rent1: 30, rent2: 90, rent3: 270, rent4: 400, rent5: 550 };
-globalThis.square[2] = { index: 2, price: 120, group: [0, 1, 2], owner: 8, mortgage: false, house: 0, hotel: 0, baserent: 8, houseprice: 50, rent1: 40, rent2: 100, rent3: 300, rent4: 450, rent5: 600 };
-globalThis.square[3] = { index: 3, price: 140, group: [3, 4], owner: 6, mortgage: false, house: 0, hotel: 0, baserent: 10, houseprice: 100 };
-globalThis.square[4] = { index: 4, price: 140, group: [3, 4], owner: 0, mortgage: false, house: 0, hotel: 0, baserent: 10, houseprice: 100 };
-globalThis.square[8] = { index: 8, price: 60, group: null, owner: 8, mortgage: false, house: 0, hotel: 0, baserent: 4, houseprice: 0 };
-globalThis.square[10] = { index: 10, price: 300, group: null, owner: 6, mortgage: false, house: 5, hotel: 1, baserent: 20, houseprice: 200, rent1: 90, rent2: 250, rent3: 700, rent4: 875, rent5: 1050 };
-globalThis.square[20] = { index: 20, price: 240, group: null, owner: 6, mortgage: false, house: 0, hotel: 0, baserent: 18, houseprice: 150 };
+require('./js/core/board');
+require('./js/core/state');
+require('./js/core/ui-bridge');
+require('./js/editions/edition-registry');
+require('./js/editions/classic');
+require('./js/editions/newyorkcity');
+const { Game } = require('./js/game/game-core');
+require('./js/game/property-actions');
+require('./js/game/auction');
+require('./js/game/trade');
+require('./js/game/bankruptcy');
+const GameStateContext = require('./js/core/game-state-context');
+require('./js/ai/ai-gen5/simulation-adapter');
 
-globalThis.player = [];
-globalThis.player[1] = { index: 1, money: 1500, name: 'AI Under Test', human: false, position: 0 };
-globalThis.player[6] = { index: 6, money: 3000, name: 'Leader', human: false, position: 10 };
-globalThis.player[7] = { index: 7, money: 40, name: 'Weakling', human: false, position: 12 };
-globalThis.player[8] = { index: 8, money: 1500, name: 'Builder', human: false, position: 0 };
-const fixtureState = { square: globalThis.square, player: globalThis.player, pcount: 8 };
-function attachFixturePlayer(player) {
-    player.game = player.game || { state: fixtureState };
-    player.game.state = fixtureState;
-    fixtureState.player[player.index] = player;
-    return player;
-}
-Object.keys(globalThis.player).forEach(function(index) { attachFixturePlayer(globalThis.player[index]); });
-
-const Probability = require('./js/ai/ai-gen5/probability.js');
-const Analytics = require('./js/ai/ai-gen5/game-analytics.js');
-const Valuation = require('./js/ai/ai-gen5/valuation.js');
-const Liquidity = require('./js/ai/ai-gen5/liquidity.js');
-const Building = require('./js/ai/ai-gen5/building.js');
-const DebtManager = require('./js/ai/ai-gen5/debt-manager.js');
-const TradeMemory = require('./js/ai/ai-gen5/trade-memory.js');
-const TradeEvaluation = require('./js/ai/ai-gen5/trade-evaluation.js');
-const Auction = require('./js/ai/ai-gen5/auction.js');
-require('./js/ai/ai-gen5/parameter-generator.js');
-const { Gen5AI, PROFILE_LIBRARY } = require('./js/ai/ai-gen5/index.js');
-
-const balancedProfile = PROFILE_LIBRARY.filter(function(p) { return p.name === 'Tactician'; })[0];
-
-// --- 1. Dynamic liquidity reserve reacts to real landing probability -----------------------
-const builder = globalThis.player[8];
-builder.position = 0; // one roll from square[10]'s neighborhood, owned by an opponent with a hotel
-const reserveNearDanger = Liquidity.computeReserve(builder, balancedProfile);
-builder.position = 39; // effectively unreachable from square[10] in a single roll
-const reserveSafe = Liquidity.computeReserve(builder, balancedProfile);
-builder.position = 0;
-assert.ok(reserveNearDanger > reserveSafe, 'reserve should rise when a hotel-covered opponent square is reachable next roll');
-
-// --- 2. Building batch-buys when safe, withholds when the reserve would be breached ---------
-let houseBuyLog = [];
-globalThis.buyHouse = function(index) {
-    houseBuyLog.push(index);
-    const s = fixtureState.square[index];
-    s.house = s.house + 1;
-};
-builder.game.buyHouse = globalThis.buyHouse;
-
-builder.money = 5000;
-houseBuyLog = [];
-const purchasesWhenSafe = Building.plan(builder, balancedProfile, { batchBuildMinROI: 0.01, reserveSafetyMargin: 1.0 });
-assert.ok(purchasesWhenSafe.length >= 2, 'should batch-buy multiple houses when cash is abundant and safe');
-
-globalThis.square[0].house = 0;
-globalThis.square[1].house = 0;
-globalThis.square[2].house = 0;
-builder.money = 200;
-houseBuyLog = [];
-const purchasesWhenTight = Building.plan(builder, balancedProfile, { batchBuildMinROI: 0.01, reserveSafetyMargin: 1.0 });
-assert.strictEqual(purchasesWhenTight.length, 0, 'should withhold building when it would breach the dynamic reserve');
-
-// --- 3. Debt manager prefers mortgaging a low-traffic property over selling a house on a high-traffic one ---
-let mortgagedIndexes = [];
-let soldHouseIndexes = [];
-globalThis.mortgage = function(index) {
-    const s = fixtureState.square[index];
-    if (s.mortgage) return false;
-    s.mortgage = true;
-    mortgagedIndexes.push(index);
-    fixtureState.player[6].money += Math.round(s.price * 0.5);
-    return true;
-};
-globalThis.sellHouse = function(index) {
-    const s = fixtureState.square[index];
-    if (s.house === 0 && s.hotel === 0) return false;
-    soldHouseIndexes.push(index);
-    if (s.hotel === 1) { s.hotel = 0; s.house = 4; } else { s.house -= 1; }
-    fixtureState.player[6].money += Math.round(s.houseprice * 0.5);
-    return true;
-};
-globalThis.canSellHouse = function(index) {
-    const s = fixtureState.square[index];
-    return s.house > 0 || s.hotel === 1;
-};
-
-const debtor = globalThis.player[6];
-debtor.game.mortgage = globalThis.mortgage;
-debtor.game.sellHouse = globalThis.sellHouse;
-debtor.game.canSellHouse = globalThis.canSellHouse;
-globalThis.square[3].owner = 6;
-globalThis.square[3].mortgage = false;
-globalThis.square[3].house = 0;
-globalThis.square[10].owner = 6; // the hotel property: high traffic, should be protected
-debtor.money = -50;
-mortgagedIndexes = [];
-soldHouseIndexes = [];
-DebtManager.resolveDebt(debtor);
-assert.ok(mortgagedIndexes.indexOf(3) !== -1, 'should mortgage the low-traffic property to cover debt');
-assert.strictEqual(soldHouseIndexes.length, 0, 'should not sell houses on the high-traffic hotel property when mortgaging alone covers the debt');
-
-// --- 4. TradeMemory blocks unchanged repeat offers, allows them again after a real shift ----
-const ledger = TradeMemory.create();
-const property = [];
-for (let i = 0; i < 40; i++) property[i] = 0;
-property[3] = 1; // AI gives away square 3
-property[4] = -1; // AI receives square 4
-const signature = TradeMemory.createSignature(property, 0);
-globalThis.player[9] = { index: 9, money: 500, name: 'Fresh Opponent' };
-attachFixturePlayer(globalThis.player[9]);
-const opponent = globalThis.player[9];
-const snapshotTurn1 = TradeMemory.snapshotOf(opponent, 1);
-ledger.recordOutcome(opponent.index, signature, 'rejected', snapshotTurn1);
-
-const snapshotTurn2 = TradeMemory.snapshotOf(opponent, 2);
-assert.strictEqual(ledger.shouldReoffer(opponent.index, signature, snapshotTurn2, { tradeReofferTurnGap: 8, tradeReofferWealthDeltaPct: 0.2 }), false, 'should not repeat an unchanged rejected offer right away');
-
-const originalMoney = opponent.money;
-opponent.money = originalMoney * 2; // large wealth swing
-const snapshotAfterWealthChange = TradeMemory.snapshotOf(opponent, 2);
-assert.strictEqual(ledger.shouldReoffer(opponent.index, signature, snapshotAfterWealthChange, { tradeReofferTurnGap: 8, tradeReofferWealthDeltaPct: 0.2 }), true, 'should allow re-offering after a substantial wealth shift');
-opponent.money = originalMoney;
-
-// --- 5. Trade evaluation penalizes enabling a Leader's monopoly more than a Weak opponent's -
-globalThis.player[1].money = 1500;
-globalThis.player[6].money = 4000; // clearly the wealthiest active player: a Leader
-globalThis.player[7].money = 20; // clearly the poorest: Weak/NearBankrupt
-globalThis.player[8].money = 800;
-globalThis.player[9].money = 800;
-globalThis.square[3].owner = 0;
-globalThis.square[3].mortgage = false;
-globalThis.square[3].house = 0;
-globalThis.square[4].owner = 0;
-
-function buildTradeToward(initiator, missingGroupMember) {
-    return {
-        getMoney: () => 0,
-        getInitiator: () => initiator,
-        getRecipient: () => globalThis.player[1],
-        getCommunityChestJailCard: () => 0,
-        getChanceJailCard: () => 0,
-        // -1 = requested by the initiator, i.e. the AI gives this square away and the initiator ends up owning it.
-        getProperty: (idx) => (idx === missingGroupMember ? -1 : 0)
-    };
+function randomFrom(seed) {
+	let value = seed >>> 0;
+	return () => ((value = (value * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-globalThis.square[3].owner = 6; // Leader already owns the other half of this group
-globalThis.square[4].owner = 1; // AI under test owns the piece being requested away
-const tradeToLeader = buildTradeToward(globalThis.player[6], 4);
-const evalLeader = TradeEvaluation.evaluate(tradeToLeader, globalThis.player[1], balancedProfile);
-
-globalThis.square[3].owner = 7; // Weak/near-bankrupt opponent owns the other half instead
-const tradeToWeak = buildTradeToward(globalThis.player[7], 4);
-const evalWeak = TradeEvaluation.evaluate(tradeToWeak, globalThis.player[1], balancedProfile);
-
-assert.ok(evalLeader.monopolyEnablementRisk > evalWeak.monopolyEnablementRisk, 'completing a Leader monopoly should be penalized more than an equivalent trade with a weak opponent');
-
-// --- 6. Phase 0 history tagging keeps gen5 and legacy genetic3 parameter pools separate -----
-globalThis.localStorage = {
-    _store: {},
-    getItem: function(key) { return this._store[key] !== undefined ? this._store[key] : null; },
-    setItem: function(key, value) { this._store[key] = value; }
-};
-const legacyParams = {
-    purchaseThreshold: 12, housePurchaseThreshold: 11, bidUp: 28, tradeAcceptanceThreshold: 5,
-    tradeRejectionThreshold: -90, spotsBehind: 9, spotsAhead: 8, communityChestJailCardValue: 9,
-    chanceJailCardValue: 9, maxAmountOfRejections: 3, firstBuildingOdds: 33, lastBuildingOdds: 78
-};
-globalThis.localStorage.setItem('gameHistory', JSON.stringify([
-    [{ type: 'genetic3', result: 'win', params: legacyParams }, { type: 'gen5', result: 'win', params: { reserveSafetyMargin: 1.9, batchBuildMinROI: 0.5, unmortgageROIThreshold: 0.3, tradeReofferWealthDeltaPct: 0.5, tradeReofferTurnGap: 15, auctionBlockPremium: 1.9 } }],
-    [{ type: 'genetic3', result: 'win', params: legacyParams }]
-]));
-
-require('./js/ai/parameter-generator.js');
-const originalRandom = Math.random;
-Math.random = function() { return 0.1; }; // force the evolve-from-winners branch deterministically
-const evolvedLegacy = globalThis.generateParameters();
-Math.random = originalRandom;
-
-Object.keys(legacyParams).forEach(function(key) {
-    assert.ok(Number.isFinite(evolvedLegacy[key]), 'legacy param "' + key + '" should stay a finite number, not be corrupted by mixed-in gen5 entries');
-});
-
-// --- 7. Real game counts must exclude ghost players and monopoly gifts must be heavily penalized ---
-globalThis.square = [];
-for (var i = 0; i < 40; i++) {
-    globalThis.square[i] = { index: i, owner: 0, mortgage: false, house: 0, hotel: 0, group: undefined, price: 0, baserent: 0, houseprice: 0 };
+function fixture(editionId, count = 3, ruleOverrides) {
+    const setup = global.Monopoly.Editions.buildGameSetup(editionId, ruleOverrides);
+	const state = GameStateContext.createState({
+		player: [], editionId, cardDecks: setup.cardDecks, pcount: count, turn: 1,
+		random: randomFrom(12345), auctionEnabled: true, pendingAuction: null
+	});
+	GameStateContext.initializeBoardState(state, setup.board, editionId);
+	const game = new Game(new global.UIBridge.HeadlessUI(), state);
+	for (let seat = 0; seat <= count; seat++) {
+		const player = new global.Player(seat ? 'Bot ' + seat : 'Bank', 'red', game);
+		player.index = seat;
+		if (seat) GameStateContext.assignPlayerId(player, seat);
+		player.human = false;
+		player.money = 5000;
+		state.player[seat] = player;
+	}
+	return { game, state, view: game.decisionView };
 }
-fixtureState.square = globalThis.square;
-for (var groupIndex = 0; groupIndex < 40; groupIndex++) {
-    globalThis.square[groupIndex].group = undefined;
-}
-globalThis.square[21] = { index: 21, owner: 0, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 220, baserent: 90, houseprice: 100 };
-globalThis.square[23] = { index: 23, owner: 0, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 220, baserent: 90, houseprice: 100 };
-globalThis.square[24] = { index: 24, owner: 0, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 240, baserent: 100, houseprice: 100 };
-globalThis.player = [];
-fixtureState.player = globalThis.player;
-for (var playerIndex = 0; playerIndex <= 8; playerIndex++) {
-    attachFixturePlayer({ index: playerIndex, money: 1500, name: 'Ghost ' + playerIndex, human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
-}
-fixtureState.pcount = 4;
-attachFixturePlayer({ index: 1, money: 1500, name: 'Red Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
-attachFixturePlayer({ index: 2, money: 1800, name: 'Blue Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
-attachFixturePlayer({ index: 3, money: 900, name: 'Lime Bot', human: false, position: 0, creditor: -1, jail: false, jailroll: 0 });
-attachFixturePlayer({ index: 4, money: 600, name: 'Human', human: true, position: 0, creditor: -1, jail: false, jailroll: 0 });
 
-var activePlayers = Analytics.getActivePlayers(fixtureState);
-assert.strictEqual(activePlayers.length, 4, 'should ignore ghost players above the real game count');
-assert.ok(activePlayers.some(function(p) { return p.index === 1; }), 'should still include active players inside the real game count');
+for (const editionId of ['Classic', 'NYC']) {
+	const { game, state, view } = fixture(editionId);
+	const ai = new global.Gen5AI(state.player[1], { name: 'Tactician' });
+	const groupId = editionId === 'Classic' ? 'brown' : 'dark-purple';
+	const groupSquareIds = view.getGroupSquareIds(groupId);
+	assert.ok(groupSquareIds.length >= 2, editionId + ' fixture group exists');
+	GameStateContext.setSquareOwner(state, groupSquareIds[0], 'player-1');
+	assert.strictEqual(typeof ai.buyProperty(groupSquareIds[1]), 'boolean', editionId + ' buy hook accepts a square ID');
+	assert.ok(Number.isInteger(ai.bid(groupSquareIds[1], 0)), editionId + ' auction hook accepts a square ID');
 
-var monopolyTrade = {
-    getMoney: function() { return 0; },
-    getInitiator: function() { return globalThis.player[2]; },
-    getRecipient: function() { return globalThis.player[1]; },
-    getCommunityChestJailCard: function() { return 0; },
-    getChanceJailCard: function() { return 0; },
-    getProperty: function(idx) {
-        return idx === 21 || idx === 23 || idx === 24 ? -1 : 0;
+	groupSquareIds.forEach(id => GameStateContext.setSquareOwner(state, id, 'player-1'));
+	assert.strictEqual(global.AIGen5.Valuation.groupScoreById(groupSquareIds[0], 'player-1', null, state), 80,
+		editionId + ' structured valuation recognizes a completed ID-based group');
+	assert.strictEqual(global.AIGen5.Analytics.countMonopolies('player-1', true, state), 1,
+		editionId + ' analytics counts completed groups by player ID');
+	assert.ok(global.AIGen5.Analytics.netWorth(state.player[1]) > state.player[1].money,
+		editionId + ' analytics values assets through the decision view');
+	assert.ok(Number.isFinite(global.AIGen5.Analytics.monopolyRisk(groupSquareIds[0], 'player-1', undefined, state)),
+		editionId + ' monopoly risk accepts square and player IDs');
+	const utilityId = view.getSquareIds().find(id => view.getSquare(id).kind === 'utility');
+	GameStateContext.setSquareOwner(state, utilityId, 'player-1');
+	const utility = view.getSquare(utilityId);
+	const utilityGroup = view.getGroup(utility.groupId);
+	const utilityMultiplier = utilityGroup.rules.rentTiers[0];
+    assert.strictEqual(global.AIGen5.Valuation.rentById(utilityId, 'player-1', null, state), utilityMultiplier,
+        editionId + ' utility valuation preserves the Gen5 multiplier heuristic');
+	assert.strictEqual(global.AIGen5.getSquares, undefined, 'Gen5 exposes no positional square projection');
+	const reachableSquareId = global.walk(state.board, 'go', 7);
+	assert.ok(global.AIGen5.Probability.landingProbability('go', reachableSquareId, 1, state) > 0,
+		editionId + ' probability accepts stable square IDs and the current Board traversal');
+	const built = await executePlanner(global.AIGen5.Building.plan(state.player[1], ai.profile, {
+		batchBuildMinROI: -1, reserveSafetyMargin: 0.1
+	}), game);
+	assert.ok(built.every(id => typeof id === 'string'), editionId + ' building plan reports stable square IDs');
+	assert.ok(groupSquareIds.some(id => view.getSquareState(id).house > 0), editionId + ' completed group can be developed');
+
+	const railroadId = view.getSquareIds().find(id => view.getSquare(id).kind === 'railroad');
+	GameStateContext.setSquareOwner(state, railroadId, 'player-1');
+	state.player[1].money = -100;
+	const liquidated = await executePlanner(global.AIGen5.DebtManager.resolveDebt(state.player[1]), game);
+	assert.ok(liquidated.every(item => typeof item.squareId === 'string'), editionId + ' debt actions identify squares by ID');
+	assert.ok(state.player[1].money >= 0, editionId + ' AI debt resolution restores solvency where collateral permits');
+
+	// Eliminate seat two and verify Gen5 still resolves the surviving participant by stable ID.
+	state.turn = 2;
+	state.player[2].money = -10;
+	state.player[2].creditor = GameStateContext.BANK_ID;
+	await game.bankruptcy();
+	assert.throws(() => GameStateContext.getPlayerById(state, 'player-2'), RangeError);
+	assert.strictEqual(GameStateContext.getPlayerById(state, 'player-1'), state.player[1]);
+	assert.strictEqual(GameStateContext.getPlayerById(state, 'player-3'), state.player[2]);
+	const survivorAI = new global.Gen5AI(state.player[1], { name: 'Tactician' });
+	const tradeSquareId = view.getSquareIds().find(id => view.getSquare(id).kind === 'railroad');
+	GameStateContext.setSquareOwner(state, tradeSquareId, 'player-3');
+	const trade = new global.Trade('player-3', 'player-1', 3000, [tradeSquareId], [], []);
+	const tradeEvaluation = global.AIGen5.TradeEvaluation.evaluate(trade, state.player[1], survivorAI.profile, survivorAI.tradeMemory, 4);
+	assert.ok(Number.isFinite(tradeEvaluation.netValue), editionId + ' trade valuation uses square and player IDs after elimination');
+	const reply = survivorAI.acceptTrade(trade);
+	assert.ok(reply instanceof global.Trade, editionId + ' acceptable offer triggers the original final squeeze');
+	assert.strictEqual(reply.getMoney(), trade.getMoney() + 35);
+	assert.deepStrictEqual(reply.getOfferedSquareIds(), trade.getOfferedSquareIds());
+	assert.deepStrictEqual(reply.getRequestedSquareIds(), trade.getRequestedSquareIds());
+	assert.strictEqual(game.acceptTrade(reply), true);
+	assert.strictEqual(view.getSquareOwner(tradeSquareId), 'player-1');
+}
+
+for (const editionId of ['Classic', 'NYC']) {
+    const { game, state, view } = fixture(editionId);
+    const p = state.player[1];
+    const ai = new global.Gen5AI(p, { name: 'Tactician' }, {});
+    const groupId = editionId === 'Classic' ? 'brown' : 'dark-purple';
+    const [first, second] = view.getGroupSquareIds(groupId);
+    const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`);
+
+    // Literal strategy values: a $60 street with base rent $2 and $50 houses,
+    // no owned neighbors, two open neighbors, and no one-roll traffic from GO.
+    close(global.AIGen5.Valuation.evaluateProperty(first, p.playerId, p.money, ai.profile, 0, p), 47.8);
+    assert.strictEqual(ai.buyProperty(first), false);
+    GameStateContext.setSquareOwner(state, first, p.playerId);
+    assert.strictEqual(ai.buyProperty(second), true, 'completion preference survives migration');
+    GameStateContext.setSquareOwner(state, second, p.playerId);
+    assert.strictEqual(global.AIGen5.Valuation.expectedRent(first, p.playerId, null, p), 4);
+    view.getSquareState(first).house = 3;
+    assert.strictEqual(global.AIGen5.Valuation.expectedRent(first, p.playerId, null, p), 90);
+    assert.strictEqual(global.AIGen5.Valuation.tempoScore(p), 20, 'tempo uses least developed member');
+    view.getSquareState(first).house = 0;
+
+    close(global.AIGen5.Probability.landingProbability('go', global.walk(state.board, 'go', 7), 1, state), 6 / 36);
+    close(global.AIGen5.Probability.landingProbability(global.walk(state.board, 'go', -7), 'go', 1, game), 6 / 36);
+    close(global.AIGen5.Probability.landingProbability('go', global.walk(state.board, 'go', 4), 2, p), 3 / 36 + 1 / 1296);
+    close(global.AIGen5.Probability.aggregateBoardThreat(global.walk(state.board, 'go', 7), p.playerId, 1, state), 12 / 36);
+    assert.deepStrictEqual(global.AIGen5.Analytics.getActivePlayers(p).map(p => p.playerId), ['player-1', 'player-2', 'player-3']);
+    assert.strictEqual(ai.bid('unknown-square', 0), -1);
+    assert.throws(() => global.AIGen5.Probability.landingProbability('go', 'unknown-square', 1, state), RangeError);
+
+    const railroads = view.getGroupSquareIds('railroads');
+    railroads.forEach(id => GameStateContext.setSquareOwner(state, id, p.playerId));
+    assert.strictEqual(global.AIGen5.Valuation.expectedRent(railroads[0], p.playerId, null, state), 200);
+    view.getSquareState(railroads[0]).mortgage = true;
+    assert.deepStrictEqual(await executePlanner(global.AIGen5.DebtManager.planUnmortgage(p, ai.profile, { unmortgageROIThreshold: 0.01 }), game), [railroads[0]]);
+    assert.strictEqual(view.getSquareState(railroads[0]).mortgage, false);
+
+    const sentinel = new global.Gen5AI(p, { name: 'Sentinel' }, {});
+    const opponent = state.player[2];
+    GameStateContext.setSquareOwner(state, first, opponent.playerId);
+    const vetoed = new global.Trade(opponent.playerId, p.playerId, 3000, [], [second], []);
+    assert.strictEqual(sentinel.acceptTrade(vetoed), false, 'defensive veto survives a generous cash offer');
+    assert.ok(sentinel.tradeMemory.records['player-2']);
+
+    const cards = [
+        { cardId: GameStateContext.encodeCardId('chance', 1), direction: 1 },
+        { cardId: GameStateContext.encodeCardId('community-chest', 2), direction: -1 }
+    ];
+    const offer = new global.Trade(opponent.playerId, p.playerId, 25, [first, railroads[0]], [second], cards);
+    const normalized = global.AIGen5.TradeMemory.normalizeIncoming(offer);
+    const signature = global.AIGen5.TradeMemory.createSignature(normalized.property, normalized.money);
+    const reordered = new global.Trade(opponent.playerId, p.playerId, 25, [railroads[0], first], [second], cards);
+    assert.strictEqual(global.AIGen5.TradeMemory.createSignature(global.AIGen5.TradeMemory.normalizeIncoming(reordered).property, -25), signature);
+    const counter = global.AIGen5.counterTrade(offer, 60, { [first]: 1, [railroads[0]]: 1, [second]: -1 });
+    assert.deepStrictEqual(counter.getOfferedSquareIds(), offer.getOfferedSquareIds());
+    assert.deepStrictEqual(counter.getRequestedSquareIds(), offer.getRequestedSquareIds());
+    assert.deepStrictEqual(counter.getHeldCards(), cards, 'counters preserve physical card identity and direction');
+
+    const isolated = fixture(editionId);
+    assert.strictEqual(isolated.view.getSquareOwner(first), null);
+    assert.strictEqual(global.AIGen5.Analytics.countMonopolies(p.playerId, true, isolated.state), 0);
+
+    // Tax hazards use edition economics rather than names or numeric locations.
+    const taxpayer = isolated.state.player[1];
+    taxpayer.money = 1000;
+    taxpayer.squareId = global.walk(isolated.state.board, 'luxury-tax', -7);
+    const luxuryTax = editionId === 'Classic' ? 100 : 75;
+    const cityTaxProbability = global.AIGen5.Probability.landingProbability(taxpayer.squareId, 'city-tax', 1, taxpayer);
+    const expectedReserve = 145 + (luxuryTax / 6 + cityTaxProbability * 200) * (1 + 1 / 6);
+    close(global.AIGen5.Liquidity.computeReserve(taxpayer), expectedReserve);
+
+    const overridden = fixture(editionId, 3, { bailAmount: 500, houseTotal: 4, startSalary: 250 });
+    const jailed = overridden.state.player[1];
+    jailed.money = 400;
+    jailed.jail = true;
+    jailed.jailroll = 1;
+    jailed.squareId = 'jail';
+    const gambler = new global.Gen5AI(jailed, { name: 'Gambler' }, {});
+    assert.strictEqual(gambler.postBail(), false, 'bail decision honors match override');
+    close(global.AIGen5.Valuation.houseBuildFeasibility(overridden.state), 0.4);
+    close(global.AIGen5.Valuation.houseBuildFeasibility(jailed), 0.4);
+    assert.strictEqual(isolated.view.board.rules.bailAmount, 50, 'overrides do not leak');
+
+    const proactive = fixture(editionId);
+    const proposer = proactive.state.player[1];
+    const proactiveAI = new global.Gen5AI(proposer, { name: 'Tactician' }, {});
+    GameStateContext.setSquareOwner(proactive.state, first, proposer.playerId);
+    GameStateContext.setSquareOwner(proactive.state, second, 'player-2');
+    GameStateContext.setSquareOwner(proactive.state, railroads[0], proposer.playerId);
+    let proposal;
+    proactive.game.trade = offer => { proposal = offer; return true; };
+    assert.strictEqual(await executePlanner(proactiveAI.onLand(), proactive.game), false, 'synchronous bot proposal lets the turn continue');
+    assert.ok(proposal instanceof global.Trade);
+    assert.strictEqual(proposal.getInitiator(), 'player-1');
+    assert.strictEqual(proposal.getRecipient(), 'player-2');
+    assert.deepStrictEqual(proposal.getRequestedSquareIds(), [second]);
+    assert.deepStrictEqual(proposal.getOfferedSquareIds(), [railroads[0]]);
+    proactive.game.trade = offer => { proposal = offer; proactive.game.tradeState.pending = true; };
+    proactiveAI.tradeMemory = global.AIGen5.TradeMemory.create();
+    assert.strictEqual(await executePlanner(proactiveAI.onLand(), proactive.game), false, 'planner resumes after the controller resolves the proposal');
+}
+
+// Probability follows the actual linked Board on boards smaller than the built-ins.
+{
+    const board = new global.Board({ editionId: 'Tiny', squares: [
+        { id: 'go', kind: 'go', label: 'GO', presentation: { x: 0, y: 0, rotationDegrees: 0 } },
+        { id: 'jail', kind: 'jail', label: 'Jail', presentation: { x: 50, y: 0, rotationDegrees: 0 } },
+        { id: 'free-parking', kind: 'free-parking', label: 'Parking', presentation: { x: 100, y: 0, rotationDegrees: 0 } }
+    ] });
+    const state = GameStateContext.createState();
+    GameStateContext.initializeBoardState(state, board);
+    assert.ok(Math.abs(global.AIGen5.Probability.landingProbability('go', 'go', 1, state) - 1 / 3) < 1e-10);
+}
+
+// IDs that overlap Object.prototype remain valid Board IDs.
+{
+    const board = new global.Board({ editionId: 'PrototypeIds',
+        groups: [{ id: 'streets', label: 'Streets', color: '#123456' }],
+        squares: [
+            { id: 'go', kind: 'go', label: 'GO', presentation: { x: 0, y: 0, rotationDegrees: 0 } },
+            { id: 'constructor', kind: 'street', label: 'Constructor', group: 'streets',
+                price: 60, rent: [2, 10, 30, 90, 160, 250], houseCost: 50,
+                presentation: { x: 50, y: 0, rotationDegrees: 0 } },
+            { id: 'other-street', kind: 'street', label: 'Other', group: 'streets',
+                price: 60, rent: [2, 10, 30, 90, 160, 250], houseCost: 50,
+                presentation: { x: 100, y: 0, rotationDegrees: 0 } }
+        ] });
+    const state = GameStateContext.createState();
+    GameStateContext.initializeBoardState(state, board);
+    for (const from of ['go', 'constructor', 'other-street']) {
+        for (const target of ['go', 'constructor', 'other-street']) {
+            assert.ok(Math.abs(global.AIGen5.Probability.landingProbability(from, target, 2, state) - 5 / 9) < 1e-10,
+                'two rolls on a three-square Board must have finite, correct probability');
+        }
     }
-};
-var monopolyEval = TradeEvaluation.evaluate(monopolyTrade, globalThis.player[1], balancedProfile);
-assert.ok(monopolyEval.monopolyEnablementRisk > 120, 'granting an opponent a complete monopoly should trigger a steep penalty for all Gen5 personalities');
-
-// Defensive profile detection, multi-monopoly counting, and real-time build threat ---
-if (typeof globalThis.Trade === 'undefined') {
-    globalThis.Trade = function(initiator, recipient, money, property, communityChestJailCard, chanceJailCard) {
-        this.getInitiator = function() { return initiator; };
-        this.getRecipient = function() { return recipient; };
-        this.getMoney = function() { return money; };
-        this.getProperty = function(index) { return property[index] || 0; };
-        this.getCommunityChestJailCard = function() { return communityChestJailCard || 0; };
-        this.getChanceJailCard = function() { return chanceJailCard || 0; };
-    };
+    state.players = [{ playerId: 'player-1' }, { playerId: 'player-2' }];
+    GameStateContext.setSquareOwner(state, 'constructor', 'player-1');
+    const valuation = global.AIGen5.Valuation;
+    assert.strictEqual(valuation.propertyOwner('constructor', {}, state), 'player-1');
+    assert.strictEqual(valuation.propertyOwner('constructor', Object.create({ constructor: 'player-2' }), state), 'player-1');
+    assert.strictEqual(valuation.groupScore('constructor', 'player-1', { 'other-street': 'player-1' }, state), 80);
+    assert.strictEqual(valuation.propertyOwner('constructor', { constructor: null }, state), null);
+    assert.strictEqual(valuation.propertyOwner('constructor', { constructor: 'player-2' }, state), 'player-2');
+    const trade = new global.Trade('player-1', 'player-2', 0, ['constructor'], ['other-street'], []);
+    const normalized = global.AIGen5.TradeMemory.normalizeIncoming(trade);
+    assert.strictEqual(normalized.property.constructor, -1);
+    assert.ok(global.AIGen5.TradeMemory.createSignature(normalized.property, 0).includes('constructor'));
 }
 
-// Trait-based defensive profile detection
-const sentinelProfile = PROFILE_LIBRARY.filter(function(p) { return p.name === 'Sentinel'; })[0];
-const gamblerProfile = PROFILE_LIBRARY.filter(function(p) { return p.name === 'Gambler'; })[0];
-assert.strictEqual(Gen5AI.isDefensiveProfile(sentinelProfile), true, 'Sentinel should be identified as defensive');
-assert.strictEqual(Gen5AI.isDefensiveProfile({ riskTolerance: 0.35, liquidityFloor: 0.15 }), true, 'Profile with low riskTolerance should be defensive');
-assert.strictEqual(Gen5AI.isDefensiveProfile({ isDefensive: true }), true, 'Explicitly tagged defensive profile should be defensive');
-assert.strictEqual(Gen5AI.isDefensiveProfile(gamblerProfile), false, 'Gambler should not be classified as defensive');
-
-// Multi-monopoly counting (not collapsing multi-monopolies into unique owners)
-globalThis.square[1] = { index: 1, owner: 2, mortgage: false, house: 0, hotel: 0, group: [1, 3], price: 60, baserent: 2, houseprice: 50 };
-globalThis.square[3] = { index: 3, owner: 2, mortgage: false, house: 0, hotel: 0, group: [1, 3], price: 60, baserent: 4, houseprice: 50 };
-globalThis.square[21].owner = 2;
-globalThis.square[23].owner = 2;
-globalThis.square[24].owner = 2;
-assert.strictEqual(Analytics.countMonopolies(2, true, fixtureState), 2, 'player 2 should be credited with exactly 2 distinct buildable monopolies');
-assert.strictEqual(Analytics.countBoardMonopolies(true, fixtureState), 2, 'board should count 2 distinct monopolies even if owned by same player');
-
-// Real-time build threat scenario: Exact user scenario where (Sentinel) must decline Red Bot's monopoly trade
-// Setup board state
-// Red group: Kentucky (21), Indiana (23), Illinois (24)
-globalThis.square[21] = { index: 21, name: 'Kentucky Avenue', owner: 1, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 220, baserent: 18, houseprice: 150, rent1: 90, rent2: 250, rent3: 700, rent4: 875, rent5: 1050 };
-globalThis.square[23] = { index: 23, name: 'Indiana Avenue', owner: 3, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 220, baserent: 18, houseprice: 150, rent1: 90, rent2: 250, rent3: 700, rent4: 875, rent5: 1050 };
-globalThis.square[24] = { index: 24, name: 'Illinois Avenue', owner: 1, mortgage: false, house: 0, hotel: 0, group: [21, 23, 24], price: 240, baserent: 20, houseprice: 150, rent1: 100, rent2: 300, rent3: 750, rent4: 925, rent5: 1100 };
-globalThis.square[28] = { index: 28, name: 'Water Works', owner: 1, mortgage: false, house: 0, hotel: 0, group: [12, 28], price: 150, baserent: 4, houseprice: 0 };
-
-const redBot = globalThis.player[1];
-redBot.money = 547; // Excess cash after buying Kentucky
-redBot.position = 21;
-
-const limeBot = globalThis.player[3];
-limeBot.money = 900;
-limeBot.position = 10;
-
-// Bot proposes trade: offers Water Works (28) + $217 cash to Lime Bot for Indiana Avenue (23)
-const promptTradeProps = [];
-for (let pIdx = 0; pIdx < 40; pIdx++) promptTradeProps[pIdx] = 0;
-promptTradeProps[28] = 1;  // Red gives Water Works
-promptTradeProps[23] = -1; // Red requests Indiana Avenue
-const promptTrade = new globalThis.Trade(redBot, limeBot, 217, promptTradeProps, 0, 0);
-
-const limeSentinelAI = new Gen5AI(limeBot, { name: 'Sentinel' });
-const sentinelDecision = limeSentinelAI.acceptTrade(promptTrade);
-assert.strictEqual(sentinelDecision, false, 'Lime Bot (Sentinel) MUST decline giving Red Bot a monopoly');
-
-// Even a non-defensive AI should NOT accept this trade as proposed
-const limeGamblerAI = new Gen5AI(limeBot, { name: 'Gambler' });
-const gamblerDecision = limeGamblerAI.acceptTrade(promptTrade);
-assert.notStrictEqual(gamblerDecision, true, 'Even Gambler AI should not accept giving Red Bot an unmitigated sole monopoly');
-
-// Proactive trade generation must not offer an opponent a dangerous completed monopoly
-globalThis.square[31] = { index: 31, name: 'Pacific Avenue', owner: 3, mortgage: false, house: 0, hotel: 0, group: [31, 32, 34], price: 300, baserent: 26, houseprice: 200, rent3: 900 };
-globalThis.square[32] = { index: 32, name: 'North Carolina Avenue', owner: 4, mortgage: false, house: 0, hotel: 0, group: [31, 32, 34], price: 300, baserent: 26, houseprice: 200, rent3: 900 };
-globalThis.square[34] = { index: 34, name: 'Pennsylvania Avenue', owner: 4, mortgage: false, house: 0, hotel: 0, group: [31, 32, 34], price: 320, baserent: 28, houseprice: 200, rent3: 1000 };
-// Opponent 4 already owns 32 and 34. Offering 31 to opponent 4 would grant them the Green monopoly.
-// Lime Bot (3) owns 31 and wants to complete the Pink group from opponent 4 (who holds Virginia Ave 14).
-limeBot.money = 2000;
-globalThis.player[4].money = 2500;
-globalThis.square[11] = { index: 11, owner: 3, mortgage: false, house: 0, hotel: 0, group: [11, 13, 14], price: 140, baserent: 10, houseprice: 100, rent3: 450 };
-globalThis.square[13] = { index: 13, owner: 3, mortgage: false, house: 0, hotel: 0, group: [11, 13, 14], price: 140, baserent: 10, houseprice: 100, rent3: 450 };
-globalThis.square[14] = { index: 14, owner: 4, mortgage: false, house: 0, hotel: 0, group: [11, 13, 14], price: 160, baserent: 12, houseprice: 100, rent3: 500 };
-// If AI offers 31 (Green, rent3=900) to get 14 (Pink, rent3=500), it should be refused because Green monopoly is more dangerous!
-const foundOpportunity = TradeEvaluation.findOpportunity(limeBot, sentinelProfile);
-assert.ok(!foundOpportunity || foundOpportunity.offerIndex !== 31, 'findOpportunity must never propose giving away Pacific Ave to complete opponent 4 green monopoly');
-
-// --- 9. Human-like Negotiation, Bad-Faith Regression & Stagnation Deadlock Breaker ---
-// 9a. Overshoot counteroffer on deep deficit when opponent has funds
-const tacticianProfile = PROFILE_LIBRARY.filter(function(p) { return p.name === 'Tactician'; })[0];
-const tacticianBot = globalThis.player[2];
-tacticianBot.money = 1500;
-tacticianBot.position = 0;
-const tacticianAI = new Gen5AI(tacticianBot, tacticianProfile);
-
-// Human offers $10 for Virginia Avenue (index 14, owned by Tactician Bot 2)
-globalThis.square[14].owner = 2;
-const humanPlayer = globalThis.player[4];
-humanPlayer.money = 1200; // Human has plenty of money
-
-const lowballProps = [];
-for (let lp = 0; lp < 40; lp++) lowballProps[lp] = 0;
-lowballProps[14] = -1; // Tactician gives up 14
-const lowballTrade = new globalThis.Trade(humanPlayer, tacticianBot, 10, lowballProps, 0, 0);
-
-// With the old logic, this -$150 deficit would be instantly declined without countering.
-// With the new logic, Tactician counters with an overshoot target demanding favor!
-const counterResponse1 = tacticianAI.acceptTrade(lowballTrade);
-assert.ok(counterResponse1 instanceof globalThis.Trade, 'Tactician should counteroffer (not flat decline) when opponent has funds to negotiate');
-assert.ok(counterResponse1.getMoney() > 100, 'Counteroffer should demand an overshoot favoring the AI');
-
-// 9b. Bad-faith regression detection: opponent worsens offer
-const regressedTrade = new globalThis.Trade(humanPlayer, tacticianBot, 5, lowballProps, 0, 0); // worsened from $10 to $5
-const regressionDecision = tacticianAI.acceptTrade(regressedTrade);
-assert.strictEqual(regressionDecision, false, 'Tactician should outright decline a bad-faith regressed offer');
-
-// 9c. Final squeeze on acceptable offers
-// Create an offer that meets the minimum threshold
-const generousTrade = new globalThis.Trade(humanPlayer, tacticianBot, 350, lowballProps, 0, 0);
-const squeezeDecision = tacticianAI.acceptTrade(generousTrade);
-// Should try one last squeeze counter for a slight sweetening bonus
-assert.ok(squeezeDecision instanceof globalThis.Trade, 'AI should attempt one final squeeze counter on an acceptable offer when opponent has surplus cash');
-assert.ok(squeezeDecision.getMoney() > 350, 'Squeeze counter should ask slightly more than the offered amount');
-
-// 9d. Stagnation factor and deadlock breaker
-// Simulate deadlocked board: all buildable monopolies count = 0, turn count high, few unowned properties
-// Reset owners across groups so that no color monopoly is complete
-for (let sIdx = 0; sIdx < 40; sIdx++) {
-    if (globalThis.square[sIdx] && globalThis.square[sIdx].price > 0) {
-        // Distribute owners 1, 2, 3 so no group is held by a single player
-        globalThis.square[sIdx].owner = (sIdx % 3) + 1;
+// Seeded policy generation uses only the supplied RNG and history.
+{
+    const generator = global.AIGen5.ParameterGenerator;
+    const savedStorage = global.GameStorage;
+    const savedNormal = global.normal;
+    const savedRandom = Math.random;
+    try {
+        global.GameStorage = { getHistory() { throw new Error('ambient history accessed'); } };
+        global.normal = () => { throw new Error('ambient normal accessed'); };
+        Math.random = () => { throw new Error('ambient RNG accessed'); };
+        const defaults = generator.generate({ random: randomFrom(1), history: [] });
+        assert.deepStrictEqual(generator.generate({ random: randomFrom(1), history: [] }), defaults);
+        const winningParams = Object.fromEntries(Object.entries(generator.PARAM_SPEC).map(([key, spec]) => [key, spec.max]));
+        const history = [[{ type: 'gen5', result: 'win', params: winningParams },
+            { type: 'gen5', result: 'win', params: winningParams }]];
+        const learned = generator.generate({ random: randomFrom(1), history });
+        assert.deepStrictEqual(generator.generate({ random: randomFrom(1), history }), learned);
+        assert.notDeepStrictEqual(learned, defaults, 'explicit winning history affects policy generation');
+        assert.notDeepStrictEqual(generator.generate({ random: randomFrom(54321), history: [] }), defaults);
+    } finally {
+        global.GameStorage = savedStorage;
+        global.normal = savedNormal;
+        Math.random = savedRandom;
     }
 }
 
-const stagnantFactor = Analytics.getStagnationFactor(tacticianBot, 20); // Turn 20, zero monopolies, 0 unowned
-assert.ok(stagnantFactor > 0.6, 'Stagnation factor should be > 0.6 when many laps pass with no monopolies and all properties claimed');
+console.log('Gen5 structured Classic/NYC decision and strategy regression fixtures passed.');
 
-// Under high stagnation (> 0.6), mutual monopoly swaps with modest rent variance are accepted
-const highStagnationOpportunity = TradeEvaluation.findOpportunity(limeBot, tacticianProfile, 20);
-// Verifies findOpportunity executes cleanly under stagnation context
-assert.ok(highStagnationOpportunity !== undefined, 'findOpportunity should handle high stagnation context gracefully');
-
-// --- 10. Realism Upgrades: Stress Liquidity, Tendency, Future Buildability, Blocking & Deadlock ---
-// 10a. True Reserve, Emergency Liquidity & Jail Mitigation
-globalThis.square[10] = { index: 10, owner: 6, mortgage: false, house: 5, hotel: 1, baserent: 20, houseprice: 200, rent5: 1050 };
-const testPlayer = attachFixturePlayer({ index: 5, money: 800, position: 0, jail: false, jailroll: 0 });
-globalThis.square[4] = { index: 4, name: 'City Tax', price: 0, group: null, baserent: 0, houseprice: 0 };
-const normalReserve = Liquidity.computeReserve(testPlayer, balancedProfile);
-testPlayer.jail = true;
-testPlayer.jailroll = 0;
-const jailedReserve = Liquidity.computeReserve(testPlayer, balancedProfile);
-testPlayer.jail = false;
-assert.ok(jailedReserve < normalReserve, 'in-jail player should have mitigated near-term landing exposure');
-
-globalThis.square[5] = { index: 5, owner: 5, mortgage: false, price: 200, houseprice: 0, house: 0, hotel: 0 };
-globalThis.square[6] = { index: 6, owner: 5, mortgage: false, price: 100, houseprice: 50, house: 2, hotel: 0 };
-const liq = Liquidity.emergencyLiquidity(testPlayer);
-assert.strictEqual(liq.propertyEquity, 200, 'emergency equity should equal unmortgaged property 50% value + 50% house value');
-assert.strictEqual(liq.total, 1000, 'total liquidity should equal cash plus property equity');
-assert.ok(Liquidity.surplusCash(testPlayer, balancedProfile) > 0, 'surplusCash should measure cash above reserve');
-
-// 10b. Opponent Reputation Ledger, Hostility & Tendency Classification
-const repLedger = TradeMemory.create();
-const opp5 = { index: 5, money: 50, name: 'Broke Bot' };
-const oppTendencyDesperate = repLedger.getOpponentTendency(5, opp5);
-assert.strictEqual(oppTendencyDesperate, 'Desperate', 'low-cash opponent near bankruptcy should be classified as Desperate');
-
-repLedger.recordBadFaith(7);
-repLedger.recordBadFaith(7);
-const oppTendencyRevengeful = repLedger.getOpponentTendency(7, globalThis.player[7]);
-assert.strictEqual(oppTendencyRevengeful, 'Revengeful', 'opponent with repeated bad faith regressions should be classified as Revengeful');
-assert.ok(repLedger.getFrictionPenalty(7) > 10, 'hostile opponent should incur positive social friction penalty');
-
-// 10c. 2-4 Turn Future Buildability & Monopoly Threat Acceleration
-globalThis.square[21].owner = 6;
-globalThis.square[23].owner = 6;
-globalThis.square[24].owner = 6;
-globalThis.player[6].money = 2500;
-const futureBuildLeader = Analytics.projectedFutureBuildability(globalThis.player[6], 21, 2500, 3);
-assert.strictEqual(futureBuildLeader.reachesThreeHouses, true, 'wealthy opponent with color monopoly should reach 3-house inflection within 3 turns');
-
-const futureRisk = Analytics.monopolyRisk(21, 6, 2500, fixtureState);
-assert.ok(futureRisk > 2.0, 'monopolyRisk should be significantly elevated when opponent can build to 3 houses');
-
-// 10d. Strategic Lane Blocking & Tempo Scoring
-globalThis.square[15] = { index: 15, owner: 2, group: [5, 15, 25, 35] };
-globalThis.square[25] = { index: 25, owner: 2, group: [5, 15, 25, 35] };
-globalThis.square[35] = { index: 35, owner: 1, group: [5, 15, 25, 35] };
-const rrBlocking = Valuation.strategicBlockingValue(35, 1, 2, fixtureState);
-assert.ok(rrBlocking >= 50, 'holding 3rd railroad should carry substantial strategic blocking value');
-
-globalThis.square[21].house = 3;
-globalThis.square[23].house = 3;
-globalThis.square[24].house = 3;
-const tempo3Houses = Valuation.tempoScore(globalThis.player[6]);
-assert.ok(tempo3Houses >= 80, 'monopoly with 3 houses should yield high tempo score');
-
-// 10e. Deadlock Polarity (Asymmetric Lead vs Symmetrical Deadlock)
-for (let sIdx = 0; sIdx < 40; sIdx++) {
-    if (globalThis.square[sIdx] && globalThis.square[sIdx].price > 0) {
-        globalThis.square[sIdx].owner = (sIdx % 3) + 1;
-        globalThis.square[sIdx].house = 0;
-        globalThis.square[sIdx].hotel = 0;
-    }
 }
-const richPlayer = attachFixturePlayer({ index: 1, money: 3500, AI: { turnNumber: 20 } });
-const poorPlayer = attachFixturePlayer({ index: 2, money: 500, AI: { turnNumber: 20 } });
-const leaderDeadlock = Analytics.getDeadlockState(richPlayer, poorPlayer, 20);
-assert.strictEqual(leaderDeadlock.mode, 'AsymmetricLead', 'wealthier player should be in AsymmetricLead deadlock state');
-assert.strictEqual(leaderDeadlock.isLeader, true, 'isLeader should be true in AsymmetricLead');
-
-const equalPlayer1 = attachFixturePlayer({ index: 1, money: 1000, AI: { turnNumber: 20 } });
-const equalPlayer2 = attachFixturePlayer({ index: 2, money: 1000, AI: { turnNumber: 20 } });
-const symDeadlock = Analytics.getDeadlockState(equalPlayer1, equalPlayer2, 20);
-assert.strictEqual(symDeadlock.mode, 'SymmetricalDeadlock', 'equally positioned players should be in SymmetricalDeadlock');
-
-// --- Smoke test: Gen5AI wires up all 7 required hooks ---------------------------------------
-const gen5Instance = new Gen5AI(globalThis.player[1], { name: 'Tactician' });
-['buyProperty', 'beforeTurn', 'onLand', 'acceptTrade', 'postBail', 'payDebt', 'bid'].forEach(function(hook) {
-    assert.strictEqual(typeof gen5Instance[hook], 'function', 'Gen5AI should expose ' + hook);
-});
-assert.strictEqual(gen5Instance.personality, 'Tactician', 'profile selection should be honored');
-
-console.log('gen5 AI tests passed');
+runPolicyTests().catch(error => { console.error(error); process.exitCode = 1; });

@@ -22,10 +22,9 @@
 	};
 
 	BrowserUI.prototype.alert = function(text, playerIndex, secondPlayerIndex) {
-		if (typeof global.addAlert === 'function') {
-			if (this.game) global.addAlert(text, playerIndex, secondPlayerIndex, this.game);
-			else global.addAlert(text, playerIndex, secondPlayerIndex);
-		} else if (typeof global.$ !== 'undefined' && global.$('#alert').length) {
+		if (typeof global.addAlert === 'function' && this.game) {
+			global.addAlert(text, playerIndex, secondPlayerIndex, this.game);
+		} else if (this.game && typeof global.$ !== 'undefined' && global.$('#alert').length) {
 			var $alert = global.$('#alert');
 			var state = this.game && this.game.state;
 			var pIdx = playerIndex !== undefined && playerIndex !== null ? playerIndex : (state ? state.turn : 0);
@@ -45,75 +44,88 @@
 	};
 
 	BrowserUI.prototype.updateMoney = function() {
-		if (typeof global.updateMoney === 'function') {
-			if (this.game) global.updateMoney(this.game);
-			else global.updateMoney();
-		}
+		if (this.game && typeof global.updateMoney === 'function') global.updateMoney(this.game);
 	};
 
 	BrowserUI.prototype.updatePosition = function() {
-		if (typeof global.updatePosition === 'function') {
-			return this.game ? global.updatePosition(this.game) : global.updatePosition();
-		}
+		if (this.game && typeof global.updatePosition === 'function') return global.updatePosition(this.game);
 		return Promise.resolve();
 	};
 
 	BrowserUI.prototype.updateOwned = function() {
-		if (typeof global.updateOwned === 'function') {
-			if (this.game) global.updateOwned(this.game);
-			else global.updateOwned();
-		}
+		if (this.game && typeof global.updateOwned === 'function') global.updateOwned(this.game);
 	};
 
 	BrowserUI.prototype.updateDice = function(die1, die2) {
-		if (typeof global.updateDice === 'function') {
-			if (this.game) global.updateDice(this.game, die1, die2);
-			else global.updateDice(die1, die2);
-		}
+		if (this.game && typeof global.updateDice === 'function') global.updateDice(this.game, die1, die2);
 	};
 
 	BrowserUI.prototype.updateFreeParking = function() {
-		if (typeof global.updateFreeParkingDisplay === 'function') {
-			if (this.game) global.updateFreeParkingDisplay(this.game);
-			else global.updateFreeParkingDisplay();
-		}
+		if (this.game && typeof global.updateFreeParkingDisplay === 'function') global.updateFreeParkingDisplay(this.game);
 	};
 
 	BrowserUI.prototype.updateDrawnCard = function(deckType, cardIndex) {
-		if (typeof global.updateDrawnCard === 'function') {
-			return this.game
-				? global.updateDrawnCard(deckType, cardIndex, this.game)
-				: global.updateDrawnCard(deckType, cardIndex);
-		}
+		if (this.game && typeof global.updateDrawnCard === 'function') return global.updateDrawnCard(deckType, cardIndex, this.game);
 		return Promise.resolve();
 	};
 
 	BrowserUI.prototype.popup = function(html, action, option, timer) {
-		if (typeof global.popup === 'function') {
-			return global.popup(html, action, option, timer, this.game);
-		}
+		if (this.game && typeof global.popup === 'function') return global.popup(html, action, option, timer, this.game);
 		if (typeof action === 'function') action();
 		return Promise.resolve();
 	};
 
 	BrowserUI.prototype.openAuction = function(propertyIndex, property, currentPlayer) {
-		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input id='auction-bid-button' type='button' value='Bid' title='Place your bid.' /><input id='auction-pass-button' type='button' value='Pass' title='Skip bidding this time.' /><input id='auction-exit-button' type='button' value='Exit Auction' title='Stop bidding on the property altogether.' /></div>";
+		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input id='auction-bid-button' type='button' value='Bid' title='Place your bid.' /><input id='auction-pass-button' type='button' value='Pass' title='Withdraw from bidding on this property.' /><input id='auction-exit-button' type='button' value='Exit Auction' title='Stop bidding on the property altogether.' /></div>";
 		this.popup(html, 'blank');
-		var game = this.game;
+		var thisUI = this;
 		[
 			['auction-bid-button', 'auctionBid'],
 			['auction-pass-button', 'auctionPass'],
 			['auction-exit-button', 'auctionExit']
 		].forEach(function(binding) {
 			var button = document.getElementById(binding[0]);
-			if (button && game && typeof game[binding[1]] === 'function') {
-				button.addEventListener('click', function() { game[binding[1]](); });
+			if (button && thisUI.game) {
+                button.addEventListener('click', function() { thisUI.game.submitPlayerAction(binding[1] === 'auctionBid' ? { type: 'auctionBid', amount: thisUI.readAuctionBid() } : { type: binding[1] }); });
 			}
 		});
 		this.initializeAuction(propertyIndex, property, currentPlayer);
 		this.onAuctionParticipants();
 		this.updateMoney();
 	};
+
+    BrowserUI.prototype.editTrade = function() {
+        var state = this.game.state, initiator = state.player[state.turn];
+        var controller = this.game.controllers.get(initiator.playerId);
+        if (!controller || !controller.pending || !['turn','purchase','debt'].includes(controller.pending.request.kind)) return;
+        var recipient = GameStateContext.getActivePlayers(state).find(function(p) { return p !== initiator; });
+        if (!recipient) return;
+        this.resetTradeView(initiator, recipient, true); this.setTradePanelVisible(true); this.setTradeButtons(true, false);
+    };
+    BrowserUI.prototype.submitTrade = function() {
+        var fields = this.readTradeMoneyFields();
+        for (var side of ['left','right']) {
+            if (!Number.isInteger(Number(fields[side])) || Number(fields[side]) < 0) { this.setTradeMoneyError(side, 'Enter a nonnegative whole dollar amount.'); return false; }
+        }
+        var offer = this.readTradeView(), game = this.game;
+        var controller = Array.from(game.controllers.values()).find(function(c) { return c.pending; });
+        if (!controller) return false;
+        var action = { type: controller.pending.request.kind === 'trade' ? 'counterTrade' : 'proposeTrade', offer: offer };
+        if (action.type === 'counterTrade') action.offer = game.reverseTrade(offer);
+        this.confirm('Propose this exchange?', function() {
+            if (game.submitPlayerAction(action)) game.ui.setTradePanelVisible(false);
+        });
+    };
+    BrowserUI.prototype.acceptTrade = function() { return this.game.submitPlayerAction({ type: 'acceptTrade' }); };
+    BrowserUI.prototype.cancelTrade = function() {
+        var controller = Array.from(this.game.controllers.values()).find(function(c) { return c.pending; });
+        this.setTradePanelVisible(false);
+        return controller && controller.pending.request.kind === 'trade' ? this.game.submitPlayerAction({ type: 'rejectTrade' }) : false;
+    };
+    BrowserUI.prototype.resign = function() {
+        var game = this.game;
+        this.confirm('Are you sure you want to resign?', function() { game.submitPlayerAction({ type: 'resign' }); });
+    };
 
 	BrowserUI.prototype.showMessage = function(message, action, option, timer) {
 		return this.popup('<p>' + UIHtml.escapeHTML(message) + '</p>', action, option, timer);
@@ -154,7 +166,7 @@
 		var icon = deck ? deck.icon : '';
 		var title = deck ? deck.label : deckId;
 		var html = "<img src='" + UIHtml.escapeHTML(icon) + "' alt='' style='height: 50px; float: left; margin: 8px 8px 0px 0px;' /><div class='drawn-card-title'>" + UIHtml.escapeHTML(title) + "</div><div class='drawn-card-text'>" + UIHtml.escapeHTML(text) + '</div>';
-		return this.popup(html, action);
+		return this.popup(html, action, undefined, 0);
 	};
 
 	BrowserUI.prototype.showTradeResult = function(label, trade) {
@@ -163,17 +175,18 @@
 
 	BrowserUI.prototype.showBankruptcyUnmortgage = function(creditorName, properties, onUnmortgage, onComplete) {
 		var rows = properties.map(function(property) {
-			var border = property.groupNumber === 1 || property.groupNumber === 2 ? 'grey' : property.color;
-			return "<tr data-unmortgage-row='" + property.index + "'><td class='propertycellcolor' style='background: " + UIHtml.escapeHTML(property.color) + '; border: 1px solid ' + UIHtml.escapeHTML(border) + "'></td><td class='propertycellname'>" + UIHtml.escapeHTML(property.name) + "</td><td><button type='button' data-unmortgage-index='" + property.index + "' title='Unmortgage for $" + property.price + "'>Unmortgage ($" + property.price + ")</button></td></tr>";
+			var border = property.kind === 'railroad' || property.kind === 'utility' ? 'grey' : property.color;
+			var squareId = UIHtml.escapeHTML(property.squareId);
+			return "<tr data-unmortgage-row='" + squareId + "'><td class='propertycellcolor' style='background: " + UIHtml.escapeHTML(property.color) + '; border: 1px solid ' + UIHtml.escapeHTML(border) + "'></td><td class='propertycellname'>" + UIHtml.escapeHTML(property.name) + "</td><td><button type='button' data-unmortgage-square-id='" + squareId + "' title='Unmortgage for $" + property.price + "'>Unmortgage ($" + property.price + ")</button></td></tr>";
 		}).join('');
 		var html = '<p>' + UIHtml.escapeHTML(creditorName) + ', you may unmortgage any of the following properties, interest free. Click OK when finished.</p><table>' + rows + '</table>';
 		this.popup(html, onComplete, 0);
 		if (typeof document === 'undefined') return;
-		document.querySelectorAll('[data-unmortgage-index]').forEach(function(button) {
+		document.querySelectorAll('[data-unmortgage-square-id]').forEach(function(button) {
 			button.addEventListener('click', function() {
-				var propertyIndex = parseInt(this.getAttribute('data-unmortgage-index'), 10);
-				if (onUnmortgage(propertyIndex)) {
-					var row = document.querySelector("[data-unmortgage-row='" + propertyIndex + "']");
+				var squareId = this.getAttribute('data-unmortgage-square-id');
+				if (onUnmortgage(squareId)) {
+					var row = document.querySelector("[data-unmortgage-row='" + squareId + "']");
 					if (row) row.style.display = 'none';
 				}
 			});
@@ -188,7 +201,8 @@
 
 	BrowserUI.prototype.onHouseChanged = function(propertyIndex, houseCount, hotelCount) {
 		if (typeof document === 'undefined') return;
-		var cellOwner = document.getElementById('cell' + propertyIndex + 'owner');
+		var cell = document.querySelector('[data-square-id="' + propertyIndex + '"]');
+		var cellOwner = cell && cell.querySelector('[data-square-owner]');
 		if (!cellOwner) return;
 		if (hotelCount === 1) {
 			cellOwner.innerHTML = '<div class="cell-position cell-hotel" title="hotel" style="display: inline-block;background-color: red; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
@@ -205,7 +219,7 @@
 
 	BrowserUI.prototype.onMortgageChanged = function(propertyIndex, isMortgaged) {
 		if (typeof document === 'undefined') return;
-		var cell = document.querySelector('#cell' + propertyIndex);
+		var cell = document.querySelector('[data-square-id="' + propertyIndex + '"]');
 		if (cell) {
 			if (isMortgaged) cell.classList.add('mortgaged');
 			else cell.classList.remove('mortgaged');
@@ -244,12 +258,12 @@
 		if (!participants || !state || !Array.isArray(state.player)) return;
 		participants.innerHTML = state.player.slice(1, state.pcount + 1).map(function(p) {
 			var status = p.auctionStatus || (p.bidding ? 'Bidding' : 'Out');
-			return "<div class='auction-participant' data-player-index='" + p.index + "'><span class='auction-player-name'><span class='auction-player-swatch' style='background-color: " + UIHtml.escapeHTML(p.color) + ";'></span>" + UIHtml.escapeHTML(p.name) + "</span><span class='auction-status auction-status-" + status.toLowerCase() + "'>" + status + "</span></div>";
+			return "<div class='auction-participant' data-player-id='" + UIHtml.escapeHTML(p.playerId) + "'><span class='auction-player-name'><span class='auction-player-swatch' style='background-color: " + UIHtml.escapeHTML(p.color) + ";'></span>" + UIHtml.escapeHTML(p.name) + "</span><span class='auction-status auction-status-" + status.toLowerCase() + "'>" + status + "</span></div>";
 		}).join('');
-		var game = this.game;
+		var thisUI = this;
 		participants.querySelectorAll('.auction-participant').forEach(function(item) {
 			item.addEventListener('mouseenter', function(event) {
-				if (typeof global.showAuctionPlayerStats === 'function') global.showAuctionPlayerStats(parseInt(this.getAttribute('data-player-index'), 10), event, game);
+				if (typeof global.showAuctionPlayerStats === 'function') global.showAuctionPlayerStats(this.getAttribute('data-player-id'), event, thisUI.game);
 			});
 			item.addEventListener('mousemove', function(event) {
 				if (typeof global.positionAuctionPlayerStats === 'function') global.positionAuctionPlayerStats(event);
@@ -267,7 +281,9 @@
 		var highestBidder = document.getElementById('highestbidder');
 		var bidInput = document.getElementById('bid');
 		if (!propertyName || !highestBid || !highestBidder || !bidInput) return;
-		propertyName.innerHTML = "<a href='javascript:void(0);' onmouseover='showdeed(" + propertyIndex + ");' onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(property.name) + "</a>";
+		if (!property || !property.presentation || !property.rules) throw new TypeError('Auction display requires a structured Board square.');
+		var propertyNameText = property.presentation.label;
+		propertyName.innerHTML = "<a href='javascript:void(0);' onmouseover=\"showdeed('" + UIHtml.escapeHTML(propertyIndex) + "')\" onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(propertyNameText) + "</a>";
 		highestBid.textContent = '0';
 		highestBidder.textContent = 'N/A';
 		this.updateAuctionTurn(currentPlayer.name, false);
@@ -275,7 +291,7 @@
 		bidInput.onkeydown = function(event) {
 			var key = event.keyCode;
 			if (key === 13) {
-				if (thisUI.game) thisUI.game.auctionBid();
+				if (thisUI.game) thisUI.game.submitPlayerAction({ type: 'auctionBid', amount: thisUI.readAuctionBid() });
 				return false;
 			}
 			if (key === 8 || key === 9 || key === 46 || (key >= 35 && key <= 40) || event.ctrlKey) return true;
@@ -302,7 +318,7 @@
 	BrowserUI.prototype.readAuctionBid = function() {
 		if (typeof document === 'undefined') return 0;
 		var bidInput = document.getElementById('bid');
-		return bidInput ? parseInt(bidInput.value, 10) : 0;
+		return bidInput ? Number(bidInput.value) : 0;
 	};
 
 	BrowserUI.prototype.setAuctionBidError = function(message) {
@@ -339,6 +355,8 @@
 		});
 	};
 
+    BrowserUI.prototype.closeDecisionPopup = function() { this.closeAuction(); };
+
 	BrowserUI.prototype.displayLanded = function(text) {
 		if (typeof document === 'undefined') return;
 		var el = document.getElementById('landed');
@@ -352,11 +370,16 @@
 		if (typeof document === 'undefined') return;
 		var el = document.getElementById('landed');
 		if (!el) return;
-		el.innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover='showdeed(" + propertyIndex + ");' onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(property.name) + "</a>.<input type='button' id='buypropertybutton' value='Buy ($" + property.price + ")' title='Buy " + UIHtml.escapeHTML(property.name) + " for " + UIHtml.escapeHTML(property.pricetext) + ".'/></div>";
+		var squareId = propertyIndex;
+		if (!property || !property.presentation || !property.rules) throw new TypeError('Purchase display requires a structured Board square.');
+		var name = property.presentation.label;
+		var price = property.rules.purchasePrice;
+		var priceText = property.presentation.priceText;
+		el.innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover=\"showdeed('" + UIHtml.escapeHTML(squareId) + "')\" onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(name) + "</a>.<input type='button' id='buypropertybutton' value='Buy ($" + price + ")' title='Buy " + UIHtml.escapeHTML(name) + " for " + UIHtml.escapeHTML(priceText || '') + ".'/></div>";
 		var buyButton = document.getElementById('buypropertybutton');
-		if (buyButton && this.game && typeof this.game.buy === 'function') {
+		if (buyButton && this.game && typeof this.game.submitPlayerAction === 'function') {
 			var game = this.game;
-			buyButton.addEventListener('click', function() { game.buy(); });
+			buyButton.addEventListener('click', function() { game.submitPlayerAction({ type: 'buy', squareId: squareId }); });
 		}
 		el.style.display = '';
 		if (typeof global.$ !== 'undefined') global.$('#landed').show();
@@ -377,10 +400,11 @@
 		}
 	};
 
-	BrowserUI.prototype.removePlayerToken = function(playerIndex) {
+	BrowserUI.prototype.removePlayerToken = function(playerId) {
 		var overlays = this.game && this.game.state.playerOverlays;
-		var overlay = overlays && overlays[playerIndex];
+		var overlay = overlays && overlays[playerId];
 		if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+		if (overlays) delete overlays[playerId];
 	};
 
 	BrowserUI.prototype.onPlayerCountChanged = function(playerCount) {
@@ -431,12 +455,12 @@
 		landed.innerHTML = html;
 		var game = this.game;
 		var payFineButton = document.getElementById('pay-fine-button');
-		if (payFineButton && game && typeof game.payBail === 'function') {
-			payFineButton.addEventListener('click', function() { game.payBail(); });
+		if (payFineButton && game && typeof game.submitPlayerAction === 'function') {
+			payFineButton.addEventListener('click', function() { game.submitPlayerAction({ type: 'payBail' }); });
 		}
 		var jailCardButton = document.getElementById('gojfbutton');
-		if (jailCardButton && game && typeof game.useJailCard === 'function') {
-			jailCardButton.addEventListener('click', function() { game.useJailCard(); });
+		if (jailCardButton && game && typeof game.submitPlayerAction === 'function') {
+			jailCardButton.addEventListener('click', function() { game.submitPlayerAction({ type: 'useJailCard', cardId: game.state.player[game.state.turn].heldCards[0] }); });
 		}
 		landed.style.display = '';
 		if (typeof global.$ !== 'undefined') global.$('#landed').show();
@@ -445,9 +469,7 @@
 	BrowserUI.prototype.onLeaveJail = function(playerColor) {
 		if (typeof document === 'undefined') return;
 		var jail = document.getElementById('jail');
-		var cellIndex = this.game && this.game.state.square
-			? this.game.state.square.findIndex(function(square) { return square.id === 'jail'; }) : 10;
-		var cell = document.getElementById('cell' + cellIndex);
+		var cell = document.getElementById('square-jail');
 		if (jail) jail.style.border = '1px solid black';
 		if (cell) cell.style.border = '2px solid ' + playerColor;
 		this.hideLanded();
@@ -489,6 +511,7 @@
 	};
 
 	BrowserUI.prototype.readTradeView = function() {
+		this.tradeState.game = this.game;
 		return global.TradeView ? global.TradeView.read(this.tradeState) : null;
 	};
 

@@ -4,50 +4,39 @@
 
     var AVERAGE_CARD_PAYMENT_BUFFER = 25;
 
-    function getTaxHazard(index, subject) {
-        var s = AIGen5.getSquares(subject)[index];
-        if (!s) {
-            return 0;
-        }
-        // If the square is explicitly mocked as a buyable property with price and group, don't treat it as tax.
-        if (s.price > 0 && s.group && s.group.length > 0) {
-            return 0;
-        }
-        if (s.name && /tax/i.test(s.name)) {
-            return /luxury/i.test(s.name) ? 100 : 200;
-        }
-        if ((index === 4 || index === 38) && (s.price === 0 || !s.group)) {
-            return index === 4 ? 200 : 100;
-        }
-        return 0;
+    function getTaxHazard(squareId, subject) {
+        var s = AIGen5.getDecisionView(subject).getSquare(squareId);
+        return s.kind === 'tax' ? s.rules.taxAmount : 0;
     }
 
     function computeBuildingObligationReserve(p) {
         if (!p) {
             return 0;
         }
-        var square = AIGen5.getSquares(p);
-        var seenGroups = {};
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
+        var seenGroups = Object.create(null);
         var houseBuffer = 0;
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || !s.group || s.group.length < 2 || !s.houseprice || s.houseprice <= 0) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            var sGroupIds = AIGen5.groupIds(view, s);
+            if (!s || sGroupIds.length < 2 || !s.rules.houseCost || s.rules.houseCost <= 0) {
                 continue;
             }
-            var key = s.group.join(',');
+            var key = sGroupIds.join(',');
             if (seenGroups[key]) {
                 continue;
             }
             seenGroups[key] = true;
-            var ownsAll = s.group.every(function(idx) {
-                return square[idx] && square[idx].owner === p.index;
+            var ownsAll = sGroupIds.every(function(idx) {
+                return view.getSquareState(idx).ownerId === p.playerId;
             });
             if (ownsAll) {
-                var unbuiltInGroup = s.group.some(function(idx) {
-                    return (square[idx].house || 0) < 3 && (!square[idx].hotel);
+                var unbuiltInGroup = sGroupIds.some(function(idx) {
+                    return (view.getSquareState(idx).house || 0) < 3 && (!view.getSquareState(idx).hotel);
                 });
                 if (unbuiltInGroup) {
-                    houseBuffer = Math.max(houseBuffer, s.houseprice * 1.5);
+                    houseBuffer = Math.max(houseBuffer, s.rules.houseCost * 1.5);
                 }
             }
         }
@@ -64,23 +53,24 @@
         var base = Math.max(120, (p.money || 0) * (profile && profile.liquidityFloor || 0.12));
         var ownExposure = 0;
         var taxExposure = 0;
-        var square = AIGen5.getSquares(p);
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
 
         // Jail status mitigation: while in jail, player is shielded from landing on dangerous properties.
         var inJail = !!p.jail;
         var jailRoll = p.jailroll || 0;
         var jailMitigationFactor = inJail ? (jailRoll >= 2 ? 0.8 : 0.35) : 1.0;
-        var jailBailReserve = inJail ? 50 : 0;
+        var jailBailReserve = inJail ? view.board.rules.bailAmount : 0;
 
-        if (square && p.position !== undefined) {
+        if (view && p.squareId !== undefined) {
             var rolls = AIGen5.Probability ? AIGen5.Probability.turnsToRolls(1) : 1;
-            for (var i = 0; i < square.length; i++) {
-                var s = square[i];
+            for (var i of squareIds) {
+                var s = view.getSquare(i);
                 if (!s) {
                     continue;
                 }
 
-                var landProbability = AIGen5.Probability ? AIGen5.Probability.landingProbability(p.position, i, rolls) : 0;
+                var landProbability = AIGen5.Probability ? AIGen5.Probability.landingProbability(p.squareId, i, rolls, p) : 0;
                 if (landProbability <= 0) {
                     continue;
                 }
@@ -93,8 +83,8 @@
                 }
 
                 // Opponent rental exposure
-                if (s.owner !== 0 && s.owner !== p.index && !s.mortgage) {
-                    var rent = AIGen5.Valuation ? AIGen5.Valuation.expectedRent(i, s.owner, null, p) : (s.baserent || 0);
+                if (view.getSquareState(s.id).ownerId !== null && view.getSquareState(s.id).ownerId !== p.playerId && !view.getSquareState(s.id).mortgage) {
+                    var rent = AIGen5.Valuation ? AIGen5.Valuation.expectedRent(i, view.getSquareState(s.id).ownerId, null, p) : (s.rules.baseRent || 0);
                     if (Number.isFinite(rent)) {
                         ownExposure += landProbability * rent;
                     }
@@ -119,21 +109,22 @@
         if (!p) {
             return { cash: (p && p.money) || 0, propertyEquity: 0, total: (p && p.money) || 0 };
         }
-        var square = AIGen5.getSquares(p);
+        var view = AIGen5.getDecisionView(p);
+        var squareIds = view.getSquareIds();
         var propertyEquity = 0;
         var cash = p.money || 0;
 
-        for (var i = 0; i < square.length; i++) {
-            var s = square[i];
-            if (!s || s.owner !== p.index) {
+        for (var i of squareIds) {
+            var s = view.getSquare(i);
+            if (!s || view.getSquareState(s.id).ownerId !== p.playerId) {
                 continue;
             }
-            var houses = s.hotel ? 5 : (s.house || 0);
-            if (houses > 0 && s.houseprice > 0) {
-                propertyEquity += houses * (s.houseprice * 0.5);
+            var houses = view.getSquareState(s.id).hotel ? 5 : (view.getSquareState(s.id).house || 0);
+            if (houses > 0 && s.rules.houseCost > 0) {
+                propertyEquity += houses * (s.rules.houseCost * 0.5);
             }
-            if (!s.mortgage && s.price > 0) {
-                propertyEquity += s.price * 0.5;
+            if (!view.getSquareState(s.id).mortgage && s.rules.purchasePrice > 0) {
+                propertyEquity += s.rules.mortgageValue;
             }
         }
 
