@@ -1,229 +1,155 @@
-// Board rendering: player token positions and the sliding-overlay move animation.
-
-async function updatePosition(gameInstance) {
-	if (!gameInstance || !gameInstance.state) throw new TypeError('Board rendering requires its owning Game.');
-	if (gameInstance.ui && gameInstance.ui.isHeadless) return Promise.resolve();
-	var gameState = gameInstance.state;
-	var players = gameState.player;
-	var playerCount = gameState.pcount;
-	var currentTurn = gameState.turn;
-	var board = gameState.board;
-	var boardIds = [];
-	if (board) {
-		var cursor = board.startSquareId;
-		for (var boardIndex = 0; boardIndex < Object.keys(board.squaresById).length; boardIndex++) {
-			boardIds.push(cursor);
-			cursor = board.squaresById[cursor].nextId;
-		}
-	}
-	var previousPositions = gameState.lastKnownSquareByPlayerId || (gameState.lastKnownSquareByPlayerId = Object.create(null));
-	var previousJails = gameState.lastKnownJailByPlayerId || (gameState.lastKnownJailByPlayerId = Object.create(null));
-	var moveDirection = gameState.nextMoveDirection || 1;
-	var movers = [];
-
-	for (var i = 1; i <= playerCount; i++) {
-		var currentPlayer = players[i];
-		var playerId = currentPlayer.playerId;
-		var previousSquareId = previousPositions[playerId];
-		var wasJailed = previousJails[playerId];
-		if (previousSquareId !== undefined && !wasJailed && currentPlayer.jail) {
-			movers.push({ playerId: playerId, toJail: true });
-		} else if (previousSquareId !== undefined && !wasJailed && !currentPlayer.jail && previousSquareId !== currentPlayer.squareId) {
-			movers.push({ playerId: playerId, fromSquareId: previousPositions[playerId], toSquareId: currentPlayer.squareId, direction: moveDirection });
-			gameState.nextMoveDirection = 1;
-			moveDirection = 1;
-		}
-	}
-
-	document.getElementById("jail").style.border = "1px solid black";
-	document.getElementById("jailpositionholder").innerHTML = "";
-	for (var i = 0; i < boardIds.length; i++) {
-		var squareId = boardIds[i];
-		var cell = document.getElementById("square-" + squareId);
-		var holder = document.getElementById("square-" + squareId + "-tokens");
-		if (cell) cell.style.border = "1px solid black";
-		if (holder) holder.innerHTML = "";
-	}
-
-	var left, top;
-	boardIds.forEach(function(squareId) {
-		left = 0;
-		top = 0;
-		for (var y = currentTurn; y <= playerCount; y++) {
-			if (players[y].squareId === squareId && !players[y].jail) {
-				document.getElementById("square-" + squareId + "-tokens").innerHTML += "<div class='cell-position player-token' id='token-" + players[y].playerId + "' data-player-id='" + players[y].playerId + "' title='" + players[y].name + "' style='background-color: " + players[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-				if (left == 36) { left = 0; top = 12; } else left += 12;
-			}
-		}
-		for (var y = 1; y < currentTurn; y++) {
-			if (players[y].squareId === squareId && !players[y].jail) {
-				document.getElementById("square-" + squareId + "-tokens").innerHTML += "<div class='cell-position player-token' id='token-" + players[y].playerId + "' data-player-id='" + players[y].playerId + "' title='" + players[y].name + "' style='background-color: " + players[y].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-				if (left == 36) { left = 0; top = 12; } else left += 12;
-			}
-		}
-	});
-
-	left = 0;
-	top = 53;
-	for (var i = currentTurn; i <= playerCount; i++) {
-		if (players[i].jail) {
-			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='token-" + players[i].playerId + "' data-player-id='" + players[i].playerId + "' title='" + players[i].name + "' style='background-color: " + players[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-			if (left === 36) { left = 0; top = 41; } else left += 12;
-		}
-	}
-	for (var i = 1; i < currentTurn; i++) {
-		if (players[i].jail) {
-			document.getElementById("jailpositionholder").innerHTML += "<div class='cell-position player-token' id='token-" + players[i].playerId + "' data-player-id='" + players[i].playerId + "' title='" + players[i].name + "' style='background-color: " + players[i].color + "; left: " + left + "px; top: " + top + "px;'></div>";
-			if (left === 36) { left = 0; top = 41; } else left += 12;
-		}
-	}
-
-	var currentPlayer = players[currentTurn];
-	if (currentPlayer.jail) document.getElementById("jail").style.border = "1px solid " + currentPlayer.color;
-	else if (document.getElementById("square-" + currentPlayer.squareId)) document.getElementById("square-" + currentPlayer.squareId).style.border = "1px solid " + currentPlayer.color;
-
-	var movingPlayerIds = movers.map(function(move) { return move.playerId; });
-	for (var i = 1; i <= playerCount; i++) {
-		if (movingPlayerIds.indexOf(players[i].playerId) === -1) snapOverlay(players[i].playerId, gameState);
-	}
-	var animations = movers.map(function(move) {
-		return move.toJail
-			? animateOverlayToJail(move.playerId, gameState)
-			: animateOverlayMove(move.playerId, move.fromSquareId, move.toSquareId, move.direction, gameState, board);
-	});
-	if (animations.length > 0) await Promise.all(animations);
-	for (var i = 1; i <= playerCount; i++) {
-		previousPositions[players[i].playerId] = players[i].squareId;
-		previousJails[players[i].playerId] = players[i].jail;
-	}
-}
-
-function getCellRect(squareId) {
-	var cell = document.getElementById("square-" + squareId);
-	return cell ? cell.getBoundingClientRect() : null;
-}
-
-// Include crossed corners so long moves follow the Board traversal rather than cutting across it.
-function buildWaypointSquareIds(fromSquareId, toSquareId, direction, board) {
-	if (!board || !board.squaresById[fromSquareId] || !board.squaresById[toSquareId]) return [];
-	var waypoints = [], cursor = fromSquareId;
-	for (var visited = 0; visited < Object.keys(board.squaresById).length && cursor !== toSquareId; visited++) {
-		var square = board.squaresById[cursor];
-		cursor = direction === 1 ? square.nextId : square.previousId;
-		if (!board.squaresById[cursor]) throw new RangeError('Board traversal reached an unknown square ID: ' + cursor);
-		waypoints.push(cursor);
-	}
-	return cursor === toSquareId ? waypoints : [];
-}
-
-function getOrCreateOverlay(playerId, gameState) {
-	if (!gameState) throw new TypeError('Token overlays require their owning Game state.');
-	var overlays = gameState.playerOverlays || (gameState.playerOverlays = Object.create(null));
-	var player = globalThis.GameStateContext.getPlayerById(gameState, playerId);
-	var overlay = overlays[playerId];
-	if (!overlay) {
-		overlay = document.createElement("div");
-		overlay.className = "cell-position token-overlay";
-		overlay.dataset.playerId = playerId;
-		document.body.appendChild(overlay);
-		overlays[playerId] = overlay;
-	}
-	overlay.style.backgroundColor = player.color;
-	return overlay;
-}
-
-function setTokenOverlaysVisible(visible, gameInstance) {
-	var overlays = gameInstance && gameInstance.state && gameInstance.state.playerOverlays;
-	if (overlays) Object.keys(overlays).forEach(function(playerId) { overlays[playerId].style.display = visible ? "" : "none"; });
-}
-
-function resetTokenOverlays(gameInstance) {
-	var overlays = gameInstance && gameInstance.state && gameInstance.state.playerOverlays;
-	if (!overlays) return;
-	Object.keys(overlays).forEach(function(playerId) {
-		var overlay = overlays[playerId];
-		if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		delete overlays[playerId];
-	});
-}
-
-function getRealTokenRect(playerId) {
-	var el = document.getElementById("token-" + playerId);
-	return el ? el.getBoundingClientRect() : null;
-}
-
-function toPagePosition(rect) {
-	return { left: rect.left + window.scrollX, top: rect.top + window.scrollY };
-}
-
-// Snap non-movers to their rendered token, falling back to the state-owned player position.
-function snapOverlay(playerId, gameState) {
-	var rect = getRealTokenRect(playerId) || getFallbackRect(playerId, gameState);
-	if (!rect) return;
-	var overlay = getOrCreateOverlay(playerId, gameState);
-	var pos = toPagePosition(rect);
-	overlay.style.transition = "none";
-	overlay.style.left = pos.left + "px";
-	overlay.style.top = pos.top + "px";
-	void overlay.offsetHeight;
-}
-
-function getFallbackRect(playerId, gameState) {
-	var p = gameState && globalThis.GameStateContext.getPlayerById(gameState, playerId);
-	if (!p) return null;
-	if (p.jail) return document.getElementById("jail").getBoundingClientRect();
-	var board = gameState && gameState.board;
-	var cursor = board && board.startSquareId;
-	for (var index = 0; board && index < Object.keys(board.squaresById).length; index++) {
-		if (cursor === p.squareId) return getCellRect(cursor);
-		cursor = board.squaresById[cursor].nextId;
-	}
-	return null;
-}
-
-function slideOverlay(overlay, changes, duration) {
-	return new Promise(function(resolve) {
-		overlay.style.transition = Object.keys(changes).map(function(prop) {
-			return prop + " " + duration + "ms linear";
-		}).join(", ");
-		void overlay.offsetHeight;
-		Object.keys(changes).forEach(function(prop) { overlay.style[prop] = changes[prop]; });
-		setTimeout(resolve, duration);
-	});
-}
-
-
-async function animateOverlayMove(playerId, fromSquareId, toSquareId, direction, gameState, board) {
-	var overlay = getOrCreateOverlay(playerId, gameState);
-	var waypoints = buildWaypointSquareIds(fromSquareId, toSquareId, direction, board);
-	var currentRect = getCellRect(fromSquareId);
-	if (!currentRect) return;
-	var currentPos = toPagePosition(currentRect);
-	overlay.style.transition = "none";
-	overlay.style.left = currentPos.left + "px";
-	overlay.style.top = currentPos.top + "px";
-	void overlay.offsetHeight;
-	for (var w = 0; w < waypoints.length; w++) {
-		var isLastWaypoint = w === waypoints.length - 1;
-		var waypointCellRect = getCellRect(waypoints[w]);
-		if (!waypointCellRect) continue;
-		var nextRect = isLastWaypoint ? (getRealTokenRect(playerId) || waypointCellRect) : waypointCellRect;
-		var nextPos = toPagePosition(nextRect);
-		await slideOverlay(overlay, { left: nextPos.left + "px", top: nextPos.top + "px" }, 125);
-		currentRect = waypointCellRect;
-	}
-	await sleep(250);
-}
-
-async function animateOverlayToJail(playerId, gameState) {
-	var overlay = getOrCreateOverlay(playerId, gameState);
-	var target = getRealTokenRect(playerId) || document.getElementById("jail").getBoundingClientRect();
-	var pos = toPagePosition(target);
-	await slideOverlay(overlay, { left: pos.left + "px", top: pos.top + "px" }, 250);
-	await sleep(250);
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { updatePosition: updatePosition, setTokenOverlaysVisible: setTokenOverlaysVisible,
-		buildWaypointSquareIds: buildWaypointSquareIds };
-}
+// Snapshot synchronization and explicit, serialized movement in board-local coordinates.
+(function(global) {
+    'use strict';
+    var BoardView = global.BoardView || (typeof module !== 'undefined' && module.exports ? require('./board-view').BoardView : null);
+    function localPosition(view, node) {
+        var rect = node.getBoundingClientRect(), root = view.layer.getBoundingClientRect();
+        return { left: rect.left - root.left, top: rect.top - root.top };
+    }
+    function place(token, point) { token.style.left = point.left + 'px'; token.style.top = point.top + 'px'; }
+    BoardView.prototype.renderPositions = function(movingId, movement) {
+        if (this.disposed) return;
+        if (!movement && this.activeMovement) {
+            movement = this.activeMovement; movingId = movement.playerId;
+        }
+        var view = this, state = this.game.state, players = state.player.slice(1, state.pcount + 1).filter(Boolean);
+        var current = state.player[state.turn];
+        if (current && players.includes(current)) players = players.slice(players.indexOf(current)).concat(players.slice(0, players.indexOf(current)));
+        var counts = new Map(), active = new Set(players.map(function(p) { return p.playerId; }));
+        this.cells.forEach(function(cell) { cell.style.borderColor = '#222'; cell.querySelector('.cell-position-holder').replaceChildren(); });
+        var jail = this.surface.querySelector('#jail'), jailHolder = this.surface.querySelector('#jailpositionholder');
+        if (jail) jail.style.borderColor = '#222';
+        if (jailHolder) jailHolder.replaceChildren();
+        this.tokens.clear();
+        this.overlays.forEach(function(token, id) { if (!active.has(id)) { token.remove(); view.overlays.delete(id); } });
+        players.forEach(function(player) {
+            var squareId = movement && player.playerId === movingId ? movement.toSquareId : player.squareId;
+            var jailed = movement && player.playerId === movingId ? movement.toJail : player.jail;
+            var cell = view.cells.get(squareId);
+            if (!cell) return;
+            var holder = jailed ? jailHolder : cell.querySelector('.cell-position-holder');
+            if (!holder) return;
+            var index = counts.get(holder) || 0; counts.set(holder, index + 1);
+            var slot = document.createElement('div'); slot.className = 'cell-position player-token';
+            slot.id = 'token-' + player.playerId; slot.dataset.playerId = player.playerId; slot.title = player.name;
+            slot.style.left = (index % 4 * 12) + 'px';
+            slot.style.top = (jailed ? 53 - Math.floor(index / 4) * 12 : Math.floor(index / 4) * 12) + 'px';
+            holder.appendChild(slot); view.tokens.set(player.playerId, slot);
+            var overlay = view.overlays.get(player.playerId);
+            if (!overlay) {
+                overlay = document.createElement('div'); overlay.className = 'cell-position token-overlay';
+                overlay.dataset.playerId = player.playerId; view.layer.appendChild(overlay); view.overlays.set(player.playerId, overlay);
+            }
+            overlay.style.backgroundColor = player.color; overlay.title = player.name;
+            if (player.playerId !== movingId) { overlay.style.transition = 'none'; place(overlay, localPosition(view, slot)); }
+            if (player === current) (jailed && jail ? jail : cell).style.borderColor = player.color;
+        });
+    };
+    // Preserve direction changes, repeated visits, and complete laps.
+    function pathBends(points) {
+        if (points.length < 3) return points.slice(1);
+        var result = [];
+        for (var i = 1; i < points.length - 1; i++) {
+            var a = points[i - 1], b = points[i], c = points[i + 1];
+            var dx = b.left - a.left, dy = b.top - a.top, nx = c.left - b.left, ny = c.top - b.top;
+            if (Math.abs(dx * ny - dy * nx) > 0.01 || dx * nx + dy * ny <= 0) result.push(b);
+        }
+        result.push(points[points.length - 1]); return result;
+    }
+    BoardView.prototype.wait = function(ms, token, point) {
+        var view = this;
+        return new Promise(function(resolve) {
+            var timer;
+            function finish() { clearTimeout(timer); view.cancellations.delete(finish); resolve(); }
+            view.cancellations.add(finish);
+            if (token && point) {
+                token.style.transition = 'left ' + ms + 'ms linear, top ' + ms + 'ms linear';
+                void token.offsetHeight; place(token, point);
+            }
+            timer = setTimeout(finish, ms);
+        });
+    };
+    BoardView.prototype.animateMovement = function(movement) {
+        var view = this, generation = this.generation;
+        var next = this.queue.then(async function() {
+            if (view.disposed || generation !== view.generation) return;
+            var overlay = view.overlays.get(movement.playerId), originCell = view.cells.get(movement.fromSquareId);
+            var direct = movement.fromJail || movement.toJail;
+            // Match master's true departure point: plain cell geometry for board
+            // travel, actual token geometry only for direct jail transfers.
+            var start = direct && overlay ? { left: parseFloat(overlay.style.left), top: parseFloat(overlay.style.top) }
+                : originCell ? localPosition(view, originCell) : null;
+            view.activeMovement = movement;
+            try {
+                view.renderPositions(movement.playerId, movement);
+                overlay = view.overlays.get(movement.playerId);
+                var targetSlot = view.tokens.get(movement.playerId);
+                if (!overlay || !targetSlot) return;
+                var target = localPosition(view, targetSlot);
+                // Board movement communicates the route taken. Keep master's
+                // animation even when decorative effects use reduced motion.
+                if (!start || !Number.isFinite(start.left) || !Number.isFinite(start.top)) {
+                    overlay.style.transition = 'none'; place(overlay, target); return;
+                }
+                overlay.style.transition = 'none'; place(overlay, start);
+                void overlay.offsetHeight;
+                var points = [start];
+                if (!direct && !movement.traversedIds.length) { place(overlay, target); return; }
+                if (!direct && originCell) {
+                    movement.traversedIds.forEach(function(id) {
+                        var cell = view.cells.get(id);
+                        if (cell) points.push(localPosition(view, cell));
+                    });
+                }
+                if (direct || points.length === 1) points.push(target);
+                var stops = direct ? [target] : pathBends(points), current = start;
+                for (var i = 0; i < stops.length; i++) {
+                    if (generation !== view.generation || view.disposed) return;
+                    var cellPoint = stops[i], point = cellPoint;
+                    if (!direct && view.perimeter) {
+                        // Use cell rows to choose the axis, never the destination's
+                        // border/stacking offsets. Only the final leg targets a slot.
+                        var horizontal = Math.round(current.top) === Math.round(cellPoint.top);
+                        var destination = i === stops.length - 1 ? target : cellPoint;
+                        point = horizontal ? { left: destination.left, top: current.top }
+                            : { left: current.left, top: destination.top };
+                    }
+                    await view.wait(direct ? 250 : 125, overlay, point);
+                    current = cellPoint;
+                }
+                if (generation !== view.generation || view.disposed) return;
+                await view.wait(250);
+                if (generation !== view.generation || view.disposed) return;
+                overlay.style.transition = 'none'; place(overlay, target);
+            } finally {
+                if (view.activeMovement === movement) view.activeMovement = null;
+            }
+        });
+        this.queue = next.catch(function() {}); return next;
+    };
+    function updatePosition(game) {
+        if (!game || !game.state) throw new TypeError('Board rendering requires its owning Game.');
+        if (game.ui && !game.ui.isHeadless && game.ui.boardView) game.ui.boardView.renderPositions();
+        return Promise.resolve();
+    }
+    function setTokenOverlaysVisible(visible, game) {
+        var view = game && game.ui && game.ui.boardView;
+        if (view) view.layer.hidden = !visible;
+    }
+    function resetTokenOverlays(game) {
+        var view = game && game.ui && game.ui.boardView;
+        if (view) view.resetTokens();
+    }
+    function buildWaypointSquareIds(fromId, toId, direction, board) {
+        if (!board || !board.squaresById[fromId] || !board.squaresById[toId]) return [];
+        var ids = [], cursor = fromId;
+        for (var n = 0; n < Object.keys(board.squaresById).length && cursor !== toId; n++) {
+            cursor = board.squaresById[cursor][direction === 1 ? 'nextId' : 'previousId'];
+            if (!board.squaresById[cursor]) throw new RangeError('Unknown square ID: ' + cursor);
+            ids.push(cursor);
+        }
+        return ids;
+    }
+    global.updatePosition = updatePosition; global.setTokenOverlaysVisible = setTokenOverlaysVisible; global.resetTokenOverlays = resetTokenOverlays;
+    if (typeof module !== 'undefined' && module.exports) module.exports = { updatePosition: updatePosition, setTokenOverlaysVisible: setTokenOverlaysVisible, resetTokenOverlays: resetTokenOverlays, buildWaypointSquareIds: buildWaypointSquareIds, pathBends: pathBends };
+})(typeof window !== 'undefined' ? window : globalThis);

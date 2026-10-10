@@ -210,8 +210,8 @@ async function run() {
 	assert.strictEqual(state.player[1].playerId, 'player-2');
 	assert.strictEqual(state.player[1].index, 1);
 
-	// In two-player bankruptcy, the creditor pays transfer interest and gets the normal unmortgage flow.
-	var mortgageGame = fixture('Classic'), mortgageState = mortgageGame.state;
+	// With players still competing, inheritance retains interest and unmortgage decisions.
+	var mortgageGame = fixture('Classic', 3), mortgageState = mortgageGame.state;
 	var bankrupt = mortgageState.player[1], creditor = mortgageState.player[2], mortgagePrompt = 0, transferredSquare = 'mediterranean-avenue';
 	mortgageState.turn = 1; bankrupt.money = -10; bankrupt.creditor = creditor.playerId;
 	Context.setSquareOwner(mortgageState, transferredSquare, bankrupt.playerId);
@@ -234,7 +234,27 @@ async function run() {
 	assert.strictEqual(mortgageState.squareStateById[transferredSquare].ownerId, creditor.playerId);
 	assert.strictEqual(mortgageState.squareStateById[transferredSquare].mortgage, false);
 	assert.strictEqual(creditor.money, 1454, 'creditor pays debt offset, 10% transfer interest, and half-price unmortgage cost');
-	assert.strictEqual(mortgageState.pcount, 1);
+	assert.strictEqual(mortgageState.pcount, 2);
+
+	// The final elimination declares a winner without inheritance decisions or fees.
+	for (var losingSeat of [1, 2]) {
+		var finalGame = fixture('Classic'), finalState = finalGame.state;
+		var loser = finalState.player[losingSeat], winner = finalState.player[3 - losingSeat];
+		finalState.turn = losingSeat; loser.money = -10; loser.creditor = winner.playerId;
+		Context.setSquareOwner(finalState, transferredSquare, loser.playerId);
+		finalState.squareStateById[transferredSquare].mortgage = true;
+		var declaredWinner;
+		finalGame.requestDecision = function() { throw new Error('No decisions after the final elimination'); };
+		finalGame.ui = { onGameOver: function(name) { declaredWinner = name; } };
+		await finalGame.bankruptcy();
+		assert.strictEqual(finalGame.isOver, true);
+		assert.strictEqual(declaredWinner, winner.name);
+		assert.strictEqual(finalState.pcount, 1);
+		assert.strictEqual(finalState.player[1], winner);
+		assert.strictEqual(finalState.squareStateById[transferredSquare].ownerId, winner.playerId);
+		assert.strictEqual(finalState.squareStateById[transferredSquare].mortgage, true);
+		assert.strictEqual(winner.money, 1490, 'winner pays no transfer interest or unmortgage fee');
+	}
 
 	var bankGame = fixture('Classic'), bankState = bankGame.state;
 	Context.setSquareOwner(bankState, 'boardwalk', bankState.player[1].playerId);

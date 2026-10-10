@@ -36,6 +36,41 @@ function fixture(count = 3) {
     return game;
 }
 async function run() {
+    // Chance movement must finish before the turn offers its next decision.
+    for (const edition of ['Classic', 'NYC']) {
+        const game = fixture(2), setup = Editions.buildGameSetup(edition);
+        Context.initializeBoardState(game.state, setup.board, edition);
+        game.state.cardDecks = setup.cardDecks;
+        game.state.cardDecks.chance.order = [7]; // Advance to the nearest railroad.
+        game.state.turn = 0; game.maxTurns = 1;
+        game.getDie = index => index === 1 ? 3 : 4;
+        const browser = new Controllers.BrowserController(game), movements = [];
+        game.registerController('player-1', browser);
+        let finishCardMovement;
+        game.ui.animateMovement = movement => {
+            movements.push(movement);
+            if (movement.toSquareId === 'chance-south') return Promise.resolve();
+            return new Promise(resolve => { finishCardMovement = resolve; });
+        };
+        const turn = game.play();
+        await tick();
+        assert.strictEqual(browser.pending.request.kind, 'turn');
+        browser.submit({ type: 'roll' });
+        await tick();
+        assert.strictEqual(movements.length, 2);
+        assert.strictEqual(browser.pending, null, 'no new player decision while a card move is animating');
+        finishCardMovement();
+        await tick();
+        assert.strictEqual(browser.pending.request.kind, 'purchase', 'destination purchase is offered before ending the turn');
+        browser.submit({ type: 'buy', squareId: game.state.player[1].squareId });
+        await tick();
+        assert.strictEqual(browser.pending.request.kind, 'turn');
+        assert.strictEqual(browser.pending.request.options.nextAction, 'endTurn');
+        browser.submit({ type: 'endTurn' });
+        await turn;
+        assert.strictEqual(game.error, undefined);
+        assert.strictEqual(game._requests.size, 0);
+    }
     // Immutable snapshots, stable identity, explicit completion and stale-response rejection.
     {
         const game = fixture(); let captured;
@@ -60,6 +95,7 @@ async function run() {
     // Invalid browser input stays pending; duplicates cannot change another request.
     {
         const game = fixture(2); let error, pending;
+        game.state.turn = 2; // Player 2 declined; the human gets the opening bid.
         game.ui.setAuctionBidError = value => { error = value; };
         const browser = new Controllers.BrowserController(game);
         game.registerController('player-1', browser);
@@ -81,6 +117,96 @@ async function run() {
         assert.strictEqual((await game.dispatchPlayerAction(pending, { type: 'auctionBid', amount: 12 })).ok, false);
         assert.strictEqual(game.state.player[1].money, 1490);
     }
+    // Purchase controls describe the configured alternative to buying.
+    for (const auctionEnabled of [true, false]) {
+        const game = fixture(2);
+        game.state.auctionEnabled = auctionEnabled;
+        let label, title;
+        game.ui.updateButtonState = (value, help) => { label = value; title = help; };
+        const browser = new Controllers.BrowserController(game);
+        game.registerController('player-1', browser);
+        const completion = game.requestDecision('purchase', 'player-1', { squareId: 'boardwalk' });
+        assert.strictEqual(label, auctionEnabled ? 'Auction property' : 'Decline property');
+        assert.strictEqual(title.includes('auction'), auctionEnabled);
+        browser.submit({ type: 'next' });
+        await completion;
+        assert.strictEqual(game.state.pendingAuction, auctionEnabled ? 'boardwalk' : -1);
+    }
+    // An auction with no buyers must leave a result in the persistent play history.
+    {
+        const game = fixture(2), playHistory = [], auctionHistory = [];
+        game.ui.alert = text => playHistory.push(text);
+        game.ui.onAuctionHistory = text => auctionHistory.push(text);
+        for (const id of ['player-1', 'player-2']) game.registerController(id, new Controllers.AIController({ bid: () => -1 }));
+        game.addPropertyToAuctionQueue('boardwalk');
+        await game.auction();
+        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, null);
+        assert.deepStrictEqual(playHistory, ['Boardwalk remains on the market because there were no buyers at the auction.']);
+        assert.ok(auctionHistory.includes('No player bought Boardwalk.'));
+    }
+    // The declining player never gets an opening bid when nobody else joins.
+    for (const initiatorSeat of [1, 3]) {
+        for (const originType of ['bot', 'human']) {
+            for (const responses of [[0, 0], [-1, -1], [0, -1]]) {
+                const game = fixture(3), offered = [];
+                game.state.turn = initiatorSeat;
+                let originOffers = 0;
+                const origin = originType === 'bot'
+                    ? new Controllers.AIController({ bid: () => { originOffers++; return 1; } })
+                    : new Controllers.BrowserController(game);
+                if (originType === 'human') origin.decide = () => { originOffers++; throw new Error('Uncontested opening bid offered to initiator'); };
+                game.registerController('player-' + initiatorSeat, origin);
+                for (let offset = 1; offset < 3; offset++) {
+                    const seat = (initiatorSeat + offset - 1) % 3 + 1;
+                    game.registerController('player-' + seat, new Controllers.AIController({ bid: () => { offered.push(seat); return responses[offset - 1]; } }));
+                }
+                game.addPropertyToAuctionQueue('boardwalk');
+                await game.auction();
+                assert.strictEqual(originOffers, 0, 'humans and bots cannot buy their own uncontested auction');
+                assert.strictEqual(offered.length, 2);
+                assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, null);
+                assert.strictEqual(game.state.player[initiatorSeat].money, 1500);
+            }
+        }
+    }
+    // A pass lasts until bidding continues; an exit lasts for the whole auction.
+    for (const scenario of [
+        { count: 3, turns: [[2, 0], [3, 10], [1, 20], [2, 30], [3, 0], [1, 0]], winner: 2, price: 30 },
+        { count: 4, turns: [[2, -1], [3, 10], [4, 0], [1, 20], [3, 0], [4, 30], [1, 0], [3, 0]], winner: 4, price: 30 },
+        { count: 3, turns: [[2, 10], [3, 0], [1, 0]], winner: 2, price: 10 },
+    ]) {
+        const game = fixture(scenario.count), turns = scenario.turns.slice();
+        for (let seat = 1; seat <= scenario.count; seat++) {
+            game.registerController('player-' + seat, new Controllers.AIController({ bid: () => {
+                const expected = turns.shift();
+                assert.ok(expected, 'auction should finish after all remaining bidders pass');
+                assert.strictEqual(seat, expected[0], 'passing bidders return, exited bidders do not');
+                return expected[1];
+            } }));
+        }
+        game.addPropertyToAuctionQueue('boardwalk');
+        await game.auction();
+        assert.strictEqual(turns.length, 0);
+        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, 'player-' + scenario.winner);
+        assert.strictEqual(game.state.player[scenario.winner].money, 1500 - scenario.price);
+    }
+    // The browser Pass action stays eligible for its next bidding opportunity.
+    {
+        const game = fixture(3), browser = new Controllers.BrowserController(game);
+        game.registerController('player-2', browser);
+        game.registerController('player-3', new Controllers.AIController({ bid: (_, current) => current === 0 ? 10 : -1 }));
+        game.registerController('player-1', new Controllers.AIController({ bid: () => -1 }));
+        game.addPropertyToAuctionQueue('boardwalk');
+        const completion = game.auction();
+        assert.strictEqual(browser.submit({ type: 'auctionPass' }), true);
+        await tick();
+        assert.ok(browser.pending, 'human receives another offer after passing and another player bidding');
+        assert.strictEqual(game.state.player[2].bidding, true);
+        assert.strictEqual(browser.submit({ type: 'auctionBid', amount: 20 }), true);
+        await completion;
+        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, 'player-2');
+        assert.strictEqual(game.state.player[2].money, 1480);
+    }
     // Auction processing does not recurse, resume the turn, or settle after controller failure.
     {
         const game = fixture(2), histories = [];
@@ -90,11 +216,12 @@ async function run() {
         game.addPropertyToAuctionQueue('boardwalk'); game.addPropertyToAuctionQueue('park-place');
         assert.strictEqual(await game.auction(), true);
         assert.strictEqual(game.auctionState.highestBid, 251);
-        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, 'player-1');
-        assert.strictEqual(game.state.squareStateById['park-place'].ownerId, 'player-1');
+        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, 'player-2');
+        assert.strictEqual(game.state.squareStateById['park-place'].ownerId, 'player-2');
         assert.strictEqual(histories.filter(text => text.includes(' won for ')).length, 2);
         assert.strictEqual(game.state.turn, 1);
         const failing = fixture(2); let errors = 0;
+        failing.state.turn = 2;
         failing.onGameError = () => errors++;
         failing.registerController('player-1', { decide() { throw new Error('Policy failure'); } });
         failing.addPropertyToAuctionQueue('boardwalk');
@@ -170,6 +297,57 @@ async function run() {
         browser.submit({ type: 'endTurn' }); await turn;
         assert.strictEqual(game.state.turn, 1);
         assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, accepted ? 'player-2' : 'player-1');
+    }
+    // Overshoot property counters cannot promise more cash than the bot holds.
+    {
+        const game = fixture(2), initiator = game.state.player[1], recipient = game.state.player[2];
+        initiator.money = 0; recipient.money = 29;
+        Context.setSquareOwner(game.state, 'boardwalk', initiator.playerId);
+        Context.setSquareOwner(game.state, 'mediterranean-avenue', recipient.playerId);
+        const policy = new global.Gen5AI(recipient, { name: 'Tactician' }, {});
+        const offer = new global.Trade(initiator.playerId, recipient.playerId, 0, [], ['mediterranean-avenue'], []);
+        const counter = policy.acceptTrade(offer);
+        assert.ok(counter instanceof global.Trade, 'property overshoot produces a counteroffer');
+        assert.ok(counter.getMoney() >= -recipient.money, 'negative cash means the recipient must pay');
+        assert.ok(game.validateTrade(counter), 'the generated counter must pass settlement validation');
+        game.registerController(recipient.playerId, new Controllers.AIController(policy));
+        assert.strictEqual(await game.trade(offer), false, 'a declined counter ends negotiation normally');
+        assert.strictEqual(game.error, undefined);
+        assert.strictEqual(game._requests.size, 0);
+        assert.strictEqual(game.tradeState.pending, false);
+        assert.strictEqual(game.acceptTrade(game.reverseTrade(counter)), true);
+        assert.strictEqual(recipient.money, 0, 'accepting the counter never overdraws the bot');
+        assert.strictEqual(initiator.money, 29);
+        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, recipient.playerId);
+        assert.strictEqual(game.state.squareStateById['mediterranean-avenue'].ownerId, initiator.playerId);
+    }
+    // A bot rejection reports the result and waits for the human's popup dismissal.
+    {
+        const game = fixture(2), history = [], results = [];
+        Context.setSquareOwner(game.state, 'boardwalk', 'player-1');
+        game.registerController('player-1', new Controllers.BrowserController(game));
+        game.registerController('player-2', new Controllers.AIController({ acceptTrade: () => false }));
+        const offer = new global.Trade('player-1', 'player-2', 50, ['boardwalk'], [], []);
+        let dismiss, closed = false, completed = false;
+        game.ui.alert = (text, seat) => history.push([text, seat]);
+        game.ui.showTradeResult = (label, displayedOffer, result) => {
+            assert.deepStrictEqual(result, { declined: true });
+            results.push([label, displayedOffer]);
+            return new Promise(resolve => { dismiss = resolve; });
+        };
+        game.ui.setTradePanelVisible = visible => { closed = !visible; };
+        const rejection = game.trade(offer).then(result => { completed = true; return result; });
+        await tick();
+        assert.deepStrictEqual(history, [['Player 2 declined the trade from Player 1.', 2]]);
+        assert.deepStrictEqual(results, [['Player 2 declined the trade from Player 1', offer]]);
+        assert.strictEqual(completed, false, 'trade remains pending until the result popup is dismissed');
+        assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, 'player-1');
+        assert.strictEqual(game.state.player[1].money, 1500);
+        assert.strictEqual(game.state.player[2].money, 1500);
+        dismiss();
+        assert.strictEqual(await rejection, false);
+        assert.strictEqual(game.tradeState.pending, false);
+        assert.strictEqual(closed, true);
     }
     // Counters need reciprocal approval. Automatic negotiation limits belong to controllers.
     {

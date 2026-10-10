@@ -1,5 +1,6 @@
 (function(global) {
 	'use strict';
+	var DOMUI = global.DOMUI || (typeof module !== 'undefined' && module.exports ? require('./dom') : null);
 
 	var GameUI = global.GameUI;
 	var UIHtml = global.UIHtml || (typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
@@ -24,17 +25,17 @@
 	BrowserUI.prototype.alert = function(text, playerIndex, secondPlayerIndex) {
 		if (typeof global.addAlert === 'function' && this.game) {
 			global.addAlert(text, playerIndex, secondPlayerIndex, this.game);
-		} else if (this.game && typeof global.$ !== 'undefined' && global.$('#alert').length) {
-			var $alert = global.$('#alert');
-			var state = this.game && this.game.state;
-			var pIdx = playerIndex !== undefined && playerIndex !== null ? playerIndex : (state ? state.turn : 0);
-			var badge = (typeof global.playerBadge === 'function') ? global.playerBadge(pIdx, state) : '';
-			var badge2 = (secondPlayerIndex && typeof global.playerBadge === 'function') ? global.playerBadge(secondPlayerIndex, state) : '';
-			var alertElement = global.$(document.createElement('div'));
-			if (badge) alertElement.append(badge);
-			if (badge2) alertElement.append(badge2);
-			alertElement.append(document.createTextNode(text)).appendTo($alert);
-			$alert.stop().animate({ scrollTop: $alert.prop('scrollHeight') }, 1000);
+		} else if (this.game && typeof document !== 'undefined' && document.getElementById('alert')) {
+			var alert = document.getElementById('alert');
+			var state = this.game.state;
+			var pIdx = playerIndex !== undefined && playerIndex !== null ? playerIndex : state.turn;
+			var badge = typeof global.playerBadge === 'function' ? global.playerBadge(pIdx, state) : '';
+			var badge2 = secondPlayerIndex && typeof global.playerBadge === 'function' ? global.playerBadge(secondPlayerIndex, state) : '';
+			var alertElement = document.createElement('div');
+			alertElement.innerHTML = badge + badge2;
+			alertElement.appendChild(document.createTextNode(text));
+			alert.appendChild(alertElement);
+			DOMUI.scrollToBottom(alert, true);
 
 			var currentPlayer = state && state.player[state.turn];
 			if (currentPlayer && !currentPlayer.human && currentPlayer.AI) {
@@ -50,6 +51,9 @@
 	BrowserUI.prototype.updatePosition = function() {
 		if (this.game && typeof global.updatePosition === 'function') return global.updatePosition(this.game);
 		return Promise.resolve();
+	};
+	BrowserUI.prototype.animateMovement = function(movement) {
+		return this.boardView ? this.boardView.animateMovement(movement) : Promise.resolve();
 	};
 
 	BrowserUI.prototype.updateOwned = function() {
@@ -76,7 +80,7 @@
 	};
 
 	BrowserUI.prototype.openAuction = function(propertyIndex, property, currentPlayer) {
-		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input id='auction-bid-button' type='button' value='Bid' title='Place your bid.' /><input id='auction-pass-button' type='button' value='Pass' title='Withdraw from bidding on this property.' /><input id='auction-exit-button' type='button' value='Exit Auction' title='Stop bidding on the property altogether.' /></div>";
+		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input id='auction-bid-button' type='button' value='Bid' title='Place your bid.' /><input id='auction-pass-button' type='button' value='Pass' title='Skip this round of bidding.' /><input id='auction-exit-button' type='button' value='Exit Auction' title='Stop bidding on the property altogether.' /></div>";
 		this.popup(html, 'blank');
 		var thisUI = this;
 		[
@@ -142,14 +146,8 @@
 		this.popup(html, 'blank');
 
 		function choose(amount) {
-			if (typeof global.$ !== 'undefined') {
-				global.$('#popupwrap, #popupbackground').hide();
-			} else {
-				['popupwrap', 'popupbackground'].forEach(function(id) {
-					var element = document.getElementById(id);
-					if (element) element.style.display = 'none';
-				});
-			}
+			if (global.popup && global.popup.close) global.popup.close();
+			else DOMUI.setVisible('#popupwrap, #popupbackground', false);
 			if (typeof onChoose === 'function') onChoose(amount);
 		}
 
@@ -169,7 +167,12 @@
 		return this.popup(html, action, undefined, 0);
 	};
 
-	BrowserUI.prototype.showTradeResult = function(label, trade) {
+	BrowserUI.prototype.showTradeResult = function(label, trade, result) {
+		if (result && result.declined && this.game) {
+			var initiator = global.GameStateContext.getPlayerById(this.game.state, trade.getInitiator());
+			var recipient = global.GameStateContext.getPlayerById(this.game.state, trade.getRecipient());
+			if (recipient.human && !initiator.human) return;
+		}
 		return this.popup('<p>' + this.formatTradeResult(label, trade) + '</p>');
 	};
 
@@ -194,7 +197,7 @@
 	};
 
 	BrowserUI.prototype.waitForPopupClose = async function() {
-		while (typeof global.$ !== 'undefined' && !global.$("#popupwrap").is(":hidden")) {
+		while (typeof document !== 'undefined' && document.getElementById('popupwrap') && getComputedStyle(document.getElementById('popupwrap')).display !== 'none') {
 			await this.delay(10);
 		}
 	};
@@ -204,16 +207,17 @@
 		var cell = document.querySelector('[data-square-id="' + propertyIndex + '"]');
 		var cellOwner = cell && cell.querySelector('[data-square-owner]');
 		if (!cellOwner) return;
+		var buildings = cell.querySelector('.cell-buildings') || cellOwner;
 		if (hotelCount === 1) {
-			cellOwner.innerHTML = '<div class="cell-position cell-hotel" title="hotel" style="display: inline-block;background-color: red; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
+			buildings.innerHTML = '<div class="cell-hotel" title="hotel"></div>';
 		} else if (houseCount > 0) {
 			var htm = '';
 			for (var i = 0; i < houseCount; i++) {
-				htm += '<div class="cell-position cell-house" title="house" style="display: inline-block;background-color: green; border: 1px;border-style: solid;position:relative; vertical-align:middle"></div>';
+				htm += '<div class="cell-house" title="house"></div>';
 			}
-			cellOwner.innerHTML = htm;
+			buildings.innerHTML = htm;
 		} else {
-			cellOwner.innerHTML = '';
+			buildings.innerHTML = '';
 		}
 	};
 
@@ -344,15 +348,9 @@
 	};
 
 	BrowserUI.prototype.closeAuction = function() {
-		if (typeof global.$ !== 'undefined') {
-			global.$('#buypropertybutton, #popupbackground, #popupwrap').hide();
-			return;
-		}
-		if (typeof document === 'undefined') return;
-		['buypropertybutton', 'popupbackground', 'popupwrap'].forEach(function(id) {
-			var element = document.getElementById(id);
-			if (element) element.style.display = 'none';
-		});
+		DOMUI.setVisible('#buypropertybutton', false);
+		if (global.popup && global.popup.close) global.popup.close();
+		else DOMUI.setVisible('#popupbackground, #popupwrap', false);
 	};
 
     BrowserUI.prototype.closeDecisionPopup = function() { this.closeAuction(); };
@@ -362,7 +360,7 @@
 		var el = document.getElementById('landed');
 		if (el) {
 			el.innerHTML = text;
-			if (typeof global.$ !== 'undefined') global.$('#landed').show();
+			DOMUI.setVisible('#landed', true);
 		}
 	};
 
@@ -382,7 +380,7 @@
 			buyButton.addEventListener('click', function() { game.submitPlayerAction({ type: 'buy', squareId: squareId }); });
 		}
 		el.style.display = '';
-		if (typeof global.$ !== 'undefined') global.$('#landed').show();
+		DOMUI.setVisible('#landed', true);
 	};
 
 	BrowserUI.prototype.updateTurnDisplay = function(p) {
@@ -401,10 +399,7 @@
 	};
 
 	BrowserUI.prototype.removePlayerToken = function(playerId) {
-		var overlays = this.game && this.game.state.playerOverlays;
-		var overlay = overlays && overlays[playerId];
-		if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		if (overlays) delete overlays[playerId];
+		if (this.boardView) this.boardView.removePlayer(playerId);
 	};
 
 	BrowserUI.prototype.onPlayerCountChanged = function(playerCount) {
@@ -416,10 +411,10 @@
 	};
 
 	BrowserUI.prototype.onRollStart = function() {
-		if (typeof global.$ === 'undefined') return;
-		global.$("#option").hide();
-		global.$("#buy").show();
-		global.$("#manage").hide();
+		if (typeof document === 'undefined') return;
+		DOMUI.setVisible("#option", false);
+		DOMUI.setVisible("#buy", true);
+		DOMUI.setVisible("#manage", false);
 	};
 
 	BrowserUI.prototype.focusNextButton = function() {
@@ -429,19 +424,19 @@
 	};
 
 	BrowserUI.prototype.onTurnStart = function(playerIndex) {
-		if (typeof global.$ !== 'undefined') {
-			global.$("#landed, #option, #manage").hide();
-			global.$("#board, #control, #moneybar, #viewstats, #buy").show();
-			global.$(".money-bar-arrow").hide();
-			global.$("#p" + playerIndex + "arrow").show();
+		if (typeof document !== 'undefined') {
+			DOMUI.setVisible("#landed, #option, #manage", false);
+			DOMUI.setVisible("#board, #control, #moneybar, #viewstats, #buy", true);
+			DOMUI.setVisible(".money-bar-arrow", false);
+			DOMUI.setVisible("#p" + playerIndex + "arrow", true);
 		}
 		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
 	};
 
 	BrowserUI.prototype.setDiceVisible = function(visible) {
-		if (typeof global.$ === 'undefined') return;
-		if (visible) global.$("#die0, #die1").show();
-		else global.$("#die0, #die1").hide();
+		if (typeof document === 'undefined') return;
+		if (visible) DOMUI.setVisible("#die0, #die1", true);
+		else DOMUI.setVisible("#die0, #die1", false);
 	};
 
 	BrowserUI.prototype.displayJailOptions = function(hasJailCard, mustPayFine) {
@@ -463,43 +458,32 @@
 			jailCardButton.addEventListener('click', function() { game.submitPlayerAction({ type: 'useJailCard', cardId: game.state.player[game.state.turn].heldCards[0] }); });
 		}
 		landed.style.display = '';
-		if (typeof global.$ !== 'undefined') global.$('#landed').show();
+		DOMUI.setVisible('#landed', true);
 	};
 
 	BrowserUI.prototype.onLeaveJail = function(playerColor) {
 		if (typeof document === 'undefined') return;
 		var jail = document.getElementById('jail');
-		var cell = document.getElementById('square-jail');
+		var cell = this.boardView && this.boardView.surface.querySelector('[data-kind="jail"]');
+		if (!cell) cell = document.getElementById('square-jail');
 		if (jail) jail.style.border = '1px solid black';
-		if (cell) cell.style.border = '2px solid ' + playerColor;
+		if (cell) cell.style.borderColor = playerColor;
 		this.hideLanded();
 	};
 
 	BrowserUI.prototype.onGameOver = function(winnerName) {
-		if (typeof global.$ !== 'undefined') {
-			global.$('#board, #control, #moneybar').show();
-			if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
-			global.$('#refresh').hide();
-			if (typeof global.restartGame === 'function') {
-				global.$('#nextbutton').val('Restart Game').prop('title', 'Return to the settings screen and start another game.').off('click').on('click', global.restartGame);
-			}
-		} else if (typeof document !== 'undefined') {
-			['board', 'control', 'moneybar'].forEach(function(id) {
-				var el = document.getElementById(id);
-				if (el) el.style.display = '';
-			});
-			var refresh = document.getElementById('refresh');
-			if (refresh) refresh.style.display = 'none';
+		DOMUI.setVisible('#board, #control, #moneybar', true);
+		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
+		DOMUI.setVisible('#refresh', false);
+		if (typeof document !== 'undefined') {
 			var button = document.getElementById('nextbutton');
 			if (button) {
 				button.value = 'Restart Game';
 				button.title = 'Return to the settings screen and start another game.';
-				if (typeof global.restartGame === 'function') button.onclick = global.restartGame;
+				if (typeof global.restartGame === 'function') DOMUI.listen(button, 'click', global.restartGame);
 			}
 		}
-		if (typeof global.popup === 'function') {
-			this.popup("<div class='winner-popup-title'>" + UIHtml.escapeHTML(winnerName) + " Wins!!</div>", null, 5);
-		}
+		if (typeof global.popup === 'function') this.popup("<div class='winner-popup-title'>" + UIHtml.escapeHTML(winnerName) + " Wins!!</div>", null, 5);
 	};
 
 	BrowserUI.prototype.initializeTradeInputHandlers = function() {
@@ -524,10 +508,11 @@
 	};
 
 	BrowserUI.prototype.setTradePanelVisible = function(visible) {
-		if (typeof global.$ === 'undefined') return;
-		if (visible) global.$('#board, #control').hide();
-		else global.$('#board, #control').show();
-		global.$('#trade').toggle(!!visible);
+		if (typeof document === 'undefined') return;
+		if (this.boardView) this.boardView.setTradeVisible(visible);
+		if (visible) DOMUI.setVisible('#board, #control', false);
+		else DOMUI.setVisible('#board, #control', true);
+		DOMUI.setVisible('#trade', !!visible);
 		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(!visible, this.game);
 	};
 

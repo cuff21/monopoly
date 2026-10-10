@@ -2,13 +2,13 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<title>Monopoly</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
-
-	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 
 	<script type="text/javascript" src="js/script-manifest.js"></script>
 	<script type="text/javascript" src="js/script-loader.js"></script>
 	<link rel="stylesheet" type="text/css" href="styles.css" />
+	<link rel="stylesheet" type="text/css" href="board.css" />
 </head>
 
 <body>
@@ -103,87 +103,7 @@
 		</div>
 	</div>
 
-	<table id="board">
-		<tr>
-			<td class="cell board-corner" id="cell20"></td>
-			<td class="cell board-top" id="cell21"></td>
-			<td class="cell board-top" id="cell22"></td>
-			<td class="cell board-top" id="cell23"></td>
-			<td class="cell board-top" id="cell24"></td>
-			<td class="cell board-top" id="cell25"></td>
-			<td class="cell board-top" id="cell26"></td>
-			<td class="cell board-top" id="cell27"></td>
-			<td class="cell board-top" id="cell28"></td>
-			<td class="cell board-top" id="cell29"></td>
-			<td class="cell board-corner" id="cell30"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell19"></td>
-			<td colspan="9" class="board-center"></td>
-			<td class="cell board-right" id="cell31"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell18"></td>
-			<td colspan="9" class="board-center"></td>
-			<td class="cell board-right" id="cell32"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell17"></td>
-			<td colspan="9" class="board-center"></td>
-			<td class="cell board-right" id="cell33"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell16"></td>
-			<td colspan="9" class="board-center"></td>
-			<td class="cell board-right" id="cell34"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell15"></td>
-			<td colspan="9" class="board-center"></td>
-			<td class="cell board-right" id="cell35"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell14"></td>
-			<td colspan="9" class="board-center"></td>
-			<td class="cell board-right" id="cell36"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell13"></td>
-			<td colspan="9" rowspan="2" class="board-center">
-				<div id="drawn-cards" aria-label="Last Chance and Community Chest cards">
-					<div class="drawn-card-group" id="community-chest-display">
-						<div class="drawn-card-stack" aria-hidden="true"><img src="images/community_chest_icon.png" alt="" /></div>
-						<div class="drawn-card">
-							<div class="drawn-card-title">Community Chest</div>
-							<div class="drawn-card-text" id="community-chest-card-text">No card drawn yet.</div>
-						</div>
-					</div>
-					<div class="drawn-card-group" id="chance-display">
-						<div class="drawn-card-stack" aria-hidden="true"><img src="images/chance_icon.png" alt="" /></div>
-						<div class="drawn-card">
-							<div class="drawn-card-title">Chance</div>
-							<div class="drawn-card-text" id="chance-card-text">No card drawn yet.</div>
-						</div>
-					</div>
-				</div>
-			</td>
-			<td class="cell board-right" id="cell37"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell12"></td>
-			<td class="cell board-right" id="cell38"></td>
-		</tr><tr>
-			<td class="cell board-left" id="cell11"></td>
-			<td colspan="9" class="board-center">
-				<div id="jail"></div>
-			</td>
-			<td class="cell board-right" id="cell39"></td>
-		</tr><tr>
-			<td class="cell board-corner" id="cell10"></td>
-			<td class="cell board-bottom" id="cell9"></td>
-			<td class="cell board-bottom" id="cell8"></td>
-			<td class="cell board-bottom" id="cell7"></td>
-			<td class="cell board-bottom" id="cell6"></td>
-			<td class="cell board-bottom" id="cell5"></td>
-			<td class="cell board-bottom" id="cell4"></td>
-			<td class="cell board-bottom" id="cell3"></td>
-			<td class="cell board-bottom" id="cell2"></td>
-			<td class="cell board-bottom" id="cell1"></td>
-			<td class="cell board-corner" id="cell0"></td>
-		</tr>
-	</table>
+	<div id="board"></div>
 
 	<div id="moneybarwrap">
 		<div id="moneybar">

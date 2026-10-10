@@ -15,6 +15,8 @@ function Game(ui, state) {
 		highestBidder: 0,
 		highestBid: 0,
 		currentBidder: 1,
+		passed: new Set(),
+		initiator: 0,
 		property: -1,
 		history: []
 	};

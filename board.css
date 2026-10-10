@@ -1,0 +1,138 @@
+/* Board display only: plain CSS, no build step. */
+.game-display { position: relative; display: flex; align-items: flex-start; gap: 12px; }
+.board-scroll { flex: 0 0 auto; }
+#board.board-surface {
+    display: none; position: relative; float: none; margin: 25px;
+    padding: 3px; border: 2px solid #222; box-sizing: border-box;
+    background: #ddd; width: 914px; height: 914px;
+}
+#board.board-perimeter {
+    grid-template-columns: 104px repeat(9, 74px) 104px;
+    grid-template-rows: 104px repeat(9, 74px) 104px;
+    gap: 3px;
+}
+/* Preserve the board grid while panels toggle their visibility. */
+#board.board-perimeter:not([style*="display: none"]) { display: grid; }
+#board.board-perimeter[style*="display: none"] { display: none; }
+.board-square {
+    box-sizing: border-box; border: 1px solid #222; min-width: 0;
+    width: auto; height: auto; font: 12px Arial, sans-serif; text-align: center;
+    background-image: none; isolation: isolate;
+}
+.board-square .cell-anchor { position: relative; width: 100%; height: 100%; }
+.board-square .cell-name {
+    left: 2px; bottom: 1px; width: calc(100% - 4px); line-height: 1.15;
+    overflow-wrap: anywhere; white-space: pre-line;
+}
+.board-square .board-icon {
+    position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+    height: 40px; max-width: calc(100% - 6px); object-fit: contain;
+}
+.board-square.board-corner .board-icon { height: 50px; }
+.board-square[data-kind="go"] .board-icon { top: 24px; width: calc(100% - 8px); height: 42px; }
+.board-square .cell-position-holder { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.board-square .free-parking-pot { top: 54px; font-size: 12px; }
+#board .jail-region {
+    position: absolute; top: 0; right: 0; left: auto; width: 65px; height: 65px;
+    border: 1px solid #222; background: white; box-sizing: content-box; z-index: 2;
+    background-image: none;
+}
+.jail-label { display: block; font-size: 11px; line-height: 12px; }
+.jail-icon { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 48px; height: 40px; object-fit: contain; }
+.jail-tokens { position: absolute; inset: 0; }
+.visiting-square > .cell-anchor > .cell-position-holder { top: 68px; height: 30px; }
+.board-token-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.board-token-layer[hidden] { display: none; }
+.board-token-layer .token-overlay { z-index: auto; }
+.board-center-layout {
+    grid-area: 2 / 2 / 11 / 11; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start; padding-top: 115px; gap: 50px;
+}
+.board-center-layout #control {
+    position: relative; top: auto; left: auto; flex: 0 0 auto;
+    width: 444px; box-sizing: border-box; padding: 12px;
+}
+#control { border: 1px solid #64748b; border-radius: 8px; box-shadow: 0 2px 5px #0002; }
+#drawn-cards { flex: 0 0 auto; flex-wrap: wrap; gap: 18px; padding: 0 12px; width: 100%; }
+.board-center-layout #drawn-cards { flex: 1 1 auto; min-height: 0; align-content: flex-start; overflow-y: auto; padding-bottom: 8px; }
+#drawn-cards[hidden] { display: none; }
+.drawn-card-group { min-width: 0; width: 232px; }
+.drawn-card-stack, .drawn-card { flex-shrink: 0; }
+.drawn-card-text { font-size: 11px; line-height: 1.2; overflow-y: auto; max-height: 96px; }
+.game-display #moneybarwrap { position: relative; right: auto; min-width: 115px; }
+.game-display #moneybar { margin: 25px 0; }
+.mobile-game-panels { display: none; }
+#trade .propertycellcolor { width: 22px; min-width: 22px; }
+.trade-property-swatch { display: block; width: 20px; height: 20px; box-sizing: border-box; border: 1px solid #555; text-align: center; line-height: 18px; font-weight: bold; }
+.trade-property-swatch img { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* Buildings sit within ownership bars on the outside edge. */
+.board-square .cell-owner { background-image: none; box-sizing: border-box; border: 1px solid #555; }
+.board-top .cell-owner { width: 100%; height: 15px; left: 0; top: -25px; }
+.board-bottom .cell-owner { width: 100%; height: 15px; left: 0; bottom: -25px; }
+.board-left .cell-owner { height: 100%; width: 15px; top: 0; left: -25px; }
+.board-right .cell-owner { height: 100%; width: 15px; top: 0; right: -25px; }
+.cell-buildings { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 1px; z-index: 3; pointer-events: none; }
+.board-left .cell-buildings, .board-right .cell-buildings { flex-direction: column; }
+.cell-buildings .cell-house, .cell-buildings .cell-hotel { position: static !important; flex-shrink: 0; border: none !important; width: 12px !important; height: 12px !important; }
+.board-coordinate .board-square { position: absolute; width: 7%; height: 7%; }
+.board-coordinate .board-center-layout { position: absolute; left: 15%; top: 15%; width: 70%; height: 70%; box-sizing: border-box; padding-top: 100px; }
+.board-coordinate .board-icon { max-height: 32px; }
+.board-coordinate .jail-region { transform: scale(.7); transform-origin: top right; }
+.board-coordinate .visiting-square > .cell-anchor > .cell-position-holder { top: 48px; height: 12px; }
+.enlarge { box-sizing: border-box; padding: 8px; }
+.enlarge .enlarge-color { height: 25px; }
+.enlarge .enlarge-name { font-size: 15px; height: auto; min-height: 36px; padding: 6px 0; }
+.enlarge .enlarge-price { white-space: pre-line; height: auto; min-height: 30px; font-size: 12px; line-height: 15px; }
+.enlarge .enlarge-token { width: 100%; height: 60px; }
+.enlarge .enlarge-token img { position: static; max-width: 100%; max-height: 55px; object-fit: contain; }
+#menutable, #nextbutton, #setup #startgamebutton { background-image: none; background-color: #2563eb; border-color: #1d4ed8; }
+.menu-item, .menu-item:hover { background-image: none; }
+.menu-item:hover, #nextbutton:hover, #setup #startgamebutton:hover { background: #1d4ed8; }
+#menutable { height: 36px; }
+#menu { height: 36px; }
+#menu a { padding-top: 10px; box-sizing: border-box; }
+#control input[type="button"], #control button, #popup button, #popup input[type="button"] { min-height: 36px; cursor: pointer; }
+#popup #bid { box-sizing: border-box; max-width: 100%; }
+.auction-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.auction-actions input { margin: 0; }
+#nextbutton { height: 36px; }
+button:disabled, input:disabled { cursor: default; opacity: .6; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, .board-square:focus-visible, .board-scroll:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+@media (max-width: 1099px) {
+    .game-display { display: block; width: 100%; }
+    .board-scroll { width: 100%; overflow-x: auto; }
+    #board.board-surface { margin: 25px; }
+    .board-center-layout { padding: 0; }
+    .mobile-game-panels { display: flex; flex-direction: column; align-items: stretch; gap: 16px; padding: 12px; box-sizing: border-box; }
+    .mobile-game-panels #control { position: static; top: auto; left: auto; width: 100%; max-width: 600px; box-sizing: border-box; padding: 10px; align-self: center; }
+    #control > table { width: 100%; table-layout: fixed; }
+    #control > table > tbody > tr > td { display: block; width: auto; }
+    #control > table > tbody > tr > td:empty { display: none; }
+    #control #menu, #control #menutable, #control #alert, #control #manage, #control #landed { width: 100%; box-sizing: border-box; margin-left: 0; margin-right: 0; }
+    #control #menu { height: 44px; }
+    #control #menutable { height: 44px; table-layout: fixed; }
+    #control .menu-item { min-width: 0; width: auto; max-width: none; }
+    #menu a { padding-top: 14px; }
+    #control input[type="button"], #control button { min-height: 44px; }
+    #control #nextbutton { width: 100%; }
+    #control #pstats { margin: 8px auto; }
+    #control .propertycellname { width: auto; }
+    #control #owned table { width: 100%; }
+    .mobile-game-panels #drawn-cards { padding: 0; gap: 14px; }
+    .mobile-game-panels .drawn-card-group { width: 232px; --card-width: 112px; --card-height: 136px; --card-gap: 8px; gap: 8px; }
+    .mobile-game-panels .drawn-card-stack, .mobile-game-panels .drawn-card { width: 112px; height: 136px; }
+    .mobile-game-panels #moneybarwrap { width: 100%; min-width: 0; }
+    .mobile-game-panels #moneybar { float: none; margin: 0 auto; }
+    #setup, #training { max-width: calc(100vw - 24px); margin: 12px; padding: 16px; border-radius: 12px; }
+    #setup .player-input { white-space: normal; }
+    #setup input, #setup select { max-width: 100%; min-height: 36px; box-sizing: border-box; }
+    #popupwrap, #statswrap { position: fixed; top: 50%; transform: translateY(-50%); box-sizing: border-box; padding: 12px; max-height: 100vh; overflow-y: auto; }
+    #popup { max-width: calc(100vw - 24px); min-width: 0; box-sizing: border-box; }
+    #stats { width: 100% !important; min-width: 0; max-width: 100%; box-sizing: border-box; }
+    #statstext { overflow-x: auto; }
+    #statsclose { right: 0; top: 0; }
+    #trade { max-width: calc(100vw - 24px); overflow-x: auto; box-sizing: border-box; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .drawn-card-flip, .drawn-card-flip img { animation: none; }
+}

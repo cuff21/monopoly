@@ -1,12 +1,14 @@
+var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
+	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
+
 // Browser rendering and form serialization for ID-based square and card transfers.
 (function(global) {
 	'use strict';
 	var UIHtml = global.UIHtml || (typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
 
 	function setButtons(editing, responding) {
-		if (typeof global.$ === 'undefined') return;
-		global.$('#proposetradebutton, #canceltradebutton').toggle(!!editing);
-		global.$('#accepttradebutton, #rejecttradebutton').toggle(!!responding);
+		DOMUI.setVisible('#proposetradebutton, #canceltradebutton', !!editing);
+		DOMUI.setVisible('#accepttradebutton, #rejecttradebutton', !!responding);
 	}
 	function playerId(player) { return player && player.playerId ? player.playerId : player; }
 	function idsFor(board) {
@@ -37,7 +39,20 @@
 			checkboxCell.className = 'propertycellcheckbox';
 			var checkbox = document.createElement('input'); checkbox.type = 'checkbox';
 			checkbox.id = 'trade' + side + 'square-' + squareId; checkbox.title = 'Include ' + property.name + ' in the trade.'; checkboxCell.appendChild(checkbox);
-			var colorCell = row.insertCell(); colorCell.className = 'propertycellcolor'; colorCell.style.backgroundColor = property.color || 'white';
+			var colorCell = row.insertCell(); colorCell.className = 'propertycellcolor';
+			var swatch = document.createElement('span'); swatch.className = 'trade-property-swatch';
+			colorCell.appendChild(swatch);
+			var color = (property.color || '').toLowerCase().replace(/\s/g, '');
+			if (color && !['white', '#fff', '#ffffff', 'transparent', 'rgb(255,255,255)', 'rgba(255,255,255,1)'].includes(color)) {
+				swatch.style.backgroundColor = property.color;
+			} else {
+				swatch.title = property.group.label;
+				if (property.icon) {
+					var thumbnail = document.createElement('img'); thumbnail.src = property.icon; thumbnail.alt = property.group.label;
+					thumbnail.onerror = function() { swatch.textContent = property.group.label.charAt(0).toUpperCase(); };
+					swatch.appendChild(thumbnail);
+				} else swatch.textContent = property.group.label.charAt(0).toUpperCase();
+			}
 			var nameCell = row.insertCell(); nameCell.className = 'propertycellname'; nameCell.textContent = property.name;
 			if (property.mortgage) { nameCell.title = 'Mortgaged'; nameCell.style.color = 'grey'; }
 			row.onclick = function(event) { if (event.target !== checkbox) checkbox.checked = !checkbox.checked; setButtons(true, false); };
@@ -48,7 +63,10 @@
 			if (!square.groupId || squareState.ownerId === null) return;
 			var group = gameState.board.groupsById[square.groupId].squareIds;
 			if (squareState.house > 0 || group.some(function(memberId) { return gameState.squareStateById[memberId].house > 0; })) return;
-			var property = { id: squareId, name: square.presentation.label, color: square.presentation.color, mortgage: squareState.mortgage };
+			var definition = gameState.board.groupsById[square.groupId];
+			var icon = definition.presentation.boardIcon || definition.presentation.tokenImage || square.presentation.boardIcon || square.presentation.tokenImage;
+			var property = { id: squareId, name: square.presentation.label, color: square.presentation.color, mortgage: squareState.mortgage,
+				group: definition, icon: typeof icon === 'string' ? icon : icon && icon.src };
 			if (squareState.ownerId === initiator.playerId) addRow(leftTable, 'left', squareId, property);
 			else if (squareState.ownerId === recipient.playerId) addRow(rightTable, 'right', squareId, property);
 		});
@@ -56,7 +74,7 @@
 			(owner.heldCards || []).forEach(function(cardId) {
 				var row = table.insertRow(), cell = row.insertCell(); cell.className = 'propertycellcheckbox';
 				var checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.id = 'trade' + side + 'card-' + encodeURIComponent(cardId); cell.appendChild(checkbox);
-				var label = row.insertCell(); label.className = 'propertycellname'; label.textContent = 'Get Out of Jail Free Card';
+				var label = row.insertCell(); label.colSpan = 2; label.className = 'propertycellname'; label.textContent = 'Get Out of Jail Free Card';
 				row.onclick = function(event) { if (event.target !== checkbox) checkbox.checked = !checkbox.checked; setButtons(true, false); };
 			});
 		}

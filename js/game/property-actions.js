@@ -27,6 +27,7 @@
 		p.pay(rules.purchasePrice, global.GameStateContext.BANK_ID);
 		global.GameStateContext.setSquareOwner(game.state, squareId, p.playerId);
 		game.state.pendingAuction = null;
+		notify(game, 'hideLanded');
 		notify(game, 'updateMoney'); notify(game, 'updateOwned');
 		return true;
 	}

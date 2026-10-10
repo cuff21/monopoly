@@ -455,6 +455,10 @@
             }
         }
 
+        // A property can overshoot the target value and make the recipient pay
+        // cash back. Negative trade money must fit this bot's available cash.
+        counterMoney = Math.max(counterMoney, -Math.max(0, Math.floor(p.money)));
+
         // If the resulting counter is worse or identical to the incoming offer
         if (counterMoney <= (tradeObj.getMoney() || 0) && valueAddedByProperties <= 0) {
             console.log("[Gen5AI " + p.name + "] Declined trade with " + initiator.name + ": unable to construct an advantageous counter.");

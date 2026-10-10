@@ -175,10 +175,6 @@
 			auctionEnabled: true,
 			freeParkingTaxes: true,
 			freeParkingPot: 0,
-			playerOverlays: Object.create(null),
-			lastKnownSquareByPlayerId: Object.create(null),
-			lastKnownJailByPlayerId: Object.create(null),
-			nextMoveDirection: 1,
 			lastGamePlayerCount: 2
 		}, overrides || {});
 	}

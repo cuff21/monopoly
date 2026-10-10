@@ -460,7 +460,25 @@ async function runTests() {
 	}
 	console.log('✔ Browser adapter dispatch verified.');
 
-	const savedPopupGame = saveGlobals(['game', 'player', 'turn', 'document', '$', 'setInterval', 'clearInterval']);
+	// Decline notices are suppressed only for a human rejecting a bot's offer.
+	for (const [initiatorHuman, recipientHuman, expectedPopups] of [
+		[false, true, 0], [true, false, 1], [true, true, 1], [false, false, 1]
+	]) {
+		const ui = new BrowserUI();
+		ui.game = { state: { player: [null,
+			{ playerId: 'player-1', human: initiatorHuman },
+			{ playerId: 'player-2', human: recipientHuman }] } };
+		let popups = 0;
+		ui.popup = () => { popups++; };
+		ui.formatTradeResult = label => label;
+		const offer = new global.Trade('player-1', 'player-2', 10, [], [], []);
+		ui.showTradeResult('Declined', offer, { declined: true });
+		assert.strictEqual(popups, expectedPopups);
+		ui.showTradeResult('Accepted', offer);
+		assert.strictEqual(popups, expectedPopups + 1, 'accepted trades retain their result popup');
+	}
+
+	const savedPopupGame = saveGlobals(['game', 'player', 'turn', 'document', 'setInterval', 'clearInterval']);
 	try {
 		global.game = { ui: { isHeadless: false } };
 		let popupActionRan = false;
@@ -472,13 +490,16 @@ async function runTests() {
 		let scheduledInterval = null;
 		global.player = [null, { human: true }];
 		global.turn = 1;
-		global.document = {
-			getElementById(id) { return id === 'popuptext' || id === 'popupclose' ? {} : null; }
+		const popupElements = {
+			popuptext: { insertAdjacentHTML() {} },
+			popupclose: { addEventListener() {}, removeEventListener() {}, focus() {} },
+			popupwrap: { style: {} }, popupbackground: { style: {} }
 		};
-		global.$ = () => ({
-			off() { return this; }, append() { return this; }, on() { return this; },
-			val() { return this; }, focus() { return this; }, fadeIn() { return this; }, show() { return this; }
-		});
+		global.document = {
+			getElementById(id) { return popupElements[id] || null; },
+			querySelectorAll(selector) { return selector.split(',').map(id => popupElements[id.trim().slice(1)]).filter(Boolean); },
+			addEventListener() {}, removeEventListener() {}
+		};
 		global.setInterval = (callback, delay) => { scheduledInterval = delay; return 1; };
 		global.clearInterval = () => {};
 		PopupView.popup('AI owner', null, undefined, undefined, {
@@ -526,7 +547,8 @@ async function runTests() {
 	}
 	global.document = {
 		createElement: tagName => new FakeElement(tagName),
-		getElementById: id => findTradeElement(tradeRoot, id)
+		getElementById: id => findTradeElement(tradeRoot, id),
+		querySelectorAll: selector => selector.split(',').map(id => findTradeElement(tradeRoot, id.trim().slice(1))).filter(Boolean)
 	};
 	global.player = [null,
 		{ index: 1, playerId: 'player-1', name: 'Offerer', heldCards: [] },
@@ -554,6 +576,42 @@ GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 		assert.strictEqual(global.document.getElementById('tradeleftsquare-' + tradeSquares[0]).checked, true);
 		assert.strictEqual(global.document.getElementById('traderightsquare-' + tradeSquares[1]).checked, true);
 		assert.strictEqual(global.document.getElementById('trade-rightp-money').value, '30');
+		global.player[1].heldCards = ['chance:0'];
+		GameStateContext.setSquareOwner(tradeGameState, 'reading-railroad', 'player-1');
+		GameStateContext.setSquareOwner(tradeGameState, 'electric-company', 'player-1');
+		TradeView.reset(tradeState, global.player[1], global.player[2], false, tradeGameState);
+		const coloredRow = global.document.getElementById('tradeleftsquare-' + tradeSquares[0]).parentNode.parentNode;
+		assert.strictEqual(coloredRow.children[1].children[0].style.backgroundColor, '#8B4513');
+		const railroadRow = global.document.getElementById('tradeleftsquare-reading-railroad').parentNode.parentNode;
+		assert.strictEqual(railroadRow.children[1].children[0].children[0].src, 'images/train_icon.png');
+		const utilityRow = global.document.getElementById('tradeleftsquare-electric-company').parentNode.parentNode;
+		assert.strictEqual(utilityRow.children[1].children[0].children[0].src, 'images/electric_icon.png');
+		utilityRow.children[1].children[0].children[0].onerror();
+		assert.strictEqual(utilityRow.children[1].children[0].textContent, 'U', 'unavailable icons fall back to the group initial');
+		const cardRow = global.document.getElementById('tradeleftcard-chance%3A0').parentNode.parentNode;
+		assert.strictEqual(cardRow.children[1].colSpan, 2, 'card labels span the swatch and name columns');
+		global.document.getElementById('tradeleftcard-chance%3A0').checked = true;
+		assert.deepStrictEqual(TradeView.read(tradeState).getHeldCards(), [{ cardId: 'chance:0', direction: 1 }]);
+		const nycState = GameStateContext.createState({ player: global.player, pcount: 2 });
+		GameStateContext.initializeBoardState(nycState, global.Monopoly.Editions.buildGameSetup('NYC').board, 'NYC');
+		GameStateContext.setSquareOwner(nycState, 'lomto', 'player-1');
+		TradeView.reset(tradeState, global.player[1], global.player[2], false, nycState);
+		const transportationRow = global.document.getElementById('tradeleftsquare-lomto').parentNode.parentNode;
+		assert.strictEqual(transportationRow.children[1].children[0].textContent, 'T', 'groups without icons show their first letter');
+
+		const { BoardView } = require('./js/ui/board-view');
+		const panelView = new BoardView({});
+		global.document.body = new FakeElement('body');
+		panelView.money = new FakeElement('div'); panelView.shell = new FakeElement('div'); panelView.mobile = new FakeElement('div');
+		panelView.media = { matches: false };
+		panelView.setTradeVisible(true);
+		assert.strictEqual(panelView.money.parentNode, global.document.body, 'trade stats use the page top-right positioning');
+		panelView.media.matches = true; panelView.placeMoneyPanel();
+		assert.strictEqual(panelView.money.parentNode, global.document.body, 'responsive layout must preserve trade stats positioning');
+		panelView.setTradeVisible(false);
+		assert.strictEqual(panelView.money.parentNode, panelView.mobile, 'closing trade restores mobile stats');
+		panelView.media.matches = false; panelView.placeMoneyPanel();
+		assert.strictEqual(panelView.money.parentNode, panelView.shell, 'desktop stats return to the board shell');
 		global.player[1].name = 'Offerer <img src=x onerror=alert(1)>';
 		global.player[2].name = 'Recipient <svg onload=alert(1)>';
 		const summary = TradeView.formatResult('Offer', new global.Trade(global.player[1], global.player[2], 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]));
@@ -571,7 +629,7 @@ GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 
 	// Positional global fixtures are obsolete after the structured Game UI cutover.
 	if (process.env.RUN_LEGACY_UI_SMOKE === '1') {
-	const savedLegacyGlobals = saveGlobals(['player', 'square', 'pcount', 'turn', 'game', '$', 'document']);
+	const savedLegacyGlobals = saveGlobals(['player', 'square', 'pcount', 'turn', 'game', 'document']);
 	const unsafeName = 'Player <img src=x onerror=alert(1)>';
 	global.player = [null, { index: 1, playerId: 'player-1', heldCards: [], name: unsafeName, color: 'red', money: 100, human: false, AI: { profile: { name: '<svg onload=alert(1)>' } } }];
 	global.square = Array.from({ length: 40 }, (_, index) => ({ index, id: 'property-' + index, owner: 0, name: 'Property ' + index, color: '#fff', groupNumber: 0, group: [], house: 0, mortgage: false }));
@@ -598,7 +656,6 @@ GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 			p1moneyname: { innerHTML: 'unchanged', textContent: '' }, landed: { innerHTML: 'occupied' }, quickstats: { style: {} }
 		};
 		global.document = { getElementById: id => elements[id] || null };
-		global.$ = () => ({ hide() { return this; }, show() { return this; } });
 		global.game = { ui: { isHeadless: false } };
 		RenderPanels.updateMoney();
 		assert.strictEqual(elements.p1moneyname.textContent, unsafeName);
@@ -750,48 +807,20 @@ global.document = {
 	}
 	console.log('✔ Browser presentation and auction UI verified.');
 
-	const savedPositionGlobals = saveGlobals(['document', 'window', 'player', 'pcount', 'turn', 'lastKnownPosition', 'lastKnownJail', 'nextMoveDirection', 'playerOverlays']);
-	try {
-		const positionElements = {
-			jail: { style: {} },
-			jailpositionholder: { innerHTML: '' },
-			playertoken1: { getBoundingClientRect() { return { left: 10, top: 20 }; } }
-		};
-		const positionBoard = global.Monopoly.Editions.get('Classic').buildBoard();
-		Object.keys(positionBoard.squaresById).forEach(squareId => {
-			positionElements['square-' + squareId] = { style: {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) };
-			positionElements['square-' + squareId + '-tokens'] = { innerHTML: '' };
-		});
-		positionElements.jail = { style: {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) };
-		positionElements.jailpositionholder = { innerHTML: '' };
-		global.document = {
-			getElementById: id => positionElements[id] || null,
-			createElement: () => ({ style: {} }),
-			body: { appendChild() {} }
-		};
-		global.window = { scrollX: 0, scrollY: 0 };
-		global.player = [null, { name: 'Ambient', color: 'black', position: 22, jail: false }];
-		global.pcount = 1;
-		global.turn = 1;
-		global.lastKnownPosition = [null, 31];
-		global.lastKnownJail = [null, false];
-		global.nextMoveDirection = 1;
-		global.playerOverlays = [];
-		const ownedOverlay = { style: {} };
-		const positionPlayer = { name: 'Owned', color: 'red', playerId: 'player-1', squareId: 'chance-south', jail: false };
-		const positionState = GameStateContext.createState({
-			player: [null, positionPlayer], pcount: 1, turn: 1, board: positionBoard,
-			lastKnownSquareByPlayerId: {}, lastKnownJailByPlayerId: {}, playerOverlays: { 'player-1': ownedOverlay }
-		});
-		GameStateContext.initializeBoardState(positionState, positionState.board);
-		await RenderBoard.updatePosition({ state: positionState, ui: { isHeadless: false } });
-		assert.strictEqual(positionState.lastKnownSquareByPlayerId['player-1'], 'chance-south');
-		assert.strictEqual(positionState.lastKnownJailByPlayerId['player-1'], false);
-		assert.strictEqual(ownedOverlay.style.backgroundColor, 'red');
-		assert.ok(positionElements['square-chance-south-tokens'].innerHTML.includes('player-1'));
-	} finally {
-		restoreGlobals(savedPositionGlobals);
-	}
+	const positionBoard = global.Monopoly.Editions.get('Classic').buildBoard();
+	const positionState = GameStateContext.createState({ player: [null, { playerId: 'player-1', squareId: 'chance-south' }], pcount: 1, turn: 1 });
+	GameStateContext.initializeBoardState(positionState, positionBoard);
+	let snapshotCalls = 0;
+	const positionGame = { state: positionState, ui: { isHeadless: false, boardView: {
+		renderPositions() { snapshotCalls++; assert.strictEqual(positionGame.state.player[1].squareId, 'chance-south'); }
+	} } };
+	await RenderBoard.updatePosition(positionGame);
+	assert.strictEqual(snapshotCalls, 1);
+	assert.strictEqual(positionState.playerOverlays, undefined, 'DOM overlays must not live in match state');
+	assert.strictEqual(positionState.nextMoveDirection, undefined, 'snapshots must not infer movement from a shared direction flag');
+	positionGame.ui.isHeadless = true;
+	await RenderBoard.updatePosition(positionGame);
+	assert.strictEqual(snapshotCalls, 1, 'headless synchronization never touches the view');
 	console.log('✔ Browser position rendering uses the owning Game state.');
 
     const nextState = GameStateContext.createState({ player: [null, { playerId: 'player-1', money: 1500 }], turn: 1, pcount: 1 });
@@ -816,11 +845,11 @@ global.document = {
 		game.play = () => {};
 		game.addPropertyToAuctionQueue(auctionFixture.squareId);
 		assert.strictEqual(await game.auction(), true);
-		assert.deepStrictEqual(bidCalls, [1, 2, 3]);
+		assert.deepStrictEqual(bidCalls, [2, 3], 'the declining player cannot open an auction after everyone else passes');
 		game.state.turn = 0;
 		game.addPropertyToAuctionQueue(auctionFixture.squareId);
 		assert.strictEqual(await game.auction(), true);
-		assert.deepStrictEqual(bidCalls, [1, 2, 3, 1, 2, 3]);
+		assert.deepStrictEqual(bidCalls, [2, 3, 1, 2, 3]);
 
 		let incrementalBidCount = 0;
 		global.player = [{ index: 0, name: 'the bank', human: false }, ...Array.from({ length: 3 }, (_, index) => ({
@@ -858,14 +887,14 @@ global.document = {
 		interactiveGame.play = () => {};
 		interactiveGame.addPropertyToAuctionQueue(interactiveFixture.squareId);
 		assert.strictEqual(await interactiveGame.auction(), true);
-		assert.deepStrictEqual(interactiveCalls, [1, 2, 3]);
+		assert.deepStrictEqual(interactiveCalls, [2, 3]);
 
 		const mixedPlayers = [null,
 			{ name: 'Human', human: true, money: 1500, pay(amount) { this.money -= amount; } },
 			{ name: 'AI', human: false, money: 1500, pay(amount) { this.money -= amount; },
 				AI: { bid: (property, currentBid) => currentBid + 1 } }
 		];
-		const mixedFixture = createAuctionFixtureState(mixedPlayers, 1);
+		const mixedFixture = createAuctionFixtureState(mixedPlayers, 2);
 		const humanTurns = [];
 		let closedMixedAuction = false;
 		const mixedGame = new FixtureGame({ isHeadless: false, openAuction() {},
@@ -913,6 +942,7 @@ global.document = {
 		GameStateContext.initializeBoardState(actionState, actionBoard, 'Classic');
 		const actionGame = new FixtureGame(actionUI, actionState);
 		assert.strictEqual(actionGame.buy(actionId), true);
+		assert.strictEqual(actionCalls.filter(call => call[0] === 'hideLanded').length, 1, 'a successful purchase should dismiss the purchase controls');
 		assert.strictEqual(actionGame.buy(secondActionId), true);
 		assert.strictEqual(GameStateContext.getSquareState(actionState, actionId).ownerId, 'player-1');
 		assert.strictEqual(actionGame.mortgage(actionId), true);
@@ -922,6 +952,7 @@ global.document = {
 		global.player[1].squareId = secondActionId;
 		global.player[1].money = 10;
 		assert.strictEqual(actionGame.buy(secondActionId), false);
+		assert.strictEqual(actionCalls.filter(call => call[0] === 'hideLanded').length, 2, 'a rejected purchase should leave the purchase controls available');
 		for (const method of ['updateOwned', 'updateMoney']) {
 			assert.ok(actionCalls.some(call => call[0] === method), method + ' should dispatch through GameUI');
 		}

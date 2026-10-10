@@ -1,3 +1,6 @@
+var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
+	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
+
 // Player setup screen: building player config rows and starting/restarting a game.
 
 var setupService = null;
@@ -54,10 +57,10 @@ function setup() {
 
 	playersGame = getSetupService().createPlayers(configuration, player.slice(1, pcount + 1));
 
-	$("#board, #moneybar").show();
+	DOMUI.setVisible("#board, #moneybar", true);
 	setTokenOverlaysVisible(true, game);
-	$("#setup").hide();
-	$("#refresh").hide();
+	DOMUI.setVisible("#setup", false);
+	DOMUI.setVisible("#refresh", false);
 
 	if (pcount === 2) {
 		document.getElementById("stats").style.width = "454px";
@@ -89,9 +92,10 @@ function restartGame() {
 	}
 
 	pcount = lastGamePlayerCount;
-	$("#popupwrap, #popupbackground").hide();
+	if (typeof popup !== 'undefined' && popup.close) popup.close();
+	DOMUI.setVisible("#popupwrap, #popupbackground", false);
 	document.getElementById("player-inputs").innerHTML = "";
-	$("#alert").empty();
+	document.getElementById('alert').replaceChildren();
 	onloadBehavior();
 
 	document.getElementById("auctionenabled").checked = settings.auctionEnabled;
@@ -104,9 +108,9 @@ function restartGame() {
 		document.getElementById("player" + i + "aiProfile").value = settings.players[i - 1].profile;
 	}
 	playernumber_onchange();
-	$("#board, #control, #moneybar, #refresh").hide();
+	DOMUI.setVisible("#board, #control, #moneybar, #refresh", false);
 	setTokenOverlaysVisible(false, game);
-	$("#setup").show();
+	DOMUI.setVisible("#setup", true);
 }
 
 function populateProfileOptions(profileSelect) {
@@ -252,16 +256,16 @@ function createPlayerInputs() {
 }
 
 function playernumber_onchange() {
-	$(".player-input").hide();
+	DOMUI.setVisible(".player-input", false);
 
 	for (var i = 1; i <= pcount; i++) {
-		$("#player" + i + "input").show();
+		DOMUI.setVisible("#player" + i + "input", true);
 	}
 
-	$(".remove-player-button").remove();
+	DOMUI.nodes('.remove-player-button').forEach(function(button) { button.remove(); });
 	if (pcount > 2) {
 		for (var i = 1; i <= pcount; i++) {
-			$("#player" + i + "input").append("<input type='button' class='remove-player-button' value='Remove' onclick='removePlayer(" + i + ");' title='Remove this player.' />");
+			document.getElementById('player' + i + 'input').insertAdjacentHTML('beforeend', "<input type='button' class='remove-player-button' value='Remove' onclick='removePlayer(" + i + ");' title='Remove this player.' />");
 		}
 	}
 

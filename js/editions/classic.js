@@ -109,9 +109,9 @@
 		cards[10] = new Card("Pay school fees of $50.", function(game) { game.subtractAmount(50, 'Community Chest');});
 		cards[11] = new Card("Doctor's fee. Pay $50.", function(game) { game.subtractAmount(50, 'Community Chest');});
 		cards[12] = new Card("It is your birthday. Collect $10 from every player.", function(game) { game.collectFromEachPlayer(10, 'Community Chest');});
-		cards[13] = new Card("Advance to \"GO\" (Collect $200).", function(game) { game.advanceToSquare('go', 'always');});
+		cards[13] = new Card("Advance to \"GO\" (Collect $200).", function(game) { return game.advanceToSquare('go', 'always');});
 		cards[14] = new Card("You are assessed for street repairs. $40 per house. $115 per hotel.", function(game) { game.streetRepairs(40, 115, 'Community Chest');});
-		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass \"GO\". Do not collect $200.", function(game) { game.goToJail();});
+		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass \"GO\". Do not collect $200.", function(game) { return game.goToJail();});
 
 		return cards;
 	}
@@ -125,18 +125,18 @@
 		cards[1] = new Card("Make General Repairs on All Your Property. For each house pay $25. For each hotel $100.", function(game) { game.streetRepairs(25, 100, 'Chance');});
 		cards[2] = new Card("Speeding fine $15.", function(game) { game.subtractAmount(15, 'Chance');});
 		cards[3] = new Card("You have been elected chairman of the board. Pay each player $50.", function(game) { game.payEachPlayer(50, 'Chance');});
-		cards[4] = new Card("Go back three spaces.", function(game) { game.moveRelative(-3);});
-		cards[5] = new Card("ADVANCE TO THE NEAREST UTILITY. IF UNOWNED, you may buy it from the Bank. IF OWNED, throw dice and pay owner a total ten times the amount thrown.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.utilities.groupId);});
+		cards[4] = new Card("Go back three spaces.", function(game) { return game.moveRelative(-3);});
+		cards[5] = new Card("ADVANCE TO THE NEAREST UTILITY. IF UNOWNED, you may buy it from the Bank. IF OWNED, throw dice and pay owner a total ten times the amount thrown.", function(game) { return game.advanceToGroupNearest(game.state.board.groupsById.utilities.groupId);});
 		cards[6] = new Card("Bank pays you dividend of $50.", function(game) { game.addAmount(50, 'Chance');});
-		cards[7] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
+		cards[7] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function(game) { return game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
 		cards[8] = new Card("Pay poor tax of $15.", function(game) { game.subtractAmount(15, 'Chance');});
-		cards[9] = new Card("Take a trip to Reading Rail Road. If you pass \"GO\" collect $200.", function(game) { game.advanceToSquare('reading-railroad', 'onCrossing');});
-		cards[10] = new Card("ADVANCE to Boardwalk.", function(game) { game.advanceToSquare('boardwalk', 'never');});
-		cards[11] = new Card("ADVANCE to Illinois Avenue. If you pass \"GO\" collect $200.", function(game) { game.advanceToSquare('illinois-avenue', 'onCrossing');});
+		cards[9] = new Card("Take a trip to Reading Rail Road. If you pass \"GO\" collect $200.", function(game) { return game.advanceToSquare('reading-railroad', 'onCrossing');});
+		cards[10] = new Card("ADVANCE to Boardwalk.", function(game) { return game.advanceToSquare('boardwalk', 'never');});
+		cards[11] = new Card("ADVANCE to Illinois Avenue. If you pass \"GO\" collect $200.", function(game) { return game.advanceToSquare('illinois-avenue', 'onCrossing');});
 		cards[12] = new Card("Your building loan matures. Collect $150.", function(game) { game.addAmount(150, 'Chance');});
-		cards[13] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
-		cards[14] = new Card("ADVANCE to St. Charles Place. If you pass \"GO\" collect $200.", function(game) { game.advanceToSquare('st-charles-place', 'onCrossing');});
-		cards[15] = new Card("Go to Jail. Go Directly to Jail. Do not pass \"GO\". Do not collect $200.", function(game) { game.goToJail();});
+		cards[13] = new Card("ADVANCE TO THE NEAREST RAILROAD. If UNOWNED, you may buy it from the Bank. If OWNED, pay owner twice the rental to which they are otherwise entitled.", function(game) { return game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
+		cards[14] = new Card("ADVANCE to St. Charles Place. If you pass \"GO\" collect $200.", function(game) { return game.advanceToSquare('st-charles-place', 'onCrossing');});
+		cards[15] = new Card("Go to Jail. Go Directly to Jail. Do not pass \"GO\". Do not collect $200.", function(game) { return game.goToJail();});
 
 		return cards;
 	}

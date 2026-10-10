@@ -17,6 +17,7 @@
 	GameUI.prototype.alert = function(text, playerIndex, secondPlayerIndex) {};
 	GameUI.prototype.updateMoney = function() {};
 	GameUI.prototype.updatePosition = function() { return Promise.resolve(); };
+	GameUI.prototype.animateMovement = function(movement) { return Promise.resolve(); };
 	GameUI.prototype.updateOwned = function() {};
 	GameUI.prototype.updateDice = function(die1, die2) {};
 	GameUI.prototype.updateFreeParking = function() {};

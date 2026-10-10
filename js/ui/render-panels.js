@@ -1,3 +1,6 @@
+var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
+	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
+
 // Money bar, owned-properties panel, and alert log rendering.
 
 var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
@@ -40,17 +43,14 @@ function addAlert(alertText, playerIndex, secondPlayerIndex, gameInstance) {
 
 	var gameState = gameInstance.state;
 	var currentTurn = gameState.turn;
-	$alert = $("#alert");
+	var alert = document.getElementById('alert');
+	if (!alert) return;
 	playerIndex = playerIndex === undefined || playerIndex === null ? currentTurn : playerIndex;
-	var alertElement = $(document.createElement("div"));
-	alertElement.append(playerBadge(playerIndex, gameState));
-	if (secondPlayerIndex) {
-		alertElement.append(playerBadge(secondPlayerIndex, gameState));
-	}
-	alertElement.append(document.createTextNode(alertText)).appendTo($alert);
-
-	// Animate scrolling down alert element.
-	$alert.stop().animate({"scrollTop": $alert.prop("scrollHeight")}, 1000);
+	var alertElement = document.createElement('div');
+	alertElement.innerHTML = playerBadge(playerIndex, gameState) + (secondPlayerIndex ? playerBadge(secondPlayerIndex, gameState) : '');
+	alertElement.appendChild(document.createTextNode(alertText));
+	alert.appendChild(alertElement);
+	DOMUI.scrollToBottom(alert, true);
 
 	var currentPlayer = gameState.player[currentTurn];
 	if (currentPlayer && !currentPlayer.human && currentPlayer.AI) {
@@ -92,29 +92,29 @@ function updateMoney(gameInstance) {
 	var p = players[currentTurn];
 
 	document.getElementById("pmoney").innerHTML = "$" + p.money;
-	$(".money-bar-row").hide();
+	DOMUI.setVisible(".money-bar-row", false);
 
 	for (var i = 1; i <= playerCount; i++) {
 		var p_i = players[i];
 
-		$("#moneybarrow" + i).show();
+		DOMUI.setVisible("#moneybarrow" + i, true);
 		document.getElementById("p" + i + "moneybar").style.border = "2px solid " + p_i.color;
 		document.getElementById("p" + i + "money").innerHTML = p_i.money;
 		document.getElementById("p" + i + "moneyname").textContent = p_i.name;
 	}
 
 	if (document.getElementById("landed").innerHTML === "") {
-		$("#landed").hide();
+		DOMUI.setVisible("#landed", false);
 	}
 
 	document.getElementById("quickstats").style.borderColor = p.color;
 
 	if (p.money < 0) {
-		$("#resignbutton").show();
-		$("#nextbutton").hide();
+		DOMUI.setVisible("#resignbutton", true);
+		DOMUI.setVisible("#nextbutton", false);
 	} else {
-		$("#resignbutton").hide();
-		$("#nextbutton").show();
+		DOMUI.setVisible("#resignbutton", false);
+		DOMUI.setVisible("#nextbutton", true);
 	}
 }
 
@@ -128,8 +128,8 @@ function updateDice(gameInstance, die1, die2) {
 	var die0 = die1 === undefined ? diceGame.getDie(1) : die1;
 	die1 = die2 === undefined ? diceGame.getDie(2) : die2;
 
-	$("#die0").show();
-	$("#die1").show();
+	DOMUI.setVisible("#die0", true);
+	DOMUI.setVisible("#die1", true);
 
 	if (document.images) {
 		var element0 = document.getElementById("die0");
@@ -181,8 +181,8 @@ function updateOwned(gameInstance) {
 	var checkedproperty = getCheckedProperty();
 	var checkedCard = document.querySelector && document.querySelector('#owned input[data-card-id]:checked');
 	var checkedCardId = checkedCard && checkedCard.dataset.cardId;
-	$("#option").show();
-	$("#owned").show();
+	DOMUI.setVisible("#option", true);
+	DOMUI.setVisible("#owned", true);
 
 	var HTML = "",
 	firstproperty = -1;
@@ -196,7 +196,7 @@ function updateOwned(gameInstance) {
 		if (gameInstance.ui && gameInstance.ui.onHouseChanged) gameInstance.ui.onHouseChanged(sq.id, sq.house, sq.hotel);
 		if (gameInstance.ui && gameInstance.ui.onMortgageChanged) gameInstance.ui.onMortgageChanged(sq.id, sq.mortgage);
 		if (sq.groupId && sq.ownerId === null) {
-			$("#square-" + sq.id + "-owner").hide();
+			DOMUI.setVisible("#square-" + sq.id + "-owner", false);
 		} else if (sq.groupId && sq.ownerId !== null) {
 			var currentCellOwner = document.getElementById("square-" + sq.id + "-owner");
 			var ownerPlayer = players.filter(function(candidate) { return candidate && candidate.playerId === sq.ownerId; })[0];
@@ -249,7 +249,7 @@ function updateOwned(gameInstance) {
 
 	if (HTML === "") {
 		HTML = UIHtml.escapeHTML(p.name) + ", you don't have any properties.";
-		$("#option").hide();
+		DOMUI.setVisible("#option", false);
 	} else {
 		HTML += "</table>";
 	}
@@ -265,21 +265,14 @@ function updateOwned(gameInstance) {
 		var firstCheckboxId = typeof firstproperty === 'string' ? firstproperty : "propertycheckbox-" + squares[firstproperty].id;
 		document.getElementById(firstCheckboxId).checked = true;
 	}
-	$("#owned .property-cell-row").click(function(event) {
+	DOMUI.listen('#owned .property-cell-row', 'click', function(event) {
 		var row = this;
-
-		// Toggle check the current checkbox.
 		if (!event || event.target.tagName !== 'INPUT') {
-			$(this).find(".propertycellcheckbox > input").prop("checked", function(index, val) { return !val; });
+			row.querySelectorAll('.propertycellcheckbox > input').forEach(function(box) { box.checked = !box.checked; });
 		}
-
-		// Set all other checkboxes to false.
-		$("#owned .propertycellcheckbox > input").prop("checked", function(index, val) {
-			if (!$.contains(row, this)) {
-				return false;
-			}
+		document.querySelectorAll('#owned .propertycellcheckbox > input').forEach(function(box) {
+			if (!row.contains(box)) box.checked = false;
 		});
-
 		updateOption(gameInstance);
 	});
 	updateOption(gameInstance);
@@ -289,7 +282,7 @@ function updateOption(gameInstance) {
 	if (!gameInstance || !gameInstance.state) throw new TypeError('Property options require the owning Game.');
 	var gameState = gameInstance.state;
 	var squares = getPanelSquares(gameState);
-	$("#option").show();
+	DOMUI.setVisible("#option", true);
 
 	var allGroupUninproved = true;
 	var allGroupUnmortgaged = true;
@@ -297,31 +290,31 @@ function updateOption(gameInstance) {
 	var sq = typeof checkedproperty === 'string' ? squares.filter(function(candidate) { return candidate.id === checkedproperty; })[0] : null;
 
 	if (!sq) {
-		$("#buyhousebutton").hide();
-		$("#sellhousebutton").hide();
-		$("#mortgagebutton").hide();
+		DOMUI.setVisible("#buyhousebutton", false);
+		DOMUI.setVisible("#sellhousebutton", false);
+		DOMUI.setVisible("#mortgagebutton", false);
 
 
 		var supply = gameInstance.getHouseHotelSupply();
 
-		$("#buildings").show();
+		DOMUI.setVisible("#buildings", true);
 		document.getElementById("buildings").innerHTML = "<img src='images/house.png' alt='' title='House' class='house' />:&nbsp;" + supply.housesAvailable + "&nbsp;&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' />:&nbsp;" + supply.hotelsAvailable;
 
 		return;
 	}
 
-	$("#buildings").hide();
+	DOMUI.setVisible("#buildings", false);
 	buyhousebutton = document.getElementById("buyhousebutton");
 	sellhousebutton = document.getElementById("sellhousebutton");
 
-	$("#mortgagebutton").show();
+	DOMUI.setVisible("#mortgagebutton", true);
 	document.getElementById("mortgagebutton").disabled = false;
 
 	if (sq.mortgage) {
 		document.getElementById("mortgagebutton").value = "Unmortgage ($" + Math.round(sq.price * 0.55) + ")";
 		document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + Math.round(sq.price * 0.55) + ".";
-		$("#buyhousebutton").hide();
-		$("#sellhousebutton").hide();
+		DOMUI.setVisible("#buyhousebutton", false);
+		DOMUI.setVisible("#sellhousebutton", false);
 
 		allGroupUnmortgaged = false;
 	} else {
@@ -329,8 +322,8 @@ function updateOption(gameInstance) {
 		document.getElementById("mortgagebutton").title = "Mortgage " + sq.name + " for $" + (sq.price * 0.5) + ".";
 
 		if (sq.kind === 'street') {
-			$("#buyhousebutton").show();
-			$("#sellhousebutton").show();
+			DOMUI.setVisible("#buyhousebutton", true);
+			DOMUI.setVisible("#sellhousebutton", true);
 			buyhousebutton.disabled = false;
 			sellhousebutton.disabled = false;
 
@@ -344,7 +337,7 @@ function updateOption(gameInstance) {
 				buyhousebutton.title = "Buy a hotel for $" + sq.houseprice;
 			}
 			if (sq.hotel == 1) {
-				$("#buyhousebutton").hide();
+				DOMUI.setVisible("#buyhousebutton", false);
 				sellhousebutton.value = "Sell hotel ($" + (sq.houseprice * 0.5) + ")";
 				sellhousebutton.title = "Sell a hotel for $" + (sq.houseprice * 0.5);
 			}
@@ -408,10 +401,10 @@ function updateOption(gameInstance) {
 			}
 
 			if (sq.house === 0 && sq.hotel === 0) {
-				$("#sellhousebutton").hide();
+				DOMUI.setVisible("#sellhousebutton", false);
 
 			} else {
-				$("#mortgagebutton").hide();
+				DOMUI.setVisible("#mortgagebutton", false);
 
 			}
 
@@ -422,8 +415,8 @@ function updateOption(gameInstance) {
 			}
 
 		} else {
-			$("#buyhousebutton").hide();
-			$("#sellhousebutton").hide();
+			DOMUI.setVisible("#buyhousebutton", false);
+			DOMUI.setVisible("#sellhousebutton", false);
 		}
 	}
 }

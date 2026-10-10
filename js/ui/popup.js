@@ -1,3 +1,6 @@
+var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
+	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
+
 // Modal popup, deed tooltip, and player-stats panel rendering.
 
 var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
@@ -25,13 +28,14 @@ function popup(HTML, action, option, timer, gameInstance) {
 
 	function closePopup() {
 		clearTimer();
-		$(document).off("keydown.popup");
-		$("#popupwrap").hide();
-		$("#popupbackground").fadeOut(400);
+		DOMUI.listen(document, 'keydown', null);
+		DOMUI.setVisible("#popupwrap", false);
+		DOMUI.fade('#popupbackground', false, 400);
 	}
 
+	popup.close = closePopup;
 	clearTimer();
-	$(document).off("keydown.popup");
+	DOMUI.listen(document, 'keydown', null);
 	document.getElementById("popuptext").innerHTML = HTML;
 
 	var callback = null;
@@ -63,25 +67,23 @@ function popup(HTML, action, option, timer, gameInstance) {
 
 	// Yes/No
 	if (mode === "yes/no") {
-		$("#popuptext").append("<div><input type=\"button\" value=\"Yes\" id=\"popupyes\" /><input type=\"button\" value=\"No\" id=\"popupno\" /></div>");
+		document.getElementById('popuptext').insertAdjacentHTML('beforeend', "<div><input type=\"button\" value=\"Yes\" id=\"popupyes\" /><input type=\"button\" value=\"No\" id=\"popupno\" /></div>");
 
-		$("#popupyes, #popupno").on("click", closePopup);
-		if (callback) {
-			$("#popupyes").on("click", callback);
-		}
+		DOMUI.listen('#popupno', 'click', closePopup);
+		DOMUI.listen('#popupyes', 'click', function() { closePopup(); if (callback) callback(); });
 
 	// Ok
 	} else if (mode !== "blank") {
-		$("#popuptext").append("<div><input type='button' value='OK' id='popupclose' autofocus='autofocus' /></div>");
+		document.getElementById('popuptext').insertAdjacentHTML('beforeend', "<div><input type='button' value='OK' id='popupclose' autofocus='autofocus' /></div>");
 
-		$(document).on("keydown.popup", function(event) {
+		DOMUI.listen(document, 'keydown', function(event) {
 			if ((event.key === "Enter" || event.keyCode === 13) && document.getElementById("popupclose")) {
 				event.preventDefault();
-				$("#popupclose").click();
+				document.getElementById('popupclose').click();
 			}
 		});
 
-		$("#popupclose").on("click", function() {
+		DOMUI.listen('#popupclose', 'click', function() {
 			closePopup();
 			if (callback) {
 				callback();
@@ -90,29 +92,29 @@ function popup(HTML, action, option, timer, gameInstance) {
 
 		if (timeout > 0) {
 			var secondsRemaining = timeout;
-			$("#popupclose").val("OK (" + secondsRemaining + ")");
+			document.getElementById('popupclose').value = "OK (" + secondsRemaining + ")";
 			popup.autoCloseTimer = setInterval(function() {
 				secondsRemaining--;
 				if (!document.getElementById("popupclose")) {
 					clearTimer();
 				} else if (secondsRemaining <= 0) {
 					clearTimer();
-					$("#popupclose").click();
+					document.getElementById('popupclose').click();
 				} else {
-					$("#popupclose").val("OK (" + secondsRemaining + ")");
+					document.getElementById('popupclose').value = "OK (" + secondsRemaining + ")";
 				}
 			}, 1000);
 		}
 
 	}
 
-	$("#popupbackground").fadeIn(400);
-	$("#popupwrap").show();
+	DOMUI.fade('#popupbackground', true, 400);
+	DOMUI.setVisible("#popupwrap", true);
 
 	if (document.getElementById("popupclose")) {
-		$("#popupclose").focus();
+		document.getElementById('popupclose').focus();
 	} else if (document.getElementById("popupyes")) {
-		$("#popupyes").focus();
+		document.getElementById('popupyes').focus();
 	}
 }
 
@@ -126,7 +128,7 @@ function updateDrawnCard(deckId, cardIndex, gameInstance) {
 	if (textElement && card) {
 		textElement.textContent = card.text;
 	}
-	if (groupElement) {
+	if (groupElement && !(typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
 		var movingCard = document.createElement("div");
 		var icon = document.createElement("img");
 		animationComplete = new Promise(function(resolve) {
@@ -137,7 +139,7 @@ function updateDrawnCard(deckId, cardIndex, gameInstance) {
 				movingCard.remove();
 				resolve();
 			});
-			setTimeout(resolve, 300);
+			setTimeout(function() { movingCard.remove(); resolve(); }, 300);
 		});
 		movingCard.className = "drawn-card-flip";
 		icon.src = deck.icon;
@@ -265,8 +267,8 @@ function showStats(gameInstance) {
 
 	document.getElementById("statstext").innerHTML = HTML;
 	// Show using animation.
-	$("#statsbackground").fadeIn(400, function() {
-		$("#statswrap").show();
+	DOMUI.fade('#statsbackground', true, 400, function() {
+		DOMUI.setVisible("#statswrap", true);
 	});
 }
 
@@ -276,21 +278,21 @@ function showdeed(property, gameInstance) {
 	var sq = gameState.board.squaresById[property];
 	if (!sq) return;
 	var current = gameState.squareStateById[property], rules = sq.rules;
-	$("#deed").show();
+	DOMUI.setVisible("#deed", true);
 
-	$("#deed-normal").hide();
-	$("#deed-mortgaged").hide();
-	$("#deed-special").hide();
+	DOMUI.setVisible("#deed-normal", false);
+	DOMUI.setVisible("#deed-mortgaged", false);
+	DOMUI.setVisible("#deed-special", false);
 
 	if (current.mortgage) {
-		$("#deed-mortgaged").show();
+		DOMUI.setVisible("#deed-mortgaged", true);
 		document.getElementById("deed-mortgaged-name").textContent = sq.presentation.label;
 		document.getElementById("deed-mortgaged-mortgage").textContent = rules.mortgageValue;
 
 	} else {
 
 		if (sq.kind === 'street') {
-			$("#deed-normal").show();
+			DOMUI.setVisible("#deed-normal", true);
 			document.getElementById("deed-header").style.backgroundColor = sq.presentation.color;
 			document.getElementById("deed-name").textContent = sq.presentation.label;
 			document.getElementById("deed-baserent").textContent = rules.baseRent;
@@ -300,7 +302,7 @@ function showdeed(property, gameInstance) {
 			document.getElementById("deed-hotelprice").textContent = rules.houseCost;
 
 		} else if (sq.groupId) {
-			$("#deed-special").show();
+			DOMUI.setVisible("#deed-special", true);
 			document.getElementById("deed-special-name").textContent = sq.presentation.label;
 			var group = gameState.board.groupsById[sq.groupId];
 			var special = sq.kind === 'utility'
@@ -313,7 +315,7 @@ function showdeed(property, gameInstance) {
 }
 
 function hidedeed() {
-	$("#deed").hide();
+	DOMUI.setVisible("#deed", false);
 }
 
 if (typeof module !== 'undefined' && module.exports) {

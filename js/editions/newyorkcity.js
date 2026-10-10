@@ -128,9 +128,9 @@
 		cards[10] = new Card("Pay school tax of $150", function(game) { game.subtractAmount(150, 'Community Chest');});
 		cards[11] = new Card("Doctor's fee. Pay $50", function(game) { game.subtractAmount(50, 'Community Chest');});
 		cards[12] = new Card("Madison Square Garden opening tonight. Collect $50 from every player for opening night seats.", function(game) { game.collectFromEachPlayer(50, 'Community Chest');});
-		cards[13] = new Card("You have won kiss cash! Advance to GO (Collect $200)", function(game) { game.advanceToSquare('go', 'always');});
+		cards[13] = new Card("You have won kiss cash! Advance to GO (Collect $200)", function(game) { return game.advanceToSquare('go', 'always');});
 		cards[14] = new Card("You are assessed for street repairs. $40 per house. $115 per hotel.", function(game) { game.streetRepairs(40, 115, 'Community Chest');});
-		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass GO. Do not collect $200.", function(game) { game.goToJail();});
+		cards[15] = new Card("Go to Jail. Go directly to Jail. Do not pass GO. Do not collect $200.", function(game) { return game.goToJail();});
 
 		return cards;
 	}
@@ -142,18 +142,18 @@
 		cards[1] = new Card("Make general repairs on all your property. For each house pay $25. For each hotel $100.", function(game) { game.streetRepairs(25, 100, 'Chance');});
 		cards[2] = new Card("Pay poor tax of $15.", function(game) { game.subtractAmount(15, 'Chance');});
 		cards[3] = new Card("You have been elected chairman of Con Edison. Pay each player $50.", function(game) { game.payEachPlayer(50, 'Chance');});
-		cards[4] = new Card("Go back 3 spaces.", function(game) { game.moveRelative(-3);});
-		cards[5] = new Card("Advance token to the nearest Con Edison utility. If UNOWNED you may buy it from the bank. If OWNED, throw dice and pay owner a total of ten times the amount thrown.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.utilities.groupId);});
+		cards[4] = new Card("Go back 3 spaces.", function(game) { return game.moveRelative(-3);});
+		cards[5] = new Card("Advance token to the nearest Con Edison utility. If UNOWNED you may buy it from the bank. If OWNED, throw dice and pay owner a total of ten times the amount thrown.", function(game) { return game.advanceToGroupNearest(game.state.board.groupsById.utilities.groupId);});
 		cards[6] = new Card("Citibank pays you interest of $50.", function(game) { game.addAmount(50, 'Chance');});
-		cards[7] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled. If Transportation is unowned, you may buy it from the Bank.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
-		cards[8] = new Card("Take a walk past The Essex House. Advance to GO. Collect $200.", function(game) { game.advanceToSquare('go', 'always');});
-		cards[9] = new Card("Take a ride to the Regency Hotel! If you pass GO collect $200.", function(game) { game.advanceToSquare('the-regency-hotel', 'onCrossing');});
-		cards[10] = new Card("Take a walk on fifth avenue. Advance token to Trump Tower.", function(game) { game.advanceToSquare('trump-tower', 'never');});
-		cards[11] = new Card("Advance to thirteen.", function(game) { game.advanceToSquare('thirteen-wnet', 'never');});
+		cards[7] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled. If Transportation is unowned, you may buy it from the Bank.", function(game) { return game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
+		cards[8] = new Card("Take a walk past The Essex House. Advance to GO. Collect $200.", function(game) { return game.advanceToSquare('go', 'always');});
+		cards[9] = new Card("Take a ride to the Regency Hotel! If you pass GO collect $200.", function(game) { return game.advanceToSquare('the-regency-hotel', 'onCrossing');});
+		cards[10] = new Card("Take a walk on fifth avenue. Advance token to Trump Tower.", function(game) { return game.advanceToSquare('trump-tower', 'never');});
+		cards[11] = new Card("Advance to thirteen.", function(game) { return game.advanceToSquare('thirteen-wnet', 'never');});
 		cards[12] = new Card("Your Smith Barney mutual fund pays dividend. Collect $150.", function(game) { game.addAmount(150, 'Chance');});
-		cards[13] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled.\n\nIf Transportation is unowned, you may buy it from the Bank.", function(game) { game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
-		cards[14] = new Card("Catch a bus to Central Park. If you pass GO, collect $200.", function(game) { game.advanceToSquare('central-park', 'onCrossing');});
-		cards[15] = new Card("Go directly to Jail. Do not pass GO, do not collect $200.", function(game) { game.goToJail();});
+		cards[13] = new Card("Advance token to the nearest Transportation and pay owner Twice the Rental to which they are otherwise entitled.\n\nIf Transportation is unowned, you may buy it from the Bank.", function(game) { return game.advanceToGroupNearest(game.state.board.groupsById.railroads.groupId);});
+		cards[14] = new Card("Catch a bus to Central Park. If you pass GO, collect $200.", function(game) { return game.advanceToSquare('central-park', 'onCrossing');});
+		cards[15] = new Card("Go directly to Jail. Do not pass GO, do not collect $200.", function(game) { return game.goToJail();});
 
 		return cards;
 	}

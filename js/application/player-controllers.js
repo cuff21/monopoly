@@ -150,7 +150,11 @@
                 else ui.showMessage(o.message, acknowledge, undefined, 0);
             }
             if (request.kind === 'auction') { ui.updateAuctionTurn(o.name, true); if (ui.focusAuctionBid) ui.focusAuctionBid(); }
-            if (request.kind === 'purchase') { ui.displayPropertyPurchase(o.squareId, self.game.state.board.squaresById[o.squareId]); ui.updateButtonState('Decline property', 'Decline purchase and continue.'); }
+            if (request.kind === 'purchase') {
+                ui.displayPropertyPurchase(o.squareId, self.game.state.board.squaresById[o.squareId]);
+                ui.updateButtonState(self.game.state.auctionEnabled ? 'Auction property' : 'Decline property',
+                    self.game.state.auctionEnabled ? 'Decline purchase and auction this property.' : 'Decline purchase and continue.');
+            }
             if (request.kind === 'turn' || request.kind === 'debt') { ui.updateButtonState(o.nextAction === 'roll' ? 'Roll Dice' : 'End turn', 'Continue your turn.'); if (ui.focusNextButton) ui.focusNextButton(); }
             if (request.kind === 'trade') {
                 ui.writeTradeView(self.game.reverseTrade(o.offer)); ui.setTradePanelVisible(true); ui.setTradeButtons(false, true);

@@ -79,7 +79,12 @@
                     if (accepted && this.ui && this.ui.showTradeResult) await this.ui.showTradeResult(parties.initiator.name + ' traded with ' + parties.recipient.name, offer);
                     return accepted;
                 }
-                if (action.type !== 'counterTrade') return false;
+                if (action.type !== 'counterTrade') {
+                    var rejection = parties.recipient.name + ' declined the trade from ' + parties.initiator.name;
+                    if (this.ui && this.ui.alert) this.ui.alert(rejection + '.', parties.recipient.index);
+                    if (this.ui && this.ui.showTradeResult) await this.ui.showTradeResult(rejection, offer, { declined: true });
+                    return false;
+                }
                 offer = reverse(action.offer);
             }
             return false;

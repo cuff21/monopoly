@@ -1,7 +1,6 @@
 body {
 	background: #ddd;
 	margin: 0px;
-	min-width: 1075px;
 	font-family: Arial, sans-serif;
 }
 
@@ -1321,63 +1320,10 @@ td {
 	background-color: #a82020;
 }
 
-#cell20 {
-    background-image: url("images/free_parking_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#cell5, #cell15, #cell25, #cell35 {
-    background-image: url("images/train_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#cell2, #cell17, #cell33 {
-    background-image: url("images/community_chest_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#cell38 {
-    background-image: url("images/tax_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#cell7, #cell22, #cell36 {
-    background-image: url("images/chance_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#cell12 {
-    background-image: url("images/electric_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#cell28 {
-    background-image: url("images/water_icon.png");
-    background-size: auto 50px;
-    background-position: center 0;
-}
-
-#jail {
-    background-image: url("images/jake_icon.png");
-    background-size: auto 50px;
-    background-position: center 12px;
-    background-repeat: no-repeat;
-}
-
-#cell0 {
-    background-image: url("images/arrow_icon.png");
-    background-size: 100% 50px;
-    background-position: center 20px;
-}
-
 #textarea {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     height: 200px;
 }
 

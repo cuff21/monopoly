@@ -25,6 +25,7 @@
 
 	function move(game, steps) {
 		var player = currentPlayer(game), board = game.state.board;
+		var fromSquareId = player.squareId, fromJail = !!player.jail;
 		var destinationId = global.walk(board, player.squareId, steps);
 		var traversedIds = [], cursor = player.squareId, count = Math.abs(steps), forward = steps >= 0;
 		for (var i = 0; i < count; i++) {
@@ -34,16 +35,18 @@
 		var crossedStart = forward && traversedIds.indexOf(board.startSquareId) !== -1;
 		player.squareId = destinationId;
 		if (crossedStart) player.money += board.rules.startSalary;
-		return { destinationId: destinationId, traversedIds: traversedIds, crossedStart: crossedStart };
+		return { destinationId: destinationId, traversedIds: traversedIds, crossedStart: crossedStart,
+			playerId: player.playerId, fromSquareId: fromSquareId, toSquareId: destinationId, fromJail: fromJail, toJail: !!player.jail };
 	}
 
-	function advanceToSquare(game, destinationId, salaryPolicy, increasedRent) {
+	async function advanceToSquare(game, destinationId, salaryPolicy, increasedRent) {
 		var state = game.state;
 		var player = currentPlayer(game);
 		global.getSquare(state.board, destinationId);
 		if (salaryPolicy !== 'always' && salaryPolicy !== 'onCrossing' && salaryPolicy !== 'never') {
 			throw new RangeError('Unknown card salary policy: ' + salaryPolicy);
 		}
+		var fromSquareId = player.squareId, fromJail = !!player.jail;
 		var path = [], cursor = player.squareId;
 		while (cursor !== destinationId && path.length <= Object.keys(state.board.squaresById).length) {
 			cursor = global.getSquare(state.board, cursor).nextId; path.push(cursor);
@@ -55,7 +58,8 @@
 			player.money += state.board.rules.startSalary;
 			ui(game, 'alert', player.name + ' collected a $' + state.board.rules.startSalary + ' salary for passing GO.');
 		}
-		state.nextMoveDirection = 1;
+		await ui(game, 'animateMovement', { playerId: player.playerId, fromSquareId: fromSquareId,
+			toSquareId: destinationId, traversedIds: path, fromJail: fromJail, toJail: !!player.jail });
 		return land(game, increasedRent);
 	}
 
@@ -102,6 +106,7 @@
 
 	async function goToJail(game) {
 		var p = currentPlayer(game);
+		var fromSquareId = p.squareId, fromJail = !!p.jail;
 		var board = game.state.board;
 		var jailSquareId = Object.keys(board.squaresById).filter(function(squareId) {
 			return global.getSquare(board, squareId).kind === 'jail';
@@ -114,6 +119,8 @@
 		game.state.doublecount = 0;
 		ui(game, 'updateButtonState', 'End turn', 'End turn and advance to the next player.');
 
+		await ui(game, 'animateMovement', { playerId: p.playerId, fromSquareId: fromSquareId,
+			toSquareId: jailSquareId, traversedIds: [], fromJail: fromJail, toJail: true });
 		await ui(game, 'updatePosition');
 		ui(game, 'updateOwned');
 		game.turnEnded = true;
@@ -183,12 +190,14 @@
 		p.pay(amount, 0);
 		ui(game, 'alert', p.name + ' paid the $' + amount + ' fine to get out of jail.');
 		ui(game, 'updateMoney');
+		await ui(game, 'animateMovement', { playerId: p.playerId, fromSquareId: p.squareId,
+			toSquareId: p.squareId, traversedIds: [], fromJail: true, toJail: false });
 		await ui(game, 'updatePosition');
 	}
 
 	async function moveRelative(game, steps) {
 		var movement = move(game, steps);
-		game.state.nextMoveDirection = steps < 0 ? -1 : 1;
+		await ui(game, 'animateMovement', movement);
 		await land(game);
 		return movement;
 	}
@@ -210,6 +219,8 @@
 		global.GameStateContext.returnHeldCard(state, cardId);
 		ui(game, 'alert', p.name + ' used a "Get Out of Jail Free" card.');
 		ui(game, 'updateOwned');
+		await ui(game, 'animateMovement', { playerId: p.playerId, fromSquareId: p.squareId,
+			toSquareId: p.squareId, traversedIds: [], fromJail: true, toJail: false });
 		await ui(game, 'updatePosition');
 	}
 
@@ -329,7 +340,6 @@
 			ui(game, 'updateDice', die1, die2);
 			if (state.doublecount < 3) ui(game, 'updateButtonState', 'Roll again', 'You threw doubles. Roll again.');
 			else {
-				p.jail = true;
 				state.doublecount = 0;
 				ui(game, 'alert', p.name + ' rolled doubles three times in a row.');
 				ui(game, 'updateMoney');
@@ -351,14 +361,16 @@
 				ui(game, 'onLeaveJail', p.color);
 				p.jail = false;
 				p.jailroll = 0;
-				move(game, die1 + die2);
+				await ui(game, 'animateMovement', { playerId: p.playerId, fromSquareId: p.squareId,
+					toSquareId: p.squareId, traversedIds: [], fromJail: true, toJail: false });
+				await ui(game, 'animateMovement', move(game, die1 + die2));
 				state.doublecount = 0;
 				ui(game, 'alert', p.name + ' rolled doubles to get out of jail.');
 				await land(game);
             } else if (p.jailroll === 3) {
                 await game.requestDecision('acknowledge', p.playerId, { message: 'You must pay the $' + state.board.rules.bailAmount + ' fine.' });
                 await payBail(game);
-                move(game, die1 + die2);
+                await ui(game, 'animateMovement', move(game, die1 + die2));
                 await land(game);
             } else {
                 ui(game, 'displayLanded', 'You are in jail.');
@@ -368,6 +380,7 @@
 		} else {
 			ui(game, 'updateDice', die1, die2);
 			var movement = move(game, die1 + die2);
+			await ui(game, 'animateMovement', movement);
 			if (movement.crossedStart) {
 				ui(game, 'alert', p.name + ' collected a $' + state.board.rules.startSalary + ' salary for passing GO.');
 			}

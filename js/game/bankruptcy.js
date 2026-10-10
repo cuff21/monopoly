@@ -14,9 +14,6 @@
 	Game.prototype.eliminatePlayer = function() {
 		var s = this.state, p = s.player[s.turn], seat = p.index;
 		if (this.ui && this.ui.removePlayerToken) this.ui.removePlayerToken(p.playerId);
-		if (s.playerOverlays) delete s.playerOverlays[p.playerId];
-		if (s.lastKnownSquareByPlayerId) delete s.lastKnownSquareByPlayerId[p.playerId];
-		if (s.lastKnownJailByPlayerId) delete s.lastKnownJailByPlayerId[p.playerId];
 		p.active = false; p.eliminated = true;
 		for (var i = seat; i < s.pcount; i++) {
 			s.player[i] = s.player[i + 1]; s.player[i].index = i;
@@ -63,7 +60,7 @@
 			if (creditor) creditor.heldCards.push(cardId);
 			else GameStateContext.returnHeldCard(s, cardId);
 		});
-		if (!creditor || fee === 0) return this.eliminatePlayer();
+		if (s.pcount === 2 || !creditor || fee === 0) return this.eliminatePlayer();
         await this.requestDecision('acknowledge', creditor.playerId, { message: creditor.name + ' must pay $' + fee + ' interest on inherited mortgaged property.' });
         creditor.pay(fee, GameStateContext.BANK_ID);
         await this.bankruptcyUnmortgage(inheritedIds);
