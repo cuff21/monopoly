@@ -99,7 +99,9 @@ function strategyFixture(changeDefinition) {
 	assert.strictEqual(ai.getLiquidityFloor(), 120, 'original minimum cash reserve is retained');
 	assert.strictEqual(ai.buyProperty('strong-a'), true);
 	player.money = 299;
-	assert.strictEqual(ai.buyProperty('strong-a'), false, 'purchase must preserve the cash reserve');
+	assert.strictEqual(ai.buyProperty('strong-a'), true, 'purchase intent can spend below the liquidity floor');
+	player.money = view.getSquare('strong-a').rules.purchasePrice - 1;
+	assert.strictEqual(ai.buyProperty('strong-a'), true, 'a desirable property can request controller funding');
 	player.money = 2000;
 	assert.strictEqual(ai.bid('cheap-a', 0), 0, 'weak property does not force an opening bid');
 	assert.strictEqual(ai.bid('cheap-a', 80), -1);

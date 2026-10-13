@@ -192,6 +192,78 @@ async function run() {
         await completion;
         assert.strictEqual(game.state.pendingAuction, auctionEnabled ? 'boardwalk' : null);
     }
+    // Policies express purchase intent; controllers fund it and the engine enforces affordability.
+    for (const policyKind of ['genetic', 'strategic']) {
+        for (const scenario of ['trade', 'mortgage', 'no-funding-auction', 'no-funding-no-auction', 'cash']) {
+            const label = policyKind + ' ' + scenario;
+            const game = fixture(2), player = game.state.player[1], opponent = game.state.player[2];
+            player.money = scenario === 'cash' ? 200 : 100;
+            game.state.auctionEnabled = scenario !== 'no-funding-no-auction';
+            if (scenario === 'trade' || scenario === 'mortgage') Context.setSquareOwner(game.state, 'boardwalk', player.playerId);
+            const policy = policyKind === 'genetic' ? new Genetic(player, {
+                purchaseThreshold: 10, housePurchaseThreshold: 0, bidUp: 50,
+                tradeAcceptanceThreshold: 100, tradeRejectionThreshold: -100,
+                spotsBehind: 5, spotsAhead: 5, communityChestJailCardValue: 50,
+                chanceJailCardValue: 50, maxAmountOfRejections: 3,
+                firstBuildingOdds: 35, lastBuildingOdds: 100
+            }) : new Strategic(player, { name: 'Balanced' });
+            const controller = new Controllers.AIController(policy);
+            game.registerController(player.playerId, controller);
+            let tradeCalls = 0;
+            game.registerController(opponent.playerId, new Controllers.AIController({
+                acceptTrade(offer) {
+                    tradeCalls++;
+                    assert.strictEqual(offer.getMoney(), -100, label);
+                    assert.deepStrictEqual(offer.getOfferedSquareIds(), ['boardwalk'], label);
+                    assert.deepStrictEqual(offer.getRequestedSquareIds(), [], label);
+                    assert.strictEqual(offer.getInitiator(), player.playerId, label);
+                    assert.strictEqual(offer.getRecipient(), opponent.playerId, label);
+                    return scenario === 'trade';
+                }
+            }));
+            const actions = [], dispatch = game.dispatchPlayerAction;
+            game.dispatchPlayerAction = function(request, action) {
+                if (request.kind === 'purchase') actions.push(action);
+                return dispatch.call(this, request, action);
+            };
+            const result = await game.requestDecision('purchase', player.playerId, { squareId: 'reading-railroad' });
+            const square = game.state.squareStateById['reading-railroad'];
+            const boardwalk = game.state.squareStateById.boardwalk;
+            if (scenario === 'trade') {
+                assert.deepStrictEqual(actions.map(a => a.type), ['proposeTrade', 'buy'], label);
+                assert.strictEqual(tradeCalls, 1, label);
+                assert.strictEqual(boardwalk.ownerId, opponent.playerId, label);
+                assert.strictEqual(boardwalk.mortgage, false, label);
+                assert.strictEqual(opponent.money, 1400, label);
+                assert.strictEqual(player.money, 0, label);
+            } else if (scenario === 'mortgage') {
+                assert.deepStrictEqual(actions.map(a => a.type), ['proposeTrade', 'mortgage', 'buy'], label);
+                assert.strictEqual(actions[1].squareId, 'boardwalk', label);
+                assert.strictEqual(tradeCalls, 1, label);
+                assert.strictEqual(boardwalk.ownerId, player.playerId, label);
+                assert.strictEqual(boardwalk.mortgage, true, label);
+                assert.strictEqual(opponent.money, 1500, label);
+                assert.strictEqual(player.money, 100, label);
+            } else if (scenario === 'cash') {
+                assert.deepStrictEqual(actions.map(a => a.type), ['buy'], label);
+                assert.strictEqual(tradeCalls, 0, label);
+                assert.strictEqual(player.money, 0, label);
+            } else {
+                assert.deepStrictEqual(actions.map(a => a.type), ['decline'], label);
+                assert.strictEqual(tradeCalls, 0, label);
+                assert.strictEqual(player.money, 100, label);
+                assert.strictEqual(opponent.money, 1500, label);
+            }
+            const declined = scenario.startsWith('no-funding');
+            assert.strictEqual(result.type, declined ? 'decline' : 'buy', label);
+            assert.strictEqual(square.ownerId, declined ? null : player.playerId, label);
+            assert.strictEqual(game.state.pendingAuction, scenario === 'no-funding-auction' ? 'reading-railroad' : null, label);
+            assert.strictEqual(controller.purchasePlans.size, 0, label);
+            assert.strictEqual(game._requests.size, 0, label);
+            assert.ok(!game.tradeState.pending, label);
+            assert.strictEqual(game.error, undefined, label);
+        }
+    }
     // An auction with no buyers must leave a result in the persistent play history.
     {
         const game = fixture(2), playHistory = [], auctionHistory = [];

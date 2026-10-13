@@ -95,7 +95,7 @@ function completionFixture(options) {
 	return Object.assign(fixture, { offers });
 }
 
-// Golden decisions from the committed policy, with controlled random draws.
+// Purchase intent allows controller funding; other policy decisions retain controlled random draws.
 for (const edition of ['Classic', 'NYC']) {
 	const { game, state, view } = makeGame(edition, () => 0.4);
 	const ai = new AITest3(state.player[1], makeParams());
@@ -108,11 +108,14 @@ for (const edition of ['Classic', 'NYC']) {
 	Context.setSquareOwner(state, ids[39], 'player-1');
 	assert.strictEqual(ai.buyProperty(ids[39]), false, 'already-owned property is excluded');
 	state.player[1].money = view.getSquare(ids[5]).rules.purchasePrice;
-	assert.strictEqual(ai.buyProperty(ids[5]), false, 'the original cash comparison is strict');
+	assert.strictEqual(ai.buyProperty(ids[5]), true, 'purchase intent accepts exact-price cash');
 	state.player[1].money++;
 	assert.strictEqual(ai.buyProperty(ids[5]), true);
 	ai.purchaseThreshold = 1;
-	assert.strictEqual(ai.buyProperty(ids[5]), false, 'purchaseThreshold changes the reserve');
+	state.player[1].money = view.getSquare(ids[5]).rules.purchasePrice - 1;
+	assert.strictEqual(ai.buyProperty(ids[5]), true, 'legacy purchaseThreshold does not block controller funding');
+	assert.strictEqual(ai.buyProperty(ids[1]), false, 'low cash does not bypass street purchase odds');
+	assert.strictEqual(ai.buyProperty(ids[39]), false, 'funding intent still excludes owned properties');
 	state.player[1].money = 5000;
 	assert.strictEqual(ai.bid(ids[5], 100), 118, 'original rounded random auction increment is preserved');
 	assert.strictEqual(ai.bid(ids[5], 300), -1, 'auction remains capped at 150 percent of price');
