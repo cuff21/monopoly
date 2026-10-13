@@ -7,6 +7,7 @@
     var SimModule = (typeof module !== 'undefined' && module.exports) ? require('../../../simulation/match-runner') : global.SimModule;
     if (typeof module !== 'undefined' && module.exports) require('../../simulation-adapters');
     var SimBoard = SimModule.SimBoard;
+    var GameRandom = (typeof module !== 'undefined' && module.exports) ? require('../../../core/random') : global.GameRandom;
     var Genotype = (typeof module !== 'undefined' && module.exports)
         ? require('../neat/genotype').Genotype
         : global.NEATGenotype.Genotype;
@@ -40,7 +41,8 @@
         this.baselines = options.baselines || DEFAULT_BASELINES;
         this.requiredImprovement = options.requiredImprovement === undefined ? 5 : options.requiredImprovement;
         this.matchRunner = options.matchRunner || null;
-        this.random = options.random || Math.random;
+        this.seed = Number.isInteger(options.seed) ? options.seed >>> 0 : null;
+        this.random = options.random || GameRandom.create(this.seed === null ? GameRandom.freshSeed() : this.seed);
         this.cancelled = false;
     }
 
@@ -67,6 +69,8 @@
         var candidateScores = [];
         var baselineScores = [];
         var baselineWins = 0;
+        var seed = this.seed === null ? GameRandom.freshSeed() : this.seed;
+        var seeds = new Set();
 
         for (var gameIndex = 0; gameIndex < this.games; gameIndex++) {
             if (this.cancelled) throw new Error('Policy evaluation cancelled.');
@@ -86,7 +90,10 @@
                 }
             }
 
-            var setup = { edition: edition, playerCount: playerCount };
+            var matchSeed = GameRandom.deriveSeed(seed, gameIndex + 1, 'validation');
+            while (seeds.has(matchSeed)) matchSeed = GameRandom.domainSeed(matchSeed + 1, 'validation');
+            seeds.add(matchSeed);
+            var setup = { edition: edition, playerCount: playerCount, seed: matchSeed };
             var results = this.matchRunner
                 ? await this.matchRunner(lineup, this.turnsPerGame, setup)
                 : await new SimBoard(lineup, this.turnsPerGame, setup).run();

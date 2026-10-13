@@ -1,6 +1,7 @@
 // Headless matches use the same Game and per-Game turn flow as browser play.
 (function(global) {
 	'use strict';
+	var GameRandom = (typeof module !== 'undefined' && module.exports) ? require('../core/random') : global.GameRandom;
 
 	var SimulationAdapters = global.SimulationAdapters ||
 		(typeof module !== 'undefined' && module.exports ? require('./ai-adapter-registry') : null);
@@ -56,14 +57,6 @@
 		};
 	}
 
-	function seededRandom(seed) {
-		var value = (Number.isInteger(seed) ? seed : 1) >>> 0;
-		return function() {
-			value = (value * 1664525 + 1013904223) >>> 0;
-			return value / 4294967296;
-		};
-	}
-
 	function runExplicitMatch(simulation) {
 		return new Promise(function(resolve, reject) {
 			var registry = global.Monopoly.Editions;
@@ -105,9 +98,9 @@
 				editionId: editionName,
 				boardRuleOverrides: Object.assign({}, simulation.options.boardRuleOverrides || {}),
 				roster: Array.isArray(simulation.options.roster) ? simulation.options.roster.slice() : null,
-				seed: Number.isInteger(simulation.options.seed) ? simulation.options.seed >>> 0 : 1
+				seed: Number.isInteger(simulation.options.seed) ? simulation.options.seed >>> 0 : GameRandom.freshSeed()
 			});
-			state.random = seededRandom(state.setup.seed);
+			state.random = GameRandom.create(state.setup.seed);
 			var game = new global.Game(new HeadlessUI(), state);
 			var bankruptPlayers = [];
 			var completed = false;

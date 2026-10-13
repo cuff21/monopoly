@@ -2,6 +2,7 @@
     'use strict';
 
     var scripts = [
+        { src: 'core/random.js', page: true, worker: true },
         { src: 'core/storage.js', page: true, worker: true },
         { src: 'core/board.js', page: true, worker: true },
         { src: 'core/game-state-context.js', page: true, worker: true },

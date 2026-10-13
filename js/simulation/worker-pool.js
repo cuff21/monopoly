@@ -1,5 +1,6 @@
 (function(global) {
     'use strict';
+    var GameRandom = (typeof module !== 'undefined' && module.exports) ? require('../core/random') : global.GameRandom;
 
     var SimulationAdapters = global.SimulationAdapters ||
         (typeof module !== 'undefined' && module.exports ? require('./ai-adapter-registry') : null);
@@ -60,7 +61,11 @@
                     return SimulationAdapters.serialize(contestant);
                 }),
                 maxTurns: maxTurns,
-                setup: setup || {},
+                // Choose the seed before dispatch so a timeout retry replays
+                // the same game instead of asking the worker for a new seed.
+                setup: Object.assign({}, setup || {}, {
+                    seed: setup && Number.isInteger(setup.seed) ? setup.seed >>> 0 : GameRandom.freshSeed()
+                }),
                 retries: 0,
                 resolve: resolve,
                 reject: reject

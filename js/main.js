@@ -1,6 +1,7 @@
 // Browser composition root. Match state stays on the current Game.
 (function(global) {
     'use strict';
+    var GameRandom = (typeof module !== 'undefined' && module.exports) ? require('./core/random') : global.GameRandom;
     function BrowserApp(dependencies) {
         this.dependencies = dependencies || {};
         this.game = null;
@@ -38,8 +39,8 @@
         var editionId = editions.getActiveName(), setup = editions.buildGameSetup(editionId);
         var state = global.GameStateContext.createState({ pcount: 2, cardDecks: setup.cardDecks });
         global.GameStateContext.initializeBoardState(state, setup.board, editionId);
-        state.seed = global.crypto && global.crypto.getRandomValues ? global.crypto.getRandomValues(new Uint32Array(1))[0] : Date.now() >>> 0;
-        state.random = (function(seed) { var value = seed >>> 0; return function() { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; })(state.seed);
+        state.seed = GameRandom.freshSeed();
+        state.random = GameRandom.create(state.seed);
         var game = this.game = new global.Game(new global.BrowserUI(), state);
         game.ui.app = this;
         for (var seat = 0; seat <= 8; seat++) {

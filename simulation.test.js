@@ -181,7 +181,7 @@ async function runTests() {
     assert.deepStrictEqual(tournamentSetupCalls[0].setup, {
         edition: 'NYC',
         playerCount: 2,
-        seed: (9901 + 65537) >>> 0,
+        seed: require('./js/core/random').deriveSeed(9901, 1, 'training'),
         boardRuleOverrides: { startSalary: 300 },
         roster: ['player-1', 'player-2']
     }, 'tournament match execution should carry edition, rules, roster, and its deterministic match seed');

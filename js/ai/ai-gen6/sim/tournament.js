@@ -15,15 +15,8 @@
     var SimModule = (typeof module !== 'undefined' && module.exports) ? require('../../../simulation/match-runner') : global.SimModule;
     if (typeof module !== 'undefined' && module.exports) require('../../simulation-adapters');
     var SimBoard = SimModule.SimBoard;
+    var GameRandom = (typeof module !== 'undefined' && module.exports) ? require('../../../core/random') : global.GameRandom;
     var DURATION_PENALTY_RATE = 0.5;
-
-    function seededRandom(seed) {
-        var value = (Number.isInteger(seed) ? seed : 1) >>> 0;
-        return function() {
-            value = (value * 1664525 + 1013904223) >>> 0;
-            return value / 4294967296;
-        };
-    }
 
     function Tournament(population, turnsPerMatch, matchRunner, options) {
         this.population = population;
@@ -31,7 +24,7 @@
         this.matchRunner = matchRunner || null;
         this.options = options || {};
         this.setup = null;
-        this.random = this.options.random || (Number.isInteger(this.options.seed) ? seededRandom(this.options.seed) : Math.random);
+        this.random = this.options.random || GameRandom.create(Number.isInteger(this.options.seed) ? this.options.seed : GameRandom.freshSeed());
         this.cancelled = false;
         this.results = {
             rounds: [],
@@ -106,6 +99,8 @@
         }
 
         var roundNum = 1;
+        var seedIndex = 0;
+        var matchSeeds = new Set();
         var roundScores = [100, 200, 400, 800, 1600];
 
         while (contestants.length > 1) {
@@ -116,7 +111,10 @@
 
             for (var m = 0; m < matchCount; m++) {
                 var bracket = contestants.slice(m * setup.playerCount, (m + 1) * setup.playerCount);
-                pendingMatches.push({ bracket: bracket, matchIndex: m });
+                var matchSeed = GameRandom.deriveSeed(setup.seed, ++seedIndex, 'training');
+                while (matchSeeds.has(matchSeed)) matchSeed = GameRandom.domainSeed(matchSeed + 1, 'training');
+                matchSeeds.add(matchSeed);
+                pendingMatches.push({ bracket: bracket, matchIndex: m, seed: matchSeed });
             }
 
             var self = this;
@@ -126,7 +124,7 @@
             async function evaluateMatch(match) {
                 if (self.cancelled) throw new Error('Tournament cancelled.');
                 var matchResults;
-                var matchSetup = Object.assign({}, setup, { seed: (setup.seed + roundNum * 65537 + match.matchIndex) >>> 0 });
+                var matchSetup = Object.assign({}, setup, { seed: match.seed });
                 if (self.matchRunner) {
                     matchResults = await self.matchRunner(match.bracket, self.turnsPerMatch, matchSetup);
                 } else {

@@ -476,7 +476,9 @@ async function runTests() {
         random: () => 0.999,
         matchRunner: async (lineup, turns, setup) => {
             assert.strictEqual(turns, 100);
-            assert.deepStrictEqual(setup, { edition: 'NYC', playerCount: 6 });
+            assert.strictEqual(setup.edition, 'NYC');
+            assert.strictEqual(setup.playerCount, 6);
+            assert.ok(Number.isInteger(setup.seed) && setup.seed >= 0x80000000);
             return lineup.map((contestant, playerIndex) => ({
                 playerIndex,
                 netWorth: contestant.kind === 'gen6' ? 5000 : 1000 - playerIndex,
