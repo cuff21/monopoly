@@ -8,20 +8,6 @@ This document is the cross-project migration roadmap: it owns phase ordering, Bo
 
 Gen6 compatibility changes and rejection tests must follow the [Schema 1 specification](GEN6_INPUT_SCHEMA_INVENTORY.md).
 
-## Structured Board and UI Cleanup Status
-
-The post-migration cleanup is implemented independently of unfinished Gen6 Phase 6 work:
-
-1. **Identity boundary:** `squareId`, structured definitions, and `squareStateById` are the runtime board interface. Numeric Player positions and policy square projections are removed. `state.player[1..pcount]` is the authoritative active roster; creditors use `null` before debt, `BANK_ID`, or active player IDs. Empty pending auctions and auction properties use `null`.
-2. **Browser ownership:** `BrowserApp` owns the current Game and event bindings. Setup receives that owner explicitly. Writable match-state globals, global property action wrappers, inline event handlers, and deed-function rebinding are removed. Restart cancels pending decisions, disposes modal and board views, and detaches handlers before remounting.
-3. **Structured rendering:** Panels read square definitions and square state directly. `PropertyActions.actionError(state, playerId, type, squareId)` is shared by controller validation and property controls. TradeView requires participant IDs and explicit Game state; it is the sole trade-summary formatter. Special deeds consume structured groups, and UI traversal uses `getSquareIds`.
-4. **Presentation lifecycle:** `RenderPanels`, `RenderBoard`, `PopupView`, `SetupScreen`, `TrainingScreen`, and `HistoryView` expose explicit UI namespaces. Each BrowserUI owns a PopupView instance with options-based rendering, timers, cancellation, and close waits. Alerts no longer mutate AI objects. Unused helpers and bridge hooks are removed, and the simulation loader checks PropertyActions instead of a global buy wrapper.
-
-The immutable policy facade, request continuation/cache behavior, declarative/expanded Board forms, GameUI/HeadlessUI, simulation adapter registry, storage format, and browser/Node/worker script loading remain supported. Allowed numeric uses include active seats, dice, deck order, AI parameter/tensor offsets, distances derived from Board traversal, and presentation coordinates. They do not restore numeric board APIs.
-
-Validation includes the 14 existing non-Gen6 test files plus `browser-lifecycle.test.js`, covering stale handlers, canceled/replaced modals, absent ambient state, and property-control/controller eligibility parity. The mixed controller suite excludes its Gen6 planner fixture because that pre-alpha implementation still requires the removed projection; it does not gain a replacement shim. Gen6 runtime/training conformance remains Phase 6 work and is not an acceptance gate for this cleanup.
-
-All 15 suites passed after cleanup. Real Chromium smoke checks passed for both Classic and NYC: setup, movement, purchase, build/sell, mortgage/unmortgage, delegated deeds, trade, auction, cards, bankruptcy, restart, and Gen5/Strategic turns. No JavaScript page errors were observed. Browser checks used deterministic state fixtures to reach each interaction; they do not establish exhaustive gameplay coverage. The smoke runner and edition screenshots are retained locally under `output/playwright/`.
 
 ## Frozen Contracts
 
