@@ -8,7 +8,7 @@
 		});
 	}
 	function activeCreditor(game, id) {
-		if (id === GameStateContext.BANK_ID || id === 0 || id === null || id === undefined || id === -1) return null;
+		if (id === GameStateContext.BANK_ID || id === null) return null;
 		return GameStateContext.getPlayerById(game.state, id);
 	}
 	Game.prototype.eliminatePlayer = function() {

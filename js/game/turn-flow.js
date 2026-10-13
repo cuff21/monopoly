@@ -89,7 +89,7 @@
 	function subtractAmount(game, amount, cause) {
 		var state = game.state;
 		var p = currentPlayer(game);
-		p.pay(amount, 0);
+		p.pay(amount, GameStateContext.BANK_ID);
 		if (state.freeParkingTaxes) addTaxToFreeParking(game, amount);
 		else ui(game, 'alert', p.name + ' lost $' + amount + ' from ' + cause + '.');
 	}
@@ -135,7 +135,7 @@
 			if (i === state.turn) continue;
 			state.player[i].money += amount;
 			total += amount;
-			creditor = p.money >= 0 ? i : creditor;
+			creditor = p.money >= 0 ? state.player[i].playerId : creditor;
 			p.pay(amount, creditor);
 		}
 		ui(game, 'alert', p.name + ' lost $' + total + ' from ' + cause + '.');
@@ -153,7 +153,7 @@
 				total += other.money;
 				other.money = 0;
 			} else {
-				other.pay(amount, state.turn);
+				other.pay(amount, p.playerId);
 				p.money += amount;
 				total += amount;
 			}
@@ -175,7 +175,7 @@
 			cost += property.hotel ? hotelPrice : property.house * housePrice;
 		});
 		if (!cost) return;
-		p.pay(cost, 0);
+		p.pay(cost, GameStateContext.BANK_ID);
 		if (state.freeParkingTaxes) addTaxToFreeParking(game, cost);
 		else ui(game, 'alert', p.name + ' lost $' + cost + ' to ' + (cause || 'a card') + '.');
 	}
@@ -187,7 +187,7 @@
 		game.state.doublecount = 0;
 		p.jail = false;
 		p.jailroll = 0;
-		p.pay(amount, 0);
+		p.pay(amount, GameStateContext.BANK_ID);
 		ui(game, 'alert', p.name + ' paid the $' + amount + ' fine to get out of jail.');
 		ui(game, 'updateMoney');
 		await ui(game, 'animateMovement', { playerId: p.playerId, fromSquareId: p.squareId,
@@ -407,7 +407,7 @@
             ui(game, 'alert', 'It is ' + p.name + "'s turn.");
             ui(game, 'updateButtonState', 'Roll Dice', 'Roll the dice and move your token.');
             ui(game, 'setDiceVisible', false);
-            p.pay(0, p.creditor);
+            ui(game, 'updateMoney');
             if (p.jail) {
                 ui(game, 'displayJailOptions', p.heldCards.length > 0, p.jailroll === 2);
                 await game.requestDecision('jail', p.playerId, {});
@@ -426,8 +426,8 @@
                 if (action.type === 'endTurn') break;
                 await roll(game);
                 if (!game.turnEnded) await game.requestDecision('manage', p.playerId, { hook: 'onLand' });
-                if (state.pendingAuction !== -1 && state.pendingAuction !== null && state.auctionEnabled) {
-                    game.addPropertyToAuctionQueue(state.pendingAuction); state.pendingAuction = -1;
+                if (state.pendingAuction !== null && state.auctionEnabled) {
+                    game.addPropertyToAuctionQueue(state.pendingAuction); state.pendingAuction = null;
                     await game.auction();
                 }
                 nextAction = game.turnEnded || state.doublecount === 0 ? 'endTurn' : 'roll';

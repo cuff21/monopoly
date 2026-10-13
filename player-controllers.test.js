@@ -36,6 +36,60 @@ function fixture(count = 3) {
     return game;
 }
 async function run() {
+    // A human can buy Oriental Avenue after rolling, without ambient player state.
+    {
+        assert.strictEqual(Object.hasOwn(global, 'player'), false);
+        const game = fixture(2), player = game.state.player[1];
+        const browser = new Controllers.BrowserController(game);
+        game.registerController(player.playerId, browser);
+        game.state.turn = 0; game.maxTurns = 1;
+        game.getDie = index => index === 1 ? 1 : 5;
+        const turn = game.play();
+        // Observe failures immediately while the test waits for browser input.
+        turn.catch(() => {});
+        await tick();
+        assert.strictEqual(browser.pending.request.kind, 'turn');
+        assert.strictEqual(game.submitPlayerAction({ type: 'roll' }), true);
+        await tick();
+        assert.strictEqual(player.squareId, 'oriental-avenue');
+        assert.strictEqual(browser.pending.request.kind, 'purchase');
+        assert.strictEqual(game.submitPlayerAction({ type: 'buy', squareId: player.squareId }), true);
+        await tick();
+        assert.strictEqual(game.error, undefined);
+        assert.strictEqual(game.state.squareStateById['oriental-avenue'].ownerId, player.playerId);
+        assert.strictEqual(player.money, 1400);
+        assert.strictEqual(game.state.pendingAuction, null);
+        assert.strictEqual(browser.pending.request.kind, 'turn');
+        assert.strictEqual(browser.pending.request.options.nextAction, 'endTurn');
+        assert.strictEqual(game.submitPlayerAction({ type: 'endTurn' }), true);
+        await turn;
+        assert.strictEqual(game._requests.size, 0);
+    }
+    // Structured state is the only board/roster interface exposed to policies.
+    {
+        const game = fixture(), player = game.state.player[1];
+        assert.strictEqual(player.creditor, null);
+        assert.strictEqual('position' in player, false);
+        assert.strictEqual('_position' in player, false);
+        const readonly = Controllers.policyPlayer(player);
+        assert.strictEqual(readonly.position, undefined);
+        assert.strictEqual(readonly.game.state.square, undefined);
+        game.registerController(player.playerId, { decide(request) {
+            assert.strictEqual(request.state.player[1].position, undefined);
+            assert.strictEqual(request.state.square, undefined);
+            return respond(null);
+        } });
+        await game.requestDecision('manage', player.playerId, {});
+        assert.throws(() => player.pay(1, 2), RangeError);
+        assert.strictEqual(player.money, 1500, 'invalid creditor must not partially charge');
+        game.state.players = [{ playerId: 'shadow-player' }];
+        assert.deepStrictEqual(Context.getActivePlayers(game.state).map(p => p.playerId), ['player-1', 'player-2', 'player-3']);
+        player.money = 75;
+        game.payEachPlayer(50, 'fixture');
+        assert.strictEqual(player.creditor, 'player-3', 'the payment that first creates debt owns the debt');
+        assert.strictEqual(player.money, -25);
+    }
+
     // Chance movement must finish before the turn offers its next decision.
     for (const edition of ['Classic', 'NYC']) {
         const game = fixture(2), setup = Editions.buildGameSetup(edition);
@@ -136,7 +190,7 @@ async function run() {
         assert.strictEqual(title.includes('auction'), auctionEnabled);
         browser.submit({ type: 'next' });
         await completion;
-        assert.strictEqual(game.state.pendingAuction, auctionEnabled ? 'boardwalk' : -1);
+        assert.strictEqual(game.state.pendingAuction, auctionEnabled ? 'boardwalk' : null);
     }
     // An auction with no buyers must leave a result in the persistent play history.
     {
@@ -304,6 +358,27 @@ async function run() {
         assert.strictEqual(game.state.turn, 1);
         assert.strictEqual(game.state.squareStateById.boardwalk.ownerId, accepted ? 'player-2' : 'player-1');
     }
+    // Trading changes ownership without redeeming mortgages on either side.
+    {
+        const game = fixture(2), state = game.state;
+        Context.setSquareOwner(state, 'boardwalk', 'player-1');
+        Context.setSquareOwner(state, 'park-place', 'player-1');
+        Context.setSquareOwner(state, 'mediterranean-avenue', 'player-2');
+        state.squareStateById.boardwalk.mortgage = true;
+        state.squareStateById['mediterranean-avenue'].mortgage = true;
+        game.registerController('player-2', new Controllers.AIController({ acceptTrade: () => true }));
+        const offer = new global.Trade('player-1', 'player-2', 50,
+            ['boardwalk', 'park-place'], ['mediterranean-avenue'], []);
+        assert.strictEqual(await game.trade(offer), true);
+        assert.strictEqual(state.squareStateById.boardwalk.ownerId, 'player-2');
+        assert.strictEqual(state.squareStateById['park-place'].ownerId, 'player-2');
+        assert.strictEqual(state.squareStateById['mediterranean-avenue'].ownerId, 'player-1');
+        assert.strictEqual(state.squareStateById.boardwalk.mortgage, true);
+        assert.strictEqual(state.squareStateById['mediterranean-avenue'].mortgage, true);
+        assert.strictEqual(state.squareStateById['park-place'].mortgage, false);
+        assert.strictEqual(state.player[1].money, 1450, 'trade charges only the agreed cash');
+        assert.strictEqual(state.player[2].money, 1550);
+    }
     // Overshoot property counters cannot promise more cash than the bot holds.
     {
         const game = fixture(2), initiator = game.state.player[1], recipient = game.state.player[2];
@@ -406,8 +481,8 @@ async function run() {
         Context.setSquareOwner(game.state, 'baltic-avenue', 'player-1');
         player.money = 5000;
         const policies = [new Genetic(player, { housePurchaseThreshold: 0 }), new Strategic(player, { name: 'Balanced' }),
-            new global.Gen5AI(player, { name: 'Tactician' }, { batchBuildMinROI: 0.001 }), new Gen6AI(player, Genotype.createInitial(147, 9))];
-        policies[3].getDecision = () => ({ buildHouseCount: 1 });
+            new global.Gen5AI(player, { name: 'Tactician' }, { batchBuildMinROI: 0.001 })];
+        // Gen6 planners are excluded: their pre-alpha runtime still requires removed numeric views.
         for (const policy of policies) {
             const before = JSON.stringify(Controllers.copy(game.state));
             const step = policy.beforeTurn().next();

@@ -28,7 +28,7 @@ async function runTests() {
 	};
 	global.pcount = 2;
 	global.document = { getElementById: id => values[id] };
-	assert.deepStrictEqual(SetupScreen.collectSetupConfiguration(), {
+	assert.deepStrictEqual(SetupScreen.collectSetupConfiguration({ game: { state: { pcount: 2 } } }), {
 		auctionEnabled: true,
 		freeParkingTaxes: false,
 		players: [

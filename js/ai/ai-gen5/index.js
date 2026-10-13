@@ -53,11 +53,8 @@ if (typeof module !== 'undefined' && module.exports) require('../../application/
             }
 
             var reserve = AIGen5.Liquidity.computeReserve(p, self.profile);
-            if (p.money < s.rules.purchasePrice + reserve) {
-                return false;
-            }
-
-            var score = AIGen5.Valuation.evaluateProperty(squareId, p.playerId, p.money, self.profile, 0, state);
+            var availableFunds = Math.max(p.money, s.rules.purchasePrice + reserve);
+            var score = AIGen5.Valuation.evaluateProperty(squareId, p.playerId, availableFunds, self.profile, 0, state);
             var threshold = self.profile.name === 'Sentinel' ? 68 : self.profile.name === 'Gambler' ? 50 : 58;
             return score >= threshold;
         };

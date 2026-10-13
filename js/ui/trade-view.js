@@ -10,32 +10,27 @@ var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 		DOMUI.setVisible('#proposetradebutton, #canceltradebutton', !!editing);
 		DOMUI.setVisible('#accepttradebutton, #rejecttradebutton', !!responding);
 	}
-	function playerId(player) { return player && player.playerId ? player.playerId : player; }
-	function idsFor(board) {
-		if (!board) throw new TypeError('Trade view requires the owning Game board.');
-		var result = [], cursor = board.startSquareId;
-		for (var i = 0; i < Object.keys(board.squaresById).length; i++) { result.push(cursor); cursor = board.squaresById[cursor].nextId; }
-		return result;
-	}
 	function getPlayers(state, gameState) {
 		if (!gameState || !global.GameStateContext) throw new TypeError('Trade view requires the owning Game state.');
 		return {
-			initiator: typeof state.initiator === 'object' ? state.initiator : global.GameStateContext.getPlayerById(gameState, state.initiator),
-			recipient: typeof state.recipient === 'object' ? state.recipient : global.GameStateContext.getPlayerById(gameState, state.recipient)
+			initiator: global.GameStateContext.getPlayerById(gameState, state.initiator),
+			recipient: global.GameStateContext.getPlayerById(gameState, state.recipient)
 		};
 	}
-	function resetTrade(state, initiator, recipient, allowRecipientToBeChanged, gameState) {
+	function resetTrade(state, initiatorId, recipientId, allowRecipientToBeChanged, gameState) {
 		if (!gameState || !gameState.board || !gameState.squareStateById) throw new TypeError('Trade view requires the owning Game state.');
-		var boardIds = idsFor(gameState.board);
+		var boardIds = global.getSquareIds(gameState.board);
+		var initiator = global.GameStateContext.getPlayerById(gameState, initiatorId), recipient = global.GameStateContext.getPlayerById(gameState, recipientId);
 		var players = gameState.player;
-		state.gameState = gameState;
-		state.initiator = initiator; state.recipient = recipient;
+		state.initiator = initiatorId; state.recipient = recipientId;
 		var leftProperties = document.getElementById('trade-leftp-property');
 		var rightProperties = document.getElementById('trade-rightp-property');
 		leftProperties.textContent = ''; rightProperties.textContent = '';
 		var leftTable = document.createElement('table'), rightTable = document.createElement('table');
 		function addRow(table, side, squareId, property) {
 			var row = table.insertRow(), checkboxCell = row.insertCell();
+			row.className = 'trade-property';
+			row.dataset.squareId = squareId;
 			checkboxCell.className = 'propertycellcheckbox';
 			var checkbox = document.createElement('input'); checkbox.type = 'checkbox';
 			checkbox.id = 'trade' + side + 'square-' + squareId; checkbox.title = 'Include ' + property.name + ' in the trade.'; checkboxCell.appendChild(checkbox);
@@ -90,16 +85,15 @@ var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 				var option = document.createElement('option'); option.value = players[playerIndex].playerId; option.textContent = players[playerIndex].name;
 				option.selected = players[playerIndex] === recipient; select.appendChild(option);
 			}
-			select.onchange = function() { resetTrade(state, initiator, global.GameStateContext.getPlayerById(gameState, this.value), true, gameState); };
+			select.onchange = function() { resetTrade(state, initiatorId, this.value, true, gameState); };
 			rightName.appendChild(select);
 		} else rightName.textContent = recipient.name;
 		document.getElementById('trade-leftp-money').value = '0'; document.getElementById('trade-rightp-money').value = '0'; setButtons(true, false);
 	}
 
-	function readTrade(state) {
-		var game = state.game, gameState = game && game.state || state.gameState;
+	function readTrade(state, gameState) {
 		if (!gameState) throw new TypeError('Trade submission requires the owning Game state.');
-		var squareIds = idsFor(gameState.board), offered = [], requested = [], heldCards = [];
+		var squareIds = global.getSquareIds(gameState.board), offered = [], requested = [], heldCards = [];
 		squareIds.forEach(function(squareId) {
 			var left = document.getElementById('tradeleftsquare-' + squareId), right = document.getElementById('traderightsquare-' + squareId);
 			if (left && left.checked) offered.push(squareId); else if (right && right.checked) requested.push(squareId);
@@ -112,11 +106,11 @@ var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 			});
 		});
 		var money = (parseInt(document.getElementById('trade-leftp-money').value, 10) || 0) - (parseInt(document.getElementById('trade-rightp-money').value, 10) || 0);
-		return new global.Trade(playerId(state.initiator), playerId(state.recipient), money, offered, requested, heldCards);
+		return new global.Trade(state.initiator, state.recipient, money, offered, requested, heldCards);
 	}
 	function writeTrade(state, trade, gameState) {
 		var players = getPlayers({ initiator: trade.getInitiator(), recipient: trade.getRecipient() }, gameState);
-		resetTrade(state, players.initiator, players.recipient, false, gameState);
+		resetTrade(state, players.initiator.playerId, players.recipient.playerId, false, gameState);
 		trade.getOfferedSquareIds().forEach(function(id) { var box = document.getElementById('tradeleftsquare-' + id); if (box) box.checked = true; });
 		trade.getRequestedSquareIds().forEach(function(id) { var box = document.getElementById('traderightsquare-' + id); if (box) box.checked = true; });
 		trade.getHeldCards().forEach(function(card) {
@@ -129,18 +123,15 @@ var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 	function readMoneyFields() { return typeof document === 'undefined' ? { left: '0', right: '0' } : { left: document.getElementById('trade-leftp-money').value, right: document.getElementById('trade-rightp-money').value }; }
 	function setMoneyError(side, message) { var input = document.getElementById(side === 'left' ? 'trade-leftp-money' : 'trade-rightp-money'); if (input) { input.value = message; input.style.color = 'red'; } }
 	function formatTradeResult(label, trade, gameState) {
-		var ids = trade.getOfferedSquareIds ? trade.getOfferedSquareIds() : [];
-		var requestedIds = trade.getRequestedSquareIds ? trade.getRequestedSquareIds() : [];
-		var squares = gameState && gameState.board ? gameState.board.squaresById : null;
-		var offered = ids.map(function(id) { return UIHtml.escapeHTML(squares ? squares[id].presentation.label : id); });
-		var requested = requestedIds.map(function(id) { return UIHtml.escapeHTML(squares ? squares[id].presentation.label : id); });
-		if (trade.getHeldCards) trade.getHeldCards().forEach(function(card) { (card.direction === 1 ? offered : requested).push('Get Out of Jail Free card'); });
+		var ids = trade.getOfferedSquareIds();
+		var requestedIds = trade.getRequestedSquareIds();
+		if (!gameState || !gameState.board) throw new TypeError('Trade results require structured Game state.');
+		var offered = ids.map(function(id) { return UIHtml.escapeHTML(global.getSquare(gameState.board, id).presentation.label); });
+		var requested = requestedIds.map(function(id) { return UIHtml.escapeHTML(global.getSquare(gameState.board, id).presentation.label); });
+		trade.getHeldCards().forEach(function(card) { (card.direction === 1 ? offered : requested).push('Get Out of Jail Free card'); });
 		var money = trade.getMoney();
-		var initiator = trade.getInitiator(), recipient = trade.getRecipient();
-		if (gameState && typeof initiator === 'string') initiator = global.GameStateContext.getPlayerById(gameState, initiator);
-		if (gameState && typeof recipient === 'string') recipient = global.GameStateContext.getPlayerById(gameState, recipient);
-		var initiatorName = typeof initiator === 'object' ? initiator.name : String(initiator);
-		var recipientName = typeof recipient === 'object' ? recipient.name : String(recipient);
+		var initiatorName = global.GameStateContext.getPlayerById(gameState, trade.getInitiator()).name;
+		var recipientName = global.GameStateContext.getPlayerById(gameState, trade.getRecipient()).name;
 		return UIHtml.escapeHTML(label) + ": <table class='trade-summary'><tr><th>" + UIHtml.escapeHTML(initiatorName) + " gives</th><th>" + UIHtml.escapeHTML(recipientName) + " gives</th></tr><tr><td>" + (offered.join(', ') || 'Nothing') + (money > 0 ? ' and $' + money : '') + "</td><td>" + (requested.join(', ') || 'Nothing') + (money < 0 ? ' and $' + (-money) : '') + '</td></tr></table>';
 	}
 	function initializeInputHandlers() {

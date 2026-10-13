@@ -16,7 +16,7 @@ require('./js/game/property-actions');
 
 function fixture(editionId, players) {
 	var board = registry.buildBoardForGame(editionId);
-	var state = Context.createState({ player: [], pcount: players || 2, turn: 0, pendingAuction: -1, auctionEnabled: true });
+	var state = Context.createState({ player: [], pcount: players || 2, turn: 0, pendingAuction: null, auctionEnabled: true });
 	Context.initializeBoardState(state, board, editionId);
 	var game = new Game(null, state);
 	state.player[0] = new StateTypes.Player('Bank', '', game);

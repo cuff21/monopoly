@@ -253,7 +253,7 @@ for (const editionId of ['Classic', 'NYC']) {
                 'two rolls on a three-square Board must have finite, correct probability');
         }
     }
-    state.players = [{ playerId: 'player-1' }, { playerId: 'player-2' }];
+    state.player = [null, { playerId: 'player-1' }, { playerId: 'player-2' }]; state.pcount = 2;
     GameStateContext.setSquareOwner(state, 'constructor', 'player-1');
     const valuation = global.AIGen5.Valuation;
     assert.strictEqual(valuation.propertyOwner('constructor', {}, state), 'player-1');

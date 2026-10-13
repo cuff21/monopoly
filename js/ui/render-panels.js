@@ -1,3 +1,5 @@
+(function(global) {
+'use strict';
 var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
 
@@ -9,21 +11,6 @@ var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
 function getPanelSquareIds(gameState) {
 	if (!gameState || !gameState.board || !gameState.squareStateById) throw new TypeError('Property panels require a structured Game state.');
 	return getSquareIds(gameState.board);
-}
-
-function getPanelSquares(gameState) {
-	var ids = getPanelSquareIds(gameState);
-	return ids.map(function(id) {
-		var definition = gameState.board.squaresById[id], rules = definition.rules, current = gameState.squareStateById[id];
-		var tiers = rules.rentTiers || [];
-		return { id: id, name: definition.presentation.label, color: definition.presentation.color,
-			pricetext: definition.presentation.priceText || '', price: rules.purchasePrice, baserent: rules.baseRent,
-			rent1: tiers[0] || 0, rent2: tiers[1] || 0, rent3: tiers[2] || 0, rent4: tiers[3] || 0, rent5: tiers[4] || 0,
-			houseprice: rules.houseCost, groupId: definition.groupId || '',
-			kind: definition.kind, groupSquareIds: definition.groupId ? gameState.board.groupsById[definition.groupId].squareIds.slice() : [],
-			ownerId: current.ownerId,
-			mortgage: current.mortgage, house: current.house, hotel: current.hotel, landcount: current.landcount };
-	});
 }
 
 function playerBadge(playerIndex, gameState) {
@@ -52,31 +39,6 @@ function addAlert(alertText, playerIndex, secondPlayerIndex, gameInstance) {
 	alert.appendChild(alertElement);
 	DOMUI.scrollToBottom(alert, true);
 
-	var currentPlayer = gameState.player[currentTurn];
-	if (currentPlayer && !currentPlayer.human && currentPlayer.AI) {
-		currentPlayer.AI.alertList = (currentPlayer.AI.alertList || "") + "<div>" + playerBadge(playerIndex, gameState) + (secondPlayerIndex ? playerBadge(secondPlayerIndex, gameState) : "") + alertText + "</div>";
-	}
-}
-
-function formatTradeResult(label, tradeObj, gameInstance) {
-	var initiator = tradeObj.getInitiator();
-	var recipient = tradeObj.getRecipient();
-	var offered = [];
-	var requested = [];
-	var money = tradeObj.getMoney();
-	var board = gameInstance && gameInstance.state && gameInstance.state.board;
-	tradeObj.getOfferedSquareIds().forEach(function(id) {
-		var item = board && board.squaresById[id];
-		offered.push(UIHtml.escapeHTML(item ? item.presentation.label : id));
-	});
-	tradeObj.getRequestedSquareIds().forEach(function(id) {
-		var item = board && board.squaresById[id];
-		requested.push(UIHtml.escapeHTML(item ? item.presentation.label : id));
-	});
-	tradeObj.getHeldCards().forEach(function(card) { (card.direction === 1 ? offered : requested).push('Get Out of Jail Free card'); });
-	var initiatorName = typeof initiator === 'object' ? initiator.name : initiator;
-	var recipientName = typeof recipient === 'object' ? recipient.name : recipient;
-	return UIHtml.escapeHTML(label) + ": <table class='trade-summary'><tr><th>" + UIHtml.escapeHTML(initiatorName) + " gives</th><th>" + UIHtml.escapeHTML(recipientName) + " gives</th></tr><tr><td>" + (offered.join(", ") || "Nothing") + (money > 0 ? " and $" + money : "") + "</td><td>" + (requested.join(", ") || "Nothing") + (money < 0 ? " and $" + (-money) : "") + "</td></tr></table>";
 }
 
 function updateMoney(gameInstance) {
@@ -175,7 +137,7 @@ function updateOwned(gameInstance) {
 
 	var gameState = gameInstance.state;
 	var players = gameState.player;
-	var squares = getPanelSquares(gameState);
+	var ids = getPanelSquareIds(gameState);
 	var currentTurn = gameState.turn;
 	var p = players[currentTurn];
 	var checkedproperty = getCheckedProperty();
@@ -185,21 +147,22 @@ function updateOwned(gameInstance) {
 	DOMUI.setVisible("#owned", true);
 
 	var HTML = "",
-	firstproperty = -1;
+	firstproperty = null;
 
 	var mortgagetext = "",
 	housetext = "";
-	var sq;
+	var sq, current;
 
-	for (var i = 0; i < squares.length; i++) {
-		sq = squares[i];
-		if (gameInstance.ui && gameInstance.ui.onHouseChanged) gameInstance.ui.onHouseChanged(sq.id, sq.house, sq.hotel);
-		if (gameInstance.ui && gameInstance.ui.onMortgageChanged) gameInstance.ui.onMortgageChanged(sq.id, sq.mortgage);
-		if (sq.groupId && sq.ownerId === null) {
+	for (var i = 0; i < ids.length; i++) {
+		sq = getSquare(gameState.board, ids[i]);
+		current = gameState.squareStateById[sq.id];
+		if (gameInstance.ui && gameInstance.ui.onHouseChanged) gameInstance.ui.onHouseChanged(sq.id, current.house, current.hotel);
+		if (gameInstance.ui && gameInstance.ui.onMortgageChanged) gameInstance.ui.onMortgageChanged(sq.id, current.mortgage);
+		if (sq.groupId && current.ownerId === null) {
 			DOMUI.setVisible("#square-" + sq.id + "-owner", false);
-		} else if (sq.groupId && sq.ownerId !== null) {
+		} else if (sq.groupId && current.ownerId !== null) {
 			var currentCellOwner = document.getElementById("square-" + sq.id + "-owner");
-			var ownerPlayer = players.filter(function(candidate) { return candidate && candidate.playerId === sq.ownerId; })[0];
+			var ownerPlayer = players.filter(function(candidate) { return candidate && candidate.playerId === current.ownerId; })[0];
 			if (!currentCellOwner || !ownerPlayer) continue;
 
 			currentCellOwner.style.display = "block";
@@ -208,36 +171,37 @@ function updateOwned(gameInstance) {
 		}
 	}
 
-	for (var i = 0; i < squares.length; i++) {
-		sq = squares[i];
-		if (sq.ownerId === p.playerId) {
+	for (var i = 0; i < ids.length; i++) {
+		sq = getSquare(gameState.board, ids[i]);
+		current = gameState.squareStateById[sq.id];
+		if (current.ownerId === p.playerId) {
 
 			mortgagetext = "";
-			if (sq.mortgage) {
+			if (current.mortgage) {
 				mortgagetext = "title='Mortgaged' style='color: grey;'";
 			}
 
 			housetext = "";
-			if (sq.house >= 1 && sq.house <= 4) {
-				for (var x = 1; x <= sq.house; x++) {
+			if (current.house >= 1 && current.house <= 4) {
+				for (var x = 1; x <= current.house; x++) {
 					housetext += "<img src='images/house.png' alt='' title='House' class='house' />";
 				}
-			} else if (sq.hotel) {
+			} else if (current.hotel) {
 				housetext += "<img src='images/hotel.png' alt='' title='Hotel' class='hotel' />";
 			}
 
 			if (HTML === "") {
 				HTML += "<table>";
-				firstproperty = i;
+				firstproperty = "propertycheckbox-" + sq.id;
 			}
 
-		HTML += "<tr class='property-cell-row' data-square-id='" + UIHtml.escapeHTML(sq.id) + "' data-group-id='" + UIHtml.escapeHTML(sq.groupId || '') + "'><td class='propertycellcheckbox'><input type='checkbox' data-square-id='" + UIHtml.escapeHTML(sq.id) + "' id='propertycheckbox-" + UIHtml.escapeHTML(sq.id) + "' /></td><td class='propertycellcolor' style='background: " + sq.color + ";";
+		HTML += "<tr class='property-cell-row' data-square-id='" + UIHtml.escapeHTML(sq.id) + "' data-group-id='" + UIHtml.escapeHTML(sq.groupId || '') + "'><td class='propertycellcheckbox'><input type='checkbox' data-square-id='" + UIHtml.escapeHTML(sq.id) + "' id='propertycheckbox-" + UIHtml.escapeHTML(sq.id) + "' /></td><td class='propertycellcolor' style='background: " + sq.presentation.color + ";";
 
 			if (sq.kind === 'railroad' || sq.kind === 'utility') {
 				HTML += " border: 1px solid grey; width: 18px;";
 			}
 
-			HTML += "' onmouseover=\"showdeed('" + UIHtml.escapeHTML(sq.id) + "')\" onmouseout='hidedeed();'></td><td class='propertycellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.name) + housetext + "</td></tr>";
+			HTML += "' data-square-id='" + UIHtml.escapeHTML(sq.id) + "' tabindex='0'></td><td class='propertycellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.presentation.label) + housetext + "</td></tr>";
 		}
 	}
 
@@ -257,12 +221,12 @@ function updateOwned(gameInstance) {
 	document.getElementById("owned").innerHTML = HTML;
 
 	// Select previously selected property.
-	if (checkedproperty && checkedproperty !== -1 && document.getElementById("propertycheckbox-" + checkedproperty)) {
+	if (checkedproperty && document.getElementById("propertycheckbox-" + checkedproperty)) {
 		document.getElementById("propertycheckbox-" + checkedproperty).checked = true;
 	} else if (checkedCardId && document.getElementById('propertycard-' + encodeURIComponent(checkedCardId))) {
 		document.getElementById('propertycard-' + encodeURIComponent(checkedCardId)).checked = true;
-	} else if (firstproperty !== -1) {
-		var firstCheckboxId = typeof firstproperty === 'string' ? firstproperty : "propertycheckbox-" + squares[firstproperty].id;
+	} else if (firstproperty !== null) {
+		var firstCheckboxId = firstproperty;
 		document.getElementById(firstCheckboxId).checked = true;
 	}
 	DOMUI.listen('#owned .property-cell-row', 'click', function(event) {
@@ -279,146 +243,32 @@ function updateOwned(gameInstance) {
 }
 
 function updateOption(gameInstance) {
-	if (!gameInstance || !gameInstance.state) throw new TypeError('Property options require the owning Game.');
-	var gameState = gameInstance.state;
-	var squares = getPanelSquares(gameState);
-	DOMUI.setVisible("#option", true);
-
-	var allGroupUninproved = true;
-	var allGroupUnmortgaged = true;
-	var checkedproperty = getCheckedProperty();
-	var sq = typeof checkedproperty === 'string' ? squares.filter(function(candidate) { return candidate.id === checkedproperty; })[0] : null;
-
-	if (!sq) {
-		DOMUI.setVisible("#buyhousebutton", false);
-		DOMUI.setVisible("#sellhousebutton", false);
-		DOMUI.setVisible("#mortgagebutton", false);
-
-
+	var state = gameInstance.state, id = getCheckedProperty();
+	var square = id && state.board.squaresById[id];
+	DOMUI.setVisible('#option', true);
+	DOMUI.setVisible('#buildings', !square);
+	if (!square) {
+		DOMUI.setVisible('#buyhousebutton, #sellhousebutton, #mortgagebutton', false);
 		var supply = gameInstance.getHouseHotelSupply();
-
-		DOMUI.setVisible("#buildings", true);
-		document.getElementById("buildings").innerHTML = "<img src='images/house.png' alt='' title='House' class='house' />:&nbsp;" + supply.housesAvailable + "&nbsp;&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' />:&nbsp;" + supply.hotelsAvailable;
-
+		document.getElementById('buildings').innerHTML = "<img src='images/house.png' alt='' title='House' class='house' />:&nbsp;" + supply.housesAvailable + "&nbsp;&nbsp;<img src='images/hotel.png' alt='' title='Hotel' class='hotel' />:&nbsp;" + supply.hotelsAvailable;
 		return;
 	}
-
-	DOMUI.setVisible("#buildings", false);
-	buyhousebutton = document.getElementById("buyhousebutton");
-	sellhousebutton = document.getElementById("sellhousebutton");
-
-	DOMUI.setVisible("#mortgagebutton", true);
-	document.getElementById("mortgagebutton").disabled = false;
-
-	if (sq.mortgage) {
-		document.getElementById("mortgagebutton").value = "Unmortgage ($" + Math.round(sq.price * 0.55) + ")";
-		document.getElementById("mortgagebutton").title = "Unmortgage " + sq.name + " for $" + Math.round(sq.price * 0.55) + ".";
-		DOMUI.setVisible("#buyhousebutton", false);
-		DOMUI.setVisible("#sellhousebutton", false);
-
-		allGroupUnmortgaged = false;
-	} else {
-		document.getElementById("mortgagebutton").value = "Mortgage ($" + (sq.price * 0.5) + ")";
-		document.getElementById("mortgagebutton").title = "Mortgage " + sq.name + " for $" + (sq.price * 0.5) + ".";
-
-		if (sq.kind === 'street') {
-			DOMUI.setVisible("#buyhousebutton", true);
-			DOMUI.setVisible("#sellhousebutton", true);
-			buyhousebutton.disabled = false;
-			sellhousebutton.disabled = false;
-
-			buyhousebutton.value = "Buy house ($" + sq.houseprice + ")";
-			sellhousebutton.value = "Sell house ($" + (sq.houseprice * 0.5) + ")";
-			buyhousebutton.title = "Buy a house for $" + sq.houseprice;
-			sellhousebutton.title = "Sell a house for $" + (sq.houseprice * 0.5);
-
-			if (sq.house == 4) {
-				buyhousebutton.value = "Buy hotel ($" + sq.houseprice + ")";
-				buyhousebutton.title = "Buy a hotel for $" + sq.houseprice;
-			}
-			if (sq.hotel == 1) {
-				DOMUI.setVisible("#buyhousebutton", false);
-				sellhousebutton.value = "Sell hotel ($" + (sq.houseprice * 0.5) + ")";
-				sellhousebutton.title = "Sell a hotel for $" + (sq.houseprice * 0.5);
-			}
-
-			var maxhouse = 0;
-			var minhouse = 5;
-
-			var max = sq.groupSquareIds.length;
-			for (var i = 0; i < max; i++) {
-				var s = squares.filter(function(candidate) { return candidate.id === sq.groupSquareIds[i]; })[0];
-
-				if (!s || s.ownerId !== sq.ownerId) {
-					buyhousebutton.disabled = true;
-					sellhousebutton.disabled = true;
-					buyhousebutton.title = "Before you can buy a house, you must own all the properties of this color-group.";
-				} else {
-
-					if (s.house > maxhouse) {
-						maxhouse = s.house;
-					}
-
-					if (s.house < minhouse) {
-						minhouse = s.house;
-					}
-
-					if (s.house > 0) {
-						allGroupUninproved = false;
-					}
-
-					if (s.mortgage) {
-						allGroupUnmortgaged = false;
-					}
-				}
-			}
-
-			if (!allGroupUnmortgaged) {
-				buyhousebutton.disabled = true;
-				buyhousebutton.title = "Before you can buy a house, you must unmortgage all the properties of this color-group.";
-			}
-
-			// Force even building
-			if (sq.house > minhouse) {
-				buyhousebutton.disabled = true;
-
-				if (sq.house == 1) {
-					buyhousebutton.title = "Before you can buy another house, the other properties of this color-group must all have one house.";
-				} else if (sq.house == 4) {
-					buyhousebutton.title = "Before you can buy a hotel, the other properties of this color-group must all have 4 houses.";
-				} else {
-					buyhousebutton.title = "Before you can buy a house, the other properties of this color-group must all have " + sq.house + " houses.";
-				}
-			}
-			if (sq.house < maxhouse) {
-				sellhousebutton.disabled = true;
-
-				if (sq.house == 1) {
-					sellhousebutton.title = "Before you can sell house, the other properties of this color-group must all have one house.";
-				} else {
-					sellhousebutton.title = "Before you can sell a house, the other properties of this color-group must all have " + sq.house + " houses.";
-				}
-			}
-
-			if (sq.house === 0 && sq.hotel === 0) {
-				DOMUI.setVisible("#sellhousebutton", false);
-
-			} else {
-				DOMUI.setVisible("#mortgagebutton", false);
-
-			}
-
-			// Before a property can be mortgaged or sold, all the properties of its color-group must unimproved.
-			if (!allGroupUninproved) {
-				document.getElementById("mortgagebutton").title = "Before a property can be mortgaged, all the properties of its color-group must unimproved.";
-				document.getElementById("mortgagebutton").disabled = true;
-			}
-
-		} else {
-			DOMUI.setVisible("#buyhousebutton", false);
-			DOMUI.setVisible("#sellhousebutton", false);
-		}
-	}
+	var current = state.squareStateById[id], playerId = state.player[state.turn].playerId;
+	var mortgageType = current.mortgage ? 'unmortgage' : 'mortgage';
+	var mortgageAmount = current.mortgage ? Math.round(square.rules.purchasePrice * 0.55) : square.rules.mortgageValue;
+	var controls = [
+		['mortgagebutton', mortgageType, (current.mortgage ? 'Unmortgage' : 'Mortgage'), mortgageAmount, true],
+		['buyhousebutton', 'buyHouse', current.house === 4 ? 'Buy hotel' : 'Buy house', square.rules.houseCost, square.kind === 'street' && !current.mortgage && !current.hotel],
+		['sellhousebutton', 'sellHouse', current.hotel ? 'Sell hotel' : 'Sell house', square.rules.houseCost / 2, square.kind === 'street' && !!(current.house || current.hotel)]
+	];
+	controls.forEach(function(control) {
+		var button = document.getElementById(control[0]);
+		var error = PropertyActions.actionError(state, playerId, control[1], id);
+		DOMUI.setVisible(button, control[4]);
+		button.disabled = !!error;
+		button.value = control[2] + ' ($' + control[3] + ')';
+		button.title = error || control[2] + ' for $' + control[3] + '.';
+	});
 }
 
 function updateFreeParkingDisplay(gameInstance) {
@@ -447,6 +297,7 @@ function getCheckedProperty() {
 	return null;
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { playerBadge: playerBadge, formatTradeResult: formatTradeResult, updateMoney: updateMoney };
-}
+var api = { playerBadge: playerBadge, addAlert: addAlert, updateMoney: updateMoney, updateOwned: updateOwned, updateDice: updateDice, updateFreeParkingDisplay: updateFreeParkingDisplay, getCheckedProperty: getCheckedProperty, updateOption: updateOption };
+global.RenderPanels = api;
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);

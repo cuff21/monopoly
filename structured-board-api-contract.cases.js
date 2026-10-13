@@ -53,7 +53,7 @@ function createStateFixture(board) {
     });
     return {
         board,
-        players: [playerOne, playerThree],
+        player: [null, playerOne, playerThree], pcount: 2,
         squareStateById
     };
 }
@@ -83,8 +83,8 @@ function runBoardApiContractCases(boardApi) {
 function runGameStateApiContractCases(stateApi) {
     const board = createBoardFixture();
     const state = createStateFixture(board);
-    const playerOne = state.players[0];
-    const playerThree = state.players[1];
+    const playerOne = state.player[1];
+    const playerThree = state.player[2];
 
     assert.strictEqual(stateApi.getSquareState(state, 'street-a'), state.squareStateById['street-a']);
     assert.strictEqual(stateApi.getPlayerById(state, 'player-1'), playerOne);

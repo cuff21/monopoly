@@ -81,15 +81,7 @@
 	}
 
 	function getActivePlayers(state) {
-		var players;
-		if (Array.isArray(state.players) && (state.players.length > 0 || !Array.isArray(state.player))) {
-			players = state.players;
-		} else if (Array.isArray(state.player)) {
-			var end = Number.isInteger(state.pcount) ? state.pcount + 1 : state.player.length;
-			players = state.player.slice(1, end);
-		} else {
-			players = [];
-		}
+		var players = state.player.slice(1, state.pcount + 1);
 		return players.filter(function(player) {
 			return player && player.active !== false && player.eliminated !== true;
 		});
@@ -182,6 +174,9 @@
 	// and landcount=0 initially. BANK_ID is "bank" for creditor references only; null means
 	// unowned or bank-held, and square owners are null or active player IDs. Unknown IDs throw
 	// RangeError. Player IDs retain their original one-based seat ordinal after elimination.
+	// state.player[1..pcount] is the authoritative active-seat roster. Player locations
+	// are squareId only. Creditors are null before debt, BANK_ID, or active player IDs;
+	// pendingAuction is a square ID or null, with no numeric board sentinels.
 	// Movement results contain destination ID, ordered traversed IDs, and crossedStart.
 	// encodeCardId/parseCardId preserve a held card's source deck and card index;
 	// returnHeldCard validates that identity and restores the physical card to that Game's deck.
@@ -199,7 +194,7 @@
 			pcount: 0,
 			turn: 0,
 			doublecount: 0,
-			pendingAuction: -1,
+			pendingAuction: null,
 			auctionEnabled: true,
 			freeParkingTaxes: true,
 			freeParkingPot: 0,

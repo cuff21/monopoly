@@ -15,7 +15,6 @@ function AITest3(p, params) {
         'chanceJailCardValue', 'maxAmountOfRejections', 'firstBuildingOdds', 'lastBuildingOdds'
     ].forEach(function(key) { ai[key] = params[key]; });
     this.amountOfRejections = 0;
-    this.alertList = '';
     this.currentTileTrade = []; // [requested square ID, offered square ID]
     this.doNotOfferThose = [];
     this.constructor.count = (this.constructor.count || 0) + 1;
@@ -61,8 +60,7 @@ function AITest3(p, params) {
 
     this.buyProperty = function(squareId) {
         var definition = view.getSquare(squareId);
-        if (!definition.rules.purchasePrice || view.getSquareOwner(squareId) !== null
-            || p.money <= definition.rules.purchasePrice + this.purchaseThreshold) return false;
+        if (!definition.rules.purchasePrice || view.getSquareOwner(squareId) !== null) return false;
         if (definition.kind === 'railroad' || definition.kind === 'utility') return true;
         // Traversal ordinal is used only for the original early/late purchase preference.
         var coefficient = squareIds.indexOf(squareId) / squareIds.length * (this.lastBuildingOdds - this.firstBuildingOdds);

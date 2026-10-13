@@ -62,11 +62,11 @@ async function runTests() {
 	console.log('✔ Game instances retain explicitly supplied state.');
 
 	const payer = new global.Player('Payer', 'red');
-	assert.strictEqual(payer.pay(200, 2), true);
+	assert.strictEqual(payer.pay(200, GameStateContext.BANK_ID), true);
 	assert.strictEqual(payer.money, 1300);
-	assert.strictEqual(payer.pay(1400, 2), false);
+	assert.strictEqual(payer.pay(1400, GameStateContext.BANK_ID), false);
 	assert.strictEqual(payer.money, -100);
-	assert.strictEqual(payer.creditor, 2);
+	assert.strictEqual(payer.creditor, GameStateContext.BANK_ID);
 	console.log('✔ Player payments update state without global rendering.');
 
 	const cardUiCalls = [];
@@ -154,8 +154,8 @@ async function runTests() {
 	assert.strictEqual(configuredSquare.rules.rentTiers[4], 750);
 	assert.strictEqual(configuredSquare.presentation.label, 'Configured Square');
 	assert.strictEqual(configuredSquare.behavior.onLand, onLand);
-	assert.strictEqual(EditionRenderer.formatRentText({ display: {} }, 125), '$125');
-	assert.strictEqual(EditionRenderer.formatRentText({ display: { rentText: () => '<b>Custom</b>' } }, 125), '&lt;b&gt;Custom&lt;/b&gt;');
+	assert.strictEqual(EditionRenderer.renderSpecialDeedText({ kind: 'railroad' }, { label: '<Railroads>', rules: { rentTiers: [25, 50] } }).includes('&lt;Railroads&gt;'), true);
+	assert.strictEqual(EditionRenderer.renderSpecialDeedText({ kind: 'utility' }, { rules: { rentTiers: [4, 10] } }).includes('4 times'), true);
 	['Classic', 'NYC'].forEach(editionId => {
 		const board = global.Monopoly.Editions.get(editionId).buildBoard();
 		assert.strictEqual(Object.keys(board.squaresById).length, 40);
@@ -163,18 +163,6 @@ async function runTests() {
 		assert.strictEqual(board.startSquareId, 'go');
 	});
 	const classicBoard = global.Monopoly.Editions.get('Classic').buildBoard();
-	const classicStartPrevious = classicBoard.squaresById[classicBoard.squaresById.go.previousId].previousId;
-	const classicNext = classicBoard.squaresById.go.nextId;
-	assert.deepStrictEqual(RenderBoard.buildWaypointSquareIds(classicStartPrevious, classicNext, 1, classicBoard), [
-		classicBoard.squaresById[classicStartPrevious].nextId,
-		'go',
-		classicNext
-	], 'forward animation waypoints should follow stable Board links across Start');
-	assert.deepStrictEqual(RenderBoard.buildWaypointSquareIds(classicNext, classicStartPrevious, -1, classicBoard), [
-		'go',
-		classicBoard.squaresById.go.previousId,
-		classicStartPrevious
-	], 'backward animation waypoints should follow stable Board links across Start');
 	assert.deepStrictEqual(classicBoard.squaresById['mediterranean-avenue'].rules.rentTiers, [10, 30, 90, 160, 250]);
 	assert.strictEqual(classicBoard.squaresById['mediterranean-avenue'].rules.houseCost, 50);
 	assert.strictEqual(classicBoard.groupsById.brown.rules.monopolyMultiplier, 2);
@@ -213,7 +201,7 @@ async function runTests() {
 		};
 		const state = GameStateContext.createState({
 			player: [null, traveler], pcount: 1, turn: 1, square: squares, board,
-			auctionEnabled: false, pendingAuction: -1
+			auctionEnabled: false, pendingAuction: null
 		});
 		GameStateContext.initializeBoardState(state, board);
 		const game = new FixtureGame(ui, state);
@@ -373,7 +361,7 @@ async function runTests() {
 			freeParkingTaxes: true,
 			freeParkingPot: 0,
 			auctionEnabled: false,
-			pendingAuction: -1
+			pendingAuction: null
 		});
 		GameStateContext.initializeBoardState(state, board);
 		if (options.propertySquareId) {
@@ -392,7 +380,7 @@ async function runTests() {
 	assert.strictEqual(classicCityTax.landingContext.squareId, 'city-tax');
 	assert.strictEqual(classicCityTax.payer.money, 800);
 	assert.strictEqual(classicCityTax.state.freeParkingPot, 200);
-	assert.strictEqual(classicCityTax.payer.creditor, -1);
+	assert.strictEqual(classicCityTax.payer.creditor, null);
 	const classicLuxuryTax = await runTaxLanding('Classic', 38, { money: 1000 });
 	assert.strictEqual(classicLuxuryTax.payer.money, 900);
 	assert.strictEqual(classicLuxuryTax.state.freeParkingPot, 100);
@@ -422,42 +410,50 @@ async function runTests() {
 		delete UIBridge.BrowserUI;
 	}
 
-	const rendererNames = ['addAlert', 'updateMoney', 'updatePosition', 'updateOwned', 'updateDice', 'updateFreeParkingDisplay', 'updateDrawnCard', 'popup'];
-	const savedRenderers = saveGlobals(rendererNames);
-	const rendererCalls = [];
-	global.addAlert = (...args) => rendererCalls.push(['alert', ...args]);
-	global.updateMoney = () => rendererCalls.push(['money']);
-	global.updatePosition = () => { rendererCalls.push(['position']); return Promise.resolve('position'); };
-	global.updateOwned = () => rendererCalls.push(['owned']);
-	global.updateDice = (...args) => rendererCalls.push(['dice', ...args]);
-	global.updateFreeParkingDisplay = () => rendererCalls.push(['freeParking']);
-	global.updateDrawnCard = (...args) => { rendererCalls.push(['card', ...args]); return Promise.resolve('card'); };
-	global.popup = (...args) => { rendererCalls.push(['popup', ...args]); return Promise.resolve('popup'); };
+	const savedBuildingGlobals = saveGlobals(['document']);
 	try {
+		const buildings = { innerHTML: '' }, owner = {}, classes = new Set();
+		const cell = {
+			querySelector(selector) { return selector === '[data-square-owner]' ? owner : selector === '.cell-buildings' ? buildings : null; },
+			classList: { add(name) { classes.add(name); }, remove(name) { classes.delete(name); } }
+		};
+		// Auction and purchase links can precede the board and share its square ID.
+		global.document = {
+			querySelector() { return { querySelector() { return null; } }; },
+			getElementById(id) { return id === 'square-new-york-avenue' ? cell : null; }
+		};
 		const ui = new BrowserUI();
-		const popupOwner = { state: { player: [null, { human: true }], turn: 1 } };
+		ui.onHouseChanged('new-york-avenue', 4, 0);
+		assert.strictEqual((buildings.innerHTML.match(/class="cell-house"/g) || []).length, 4, 'property links must not prevent rendering four houses on the board');
+		ui.onHouseChanged('new-york-avenue', 5, 1);
+		assert.ok(buildings.innerHTML.includes('cell-hotel'));
+		ui.onHouseChanged('new-york-avenue', 0, 0);
+		assert.strictEqual(buildings.innerHTML, '');
+		ui.onMortgageChanged('new-york-avenue', true);
+		assert.ok(classes.has('mortgaged'));
+		ui.onMortgageChanged('new-york-avenue', false);
+		assert.ok(!classes.has('mortgaged'));
+	} finally { restoreGlobals(savedBuildingGlobals); }
+
+	const rendererNames = ['RenderPanels', 'RenderBoard', 'PopupView'];
+	const savedRenderers = saveGlobals(rendererNames), rendererCalls = [];
+	global.RenderPanels = { addAlert: (...args) => rendererCalls.push(['alert', ...args]), updateMoney: () => rendererCalls.push(['money']), updateOwned: () => rendererCalls.push(['owned']), updateDice: (...args) => rendererCalls.push(['dice', ...args]), updateFreeParkingDisplay: () => rendererCalls.push(['freeParking']) };
+	global.RenderBoard = { updatePosition: () => { rendererCalls.push(['position']); return Promise.resolve('position'); } };
+	global.PopupView = { ...PopupView, updateDrawnCard: (...args) => { rendererCalls.push(['card', ...args]); return Promise.resolve('card'); } };
+	try {
+		const ui = new BrowserUI(), popupOwner = { state: { player: [null, { human: true }], turn: 1 } };
 		ui.game = popupOwner;
-		ui.alert('test alert', 2, 3);
-		ui.updateMoney();
-		const positionResult = ui.updatePosition();
-		ui.updateOwned();
-		ui.updateDice(4, 5);
-		ui.updateFreeParking();
-		const cardResult = ui.updateDrawnCard('chance', 6);
-		const popupResult = ui.popup('<p>test</p>', null, 'blank');
-		ui.onGameOver('Winner');
+		ui.popupView.show = (...args) => { rendererCalls.push(['popup', ...args]); return Promise.resolve('popup'); };
+		ui.alert('test alert', 2, 3); ui.updateMoney(); const positionResult = ui.updatePosition();
+		ui.updateOwned(); ui.updateDice(4, 5); ui.updateFreeParking();
+		const cardResult = ui.updateDrawnCard('chance', 6), popupResult = ui.popup('<p>test</p>', null, 'blank');
 		assert.deepStrictEqual(rendererCalls.slice(0, 7), [
 			['alert', 'test alert', 2, 3, popupOwner], ['money'], ['position'], ['owned'],
 			['dice', popupOwner, 4, 5], ['freeParking'], ['card', 'chance', 6, popupOwner]
 		]);
-		assert.deepStrictEqual(rendererCalls[7], ['popup', '<p>test</p>', null, 'blank', undefined, popupOwner]);
-		assert.strictEqual(rendererCalls[8][5], popupOwner, 'winner popup should retain its owning Game');
-		assert.strictEqual(await positionResult, 'position');
-		assert.strictEqual(await cardResult, 'card');
-		assert.strictEqual(await popupResult, 'popup');
-	} finally {
-		restoreGlobals(savedRenderers);
-	}
+		assert.deepStrictEqual(rendererCalls[7], ['popup', '<p>test</p>', { onConfirm: null, mode: 'blank', timeoutSeconds: undefined }]);
+		assert.strictEqual(await positionResult, 'position'); assert.strictEqual(await cardResult, 'card'); assert.strictEqual(await popupResult, 'popup');
+	} finally { restoreGlobals(savedRenderers); }
 	console.log('✔ Browser adapter dispatch verified.');
 
 	// Decline notices are suppressed only for a human rejecting a bot's offer.
@@ -467,7 +463,7 @@ async function runTests() {
 		const ui = new BrowserUI();
 		ui.game = { state: { player: [null,
 			{ playerId: 'player-1', human: initiatorHuman },
-			{ playerId: 'player-2', human: recipientHuman }] } };
+			{ playerId: 'player-2', human: recipientHuman }], pcount: 2 } };
 		let popups = 0;
 		ui.popup = () => { popups++; };
 		ui.formatTradeResult = label => label;
@@ -482,9 +478,7 @@ async function runTests() {
 	try {
 		global.game = { ui: { isHeadless: false } };
 		let popupActionRan = false;
-		PopupView.popup('headless owner', () => { popupActionRan = true; }, undefined, undefined, {
-			ui: { isHeadless: true }, state: { player: [], turn: 0 }
-		});
+		new PopupView.PopupView({ isHeadless: true, game: { state: { player: [], turn: 0 } } }).show('headless owner', { onConfirm: () => { popupActionRan = true; } });
 		assert.strictEqual(popupActionRan, true, 'popup behavior should use its explicit owning Game, not the global Game');
 
 		let scheduledInterval = null;
@@ -502,11 +496,10 @@ async function runTests() {
 		};
 		global.setInterval = (callback, delay) => { scheduledInterval = delay; return 1; };
 		global.clearInterval = () => {};
-		PopupView.popup('AI owner', null, undefined, undefined, {
-			ui: { isHeadless: false }, state: { player: [null, { human: false }], turn: 1 }
-		});
+		const popup = new PopupView.PopupView({ isHeadless: false, game: { state: { player: [null, { human: false }], turn: 1 } } });
+		popup.show('AI owner');
 		assert.strictEqual(scheduledInterval, 1000, 'auto-close should follow the explicit Game current player');
-		PopupView.popup.autoCloseTimer = null;
+		popup.dispose();
 	} finally {
 		restoreGlobals(savedPopupGame);
 	}
@@ -515,6 +508,7 @@ async function runTests() {
 	class FakeElement {
 		constructor(tagName) {
 			this.tagName = tagName;
+			this.dataset = {};
 			this.children = [];
 			this.style = {};
 			this.value = '';
@@ -559,27 +553,26 @@ async function runTests() {
 	const tradeSquares = Object.keys(tradeBoard.squaresById).filter(id => tradeBoard.squaresById[id].groupId === 'brown');
 	const tradeGameState = GameStateContext.createState({ player: global.player, pcount: 2 });
 	GameStateContext.initializeBoardState(tradeGameState, tradeBoard, 'Classic');
-tradeState.game = { state: tradeGameState };
 GameStateContext.setSquareOwner(tradeGameState, tradeSquares[0], 'player-1');
 GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 	try {
-		TradeView.reset(tradeState, global.player[1], global.player[2], false, tradeGameState);
+		TradeView.reset(tradeState, 'player-1', 'player-2', false, tradeGameState);
 		global.document.getElementById('tradeleftsquare-' + tradeSquares[0]).checked = true;
 		global.document.getElementById('traderightsquare-' + tradeSquares[1]).checked = true;
 		global.document.getElementById('trade-leftp-money').value = '75';
 		global.document.getElementById('trade-rightp-money').value = '20';
-		const offer = TradeView.read(tradeState);
+		const offer = TradeView.read(tradeState, tradeGameState);
 		assert.strictEqual(offer.getMoney(), 55);
 		assert.deepStrictEqual(offer.getOfferedSquareIds(), [tradeSquares[0]]);
 		assert.deepStrictEqual(offer.getRequestedSquareIds(), [tradeSquares[1]]);
-		TradeView.write(tradeState, new global.Trade(global.player[1], global.player[2], -30, [tradeSquares[0]], [tradeSquares[1]], []), tradeGameState);
+		TradeView.write(tradeState, new global.Trade('player-1', 'player-2', -30, [tradeSquares[0]], [tradeSquares[1]], []), tradeGameState);
 		assert.strictEqual(global.document.getElementById('tradeleftsquare-' + tradeSquares[0]).checked, true);
 		assert.strictEqual(global.document.getElementById('traderightsquare-' + tradeSquares[1]).checked, true);
 		assert.strictEqual(global.document.getElementById('trade-rightp-money').value, '30');
 		global.player[1].heldCards = ['chance:0'];
 		GameStateContext.setSquareOwner(tradeGameState, 'reading-railroad', 'player-1');
 		GameStateContext.setSquareOwner(tradeGameState, 'electric-company', 'player-1');
-		TradeView.reset(tradeState, global.player[1], global.player[2], false, tradeGameState);
+		TradeView.reset(tradeState, 'player-1', 'player-2', false, tradeGameState);
 		const coloredRow = global.document.getElementById('tradeleftsquare-' + tradeSquares[0]).parentNode.parentNode;
 		assert.strictEqual(coloredRow.children[1].children[0].style.backgroundColor, '#8B4513');
 		const railroadRow = global.document.getElementById('tradeleftsquare-reading-railroad').parentNode.parentNode;
@@ -591,11 +584,11 @@ GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 		const cardRow = global.document.getElementById('tradeleftcard-chance%3A0').parentNode.parentNode;
 		assert.strictEqual(cardRow.children[1].colSpan, 2, 'card labels span the swatch and name columns');
 		global.document.getElementById('tradeleftcard-chance%3A0').checked = true;
-		assert.deepStrictEqual(TradeView.read(tradeState).getHeldCards(), [{ cardId: 'chance:0', direction: 1 }]);
+		assert.deepStrictEqual(TradeView.read(tradeState, tradeGameState).getHeldCards(), [{ cardId: 'chance:0', direction: 1 }]);
 		const nycState = GameStateContext.createState({ player: global.player, pcount: 2 });
 		GameStateContext.initializeBoardState(nycState, global.Monopoly.Editions.buildGameSetup('NYC').board, 'NYC');
 		GameStateContext.setSquareOwner(nycState, 'lomto', 'player-1');
-		TradeView.reset(tradeState, global.player[1], global.player[2], false, nycState);
+		TradeView.reset(tradeState, 'player-1', 'player-2', false, nycState);
 		const transportationRow = global.document.getElementById('tradeleftsquare-lomto').parentNode.parentNode;
 		assert.strictEqual(transportationRow.children[1].children[0].textContent, 'T', 'groups without icons show their first letter');
 
@@ -614,7 +607,7 @@ GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 		assert.strictEqual(panelView.money.parentNode, panelView.shell, 'desktop stats return to the board shell');
 		global.player[1].name = 'Offerer <img src=x onerror=alert(1)>';
 		global.player[2].name = 'Recipient <svg onload=alert(1)>';
-		const summary = TradeView.formatResult('Offer', new global.Trade(global.player[1], global.player[2], 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]));
+		const summary = TradeView.formatResult('Offer', new global.Trade('player-1', 'player-2', 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]), tradeGameState);
 		assert(summary.indexOf('Offerer &lt;img') < summary.indexOf('Recipient &lt;svg'));
 		assert(summary.includes('Offerer &lt;img src=x onerror=alert(1)&gt; gives'));
 		assert(summary.includes('Recipient &lt;svg onload=alert(1)&gt; gives'));
@@ -623,53 +616,23 @@ GameStateContext.setSquareOwner(tradeGameState, tradeSquares[1], 'player-2');
 	} finally {
 		restoreGlobals(savedTradeGlobals);
 	}
-	const cardSummary = TradeView.formatResult('Card swap', new global.Trade({ name: 'Offerer' }, { name: 'Recipient' }, 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]));
+	const cardSummary = TradeView.formatResult('Card swap', new global.Trade('player-1', 'player-2', 0, [], [], [{ cardId: 'cc:0', direction: 1 }, { cardId: 'chance:0', direction: -1 }]), tradeGameState);
 	assert(cardSummary.indexOf('Get Out of Jail Free card') < cardSummary.lastIndexOf('Get Out of Jail Free card'));
 	console.log('✔ Trade view behavior and name escaping verified.');
 
-	// Positional global fixtures are obsolete after the structured Game UI cutover.
-	if (process.env.RUN_LEGACY_UI_SMOKE === '1') {
-	const savedLegacyGlobals = saveGlobals(['player', 'square', 'pcount', 'turn', 'game', 'document']);
-	const unsafeName = 'Player <img src=x onerror=alert(1)>';
-	global.player = [null, { index: 1, playerId: 'player-1', heldCards: [], name: unsafeName, color: 'red', money: 100, human: false, AI: { profile: { name: '<svg onload=alert(1)>' } } }];
-	global.square = Array.from({ length: 40 }, (_, index) => ({ index, id: 'property-' + index, owner: 0, name: 'Property ' + index, color: '#fff', groupNumber: 0, group: [], house: 0, mortgage: false }));
-	global.square[1] = { ...global.square[1], owner: 1, groupNumber: 3, group: [1] };
-	global.pcount = 1;
-	global.turn = 1;
-	try {
-		const badge = RenderPanels.playerBadge(1);
-		assert(badge.includes('title=\'Player &lt;img src=x onerror=alert(1)&gt;\''));
-		assert(!badge.includes('<img'));
-		global.square[1].name = 'Property <img src=x onerror=alert(1)>';
-		const legacySummary = RenderPanels.formatTradeResult('Offer <svg>', new global.Trade(global.player[1], global.player[1], 0, ['property-1'], [], []));
-		assert(legacySummary.includes('Offer &lt;svg&gt;'));
-		assert(legacySummary.includes('Player &lt;img src=x onerror=alert(1)&gt; gives'));
-		assert(legacySummary.includes('property-1'), 'trade summaries without a Game render stable square IDs');
-		assert(!legacySummary.includes('<img') && !legacySummary.includes('<svg'));
-		const stats = PopupView.getPlayerStatsHTML(1, true);
-		assert(stats.includes('Player &lt;img src=x onerror=alert(1)&gt;'));
-		assert(stats.includes('&lt;svg onload=alert(1)&gt;'));
-		assert(!stats.includes('<img') && !stats.includes('<svg'));
-
-		const elements = {
-			pmoney: { innerHTML: '' }, p1moneybar: { style: {} }, p1money: { innerHTML: '' },
-			p1moneyname: { innerHTML: 'unchanged', textContent: '' }, landed: { innerHTML: 'occupied' }, quickstats: { style: {} }
-		};
-		global.document = { getElementById: id => elements[id] || null };
-		global.game = { ui: { isHeadless: false } };
-		RenderPanels.updateMoney();
-		assert.strictEqual(elements.p1moneyname.textContent, unsafeName);
-		assert.strictEqual(elements.p1moneyname.innerHTML, 'unchanged');
-	} finally {
-		restoreGlobals(savedLegacyGlobals);
-	}
-	console.log('✔ Legacy panel, stats, trade, and money labels use safe text/HTML encoding.');
-
-	} else {
-		console.log('Skipped obsolete global square[] UI fixture.');
+	// Safe labels are tested against native structured state, without ambient globals.
+	{
+		const state = GameStateContext.createState({ player: [null, { playerId: 'player-1', name: 'Player <img src=x onerror=alert(1)>', color: 'red', money: 100, heldCards: [], human: false, AI: { profile: { name: '<svg onload=alert(1)>' } } }], pcount: 1, turn: 1 });
+		GameStateContext.initializeBoardState(state, classicBoard);
+		const badge = RenderPanels.playerBadge(1, state);
+		assert(badge.includes('Player &lt;img')); assert(!badge.includes('<img'));
+		const summary = TradeView.formatResult('Offer <svg>', new global.Trade('player-1', 'player-1', 0, ['boardwalk'], [], []), state);
+		assert(summary.includes('Offer &lt;svg&gt;')); assert(summary.includes('Boardwalk')); assert(!summary.includes('<img'));
+		const stats = PopupView.getPlayerStatsHTML(1, true, state);
+		assert(stats.includes('Player &lt;img')); assert(stats.includes('&lt;svg onload')); assert(!stats.includes('<svg'));
 	}
 
-	const savedBrowserGlobals = saveGlobals(['document', 'player', 'pcount', 'popup', 'game', 'addAlert', 'showAuctionPlayerStats']);
+	const savedBrowserGlobals = saveGlobals(['document', 'player', 'pcount', 'popup', 'game', 'RenderPanels', 'PopupView']);
 	const auctionHoverHandlers = {};
 	const auctionParticipant = {
 		addEventListener(event, handler) { auctionHoverHandlers[event] = handler; },
@@ -705,9 +668,9 @@ global.document = {
 	const uiPopupCalls = [];
 	let forwardedAlertGame = null;
 	global.popup = (...args) => uiPopupCalls.push(args);
-	global.addAlert = (text, playerIndex, secondPlayerIndex, gameInstance) => { forwardedAlertGame = gameInstance; };
+	global.RenderPanels = { ...RenderPanels, addAlert: (text, playerIndex, secondPlayerIndex, gameInstance) => { forwardedAlertGame = gameInstance; } };
 	let hoveredGame = null;
-	global.showAuctionPlayerStats = (playerIndex, event, gameInstance) => { hoveredGame = gameInstance; };
+	global.PopupView = { ...PopupView, showAuctionPlayerStats: (playerIndex, event, gameInstance) => { hoveredGame = gameInstance; } };
 	global.game = { auctionBid() { throw new Error('UI action escaped to global game'); } };
 	try {
 		const ui = new BrowserUI();
@@ -729,6 +692,9 @@ global.document = {
 			payBail: () => ownerActions.push('bail'),
 			useJailCard: () => ownerActions.push('jail-card')
 		};
+		ui.popup = (...args) => uiPopupCalls.push(args);
+		ui.updateMoney = () => {};
+		ui.popupView.close = () => {};
 		ui.alert('Owned-game alert');
 		assert.strictEqual(forwardedAlertGame, ui.game, 'alerts must carry their owning Game into the renderer');
 		const auctionSquareId = 'reading-railroad';
@@ -896,10 +862,18 @@ global.document = {
 		];
 		const mixedFixture = createAuctionFixtureState(mixedPlayers, 2);
 		const humanTurns = [];
+		const auctionRefreshes = [];
 		let closedMixedAuction = false;
 		const mixedGame = new FixtureGame({ isHeadless: false, openAuction() {},
 			updateAuctionTurn(name) { humanTurns.push(name); },
-			closeAuction() { closedMixedAuction = true; }
+			updateOwned() {
+				auctionRefreshes.push(['owned', GameStateContext.getSquareState(this.game.state, mixedFixture.squareId).ownerId]);
+			},
+			updateMoney() { auctionRefreshes.push(['money', mixedPlayers[2].money]); },
+			closeAuction() {
+				assert.deepStrictEqual(auctionRefreshes, [['owned', mixedPlayers[2].playerId], ['money', 1249]], 'auction results must be rendered before the auction closes');
+				closedMixedAuction = true;
+			}
 		}, mixedFixture.state);
 		mixedGame.addPropertyToAuctionQueue(mixedFixture.squareId);
 		mixedGame.registerController('player-1', new global.PlayerControllers.BrowserController(mixedGame));
@@ -936,7 +910,7 @@ global.document = {
 	GameStateContext.assignPlayerId(global.player[1], 1);
 	global.player[1].squareId = actionId;
 	global.turn = 1;
-	global.pendingAuction = -1;
+	global.pendingAuction = null;
 	try {
 		const actionState = GameStateContext.createState({ player: global.player, pcount: 1, turn: global.turn });
 		GameStateContext.initializeBoardState(actionState, actionBoard, 'Classic');

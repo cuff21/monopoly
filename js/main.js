@@ -1,257 +1,124 @@
-// Bootstrapping: builds the board DOM, wires global event handlers, and starts on window load.
-
-function sleep(ms) {
-	if (typeof game !== 'undefined' && game && game.ui && game.ui.isHeadless) {
-		return Promise.resolve();
-	}
-	return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function bindBrowserGameState(gameInstance) {
-	var renderDeed = window.showdeed._renderStructuredDeed || window.showdeed;
-	var showDeedForGame = function(squareId) { return renderDeed(squareId, gameInstance); };
-	showDeedForGame._renderStructuredDeed = renderDeed;
-	window.showdeed = showDeedForGame;
-	var stateKeys = [
-		'player', 'cardDecks', 'playersGame', 'pcount',
-		'auctionEnabled', 'pendingAuction', 'freeParkingTaxes', 'freeParkingPot', 'turn',
-		'doublecount', 'lastGamePlayerCount'
-	];
-	stateKeys.forEach(function(key) {
-		Object.defineProperty(window, key, {
-			configurable: true,
-			enumerable: true,
-			get: function() { return gameInstance.state[key]; },
-			set: function(value) { gameInstance.state[key] = value; }
-		});
-	});
-	window.buy = function(squareId) { if (typeof squareId !== 'string') throw new TypeError('Buying requires a square ID.'); return gameInstance.submitPlayerAction({ type: 'buy', squareId: squareId }); };
-	window.mortgage = function(squareId) { return gameInstance.submitPlayerAction({ type: 'mortgage', squareId: squareId }); };
-	window.unmortgage = function(squareId) { return gameInstance.submitPlayerAction({ type: 'unmortgage', squareId: squareId }); };
-	window.buyHouse = function(squareId) { return gameInstance.submitPlayerAction({ type: 'buyHouse', squareId: squareId }); };
-	window.sellHouse = function(squareId) { return gameInstance.submitPlayerAction({ type: 'sellHouse', squareId: squareId }); };
-	window.canSellHouse = function(squareId) { return gameInstance.canSellHouse(squareId); };
-	window.getHouseHotelSupply = function() { return gameInstance.getHouseHotelSupply(); };
-}
-
-function onloadBehavior() {
-	if (typeof game !== 'undefined' && game && game.ui.boardView) game.ui.boardView.dispose();
-	GameSetupService.configure({
-		aiRegistry: AISetupRegistry,
-		gen6Trainer: Gen6Trainer,
-		createWorkerPool: Gen6Trainer.createBrowserWorkerPool
-	});
-	var edition = Monopoly.Editions.getActive();
-	var editionId = Monopoly.Editions.getActiveName();
-	var editionSetup = Monopoly.Editions.buildGameSetup(editionId);
-	var structuredBoard = editionSetup.board;
-	var initialState = GameStateContext.createState({
-		player: [],
-		editionId: editionId,
-		cardDecks: editionSetup.cardDecks,
-		playersGame: [],
-		pcount: 2,
-		auctionEnabled: true,
-		pendingAuction: -1,
-		freeParkingTaxes: true,
-		freeParkingPot: 0,
-		turn: 0,
-		doublecount: 0,
-		lastGamePlayerCount: 2
-	});
-	GameStateContext.initializeBoardState(initialState, structuredBoard, editionId);
-	initialState.seed = (window.crypto && window.crypto.getRandomValues) ? window.crypto.getRandomValues(new Uint32Array(1))[0] : Date.now() >>> 0;
-	initialState.random = (function(seed) { var value = seed >>> 0; return function() { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; })(initialState.seed);
-	game = new Game(undefined, initialState);
-	game.ui.boardView = new BoardView(game).mount();
-	bindBrowserGameState(game);
-	resetTokenOverlays(game);
-
-	for (var i = 0; i <= 8; i++) {
-		player[i] = new Player("", "", game);
-		player[i].index = i;
-		if (i > 0) GameStateContext.assignPlayerId(player[i], i);
-	}
-
-	AITest3.count = 0;
-
-	player[1].human = true;
-	player[0].name = "the bank";
-
-	Object.keys(initialState.cardDecks).forEach(function(deckId) {
-		var order = initialState.cardDecks[deckId].order;
-		for (var i = order.length - 1; i > 0; i--) {
-			var j = Math.floor(initialState.random() * (i + 1)), swap = order[i]; order[i] = order[j]; order[j] = swap;
-		}
-	});
-
-	createPlayerInputs();
-	playernumber_onchange();
-
-	DOMUI.listen("#nextbutton", 'click', game.next);
-	DOMUI.setVisible("#noscript", false);
-	DOMUI.setVisible("#setup, #noF5", true);
-
-	updateFreeParkingDisplay(game);
-	var drag, dragX, dragY, dragObj, dragTop, dragLeft;
-
-	DOMUI.listen("body", 'mousemove', function(e) {
-		var object;
-
-		if (e.target) {
-			object = e.target;
-		} else if (window.event && window.event.srcElement) {
-			object = window.event.srcElement;
-		}
-
-
-		if (object.classList.contains("propertycellcolor") || object.classList.contains("statscellcolor")) {
-			if (e.clientY + 20 > window.innerHeight - 279) {
-				document.getElementById("deed").style.top = (window.innerHeight - 279) + "px";
-			} else {
-				document.getElementById("deed").style.top = (e.clientY + 20) + "px";
-			}
-			document.getElementById("deed").style.left = (e.clientX + 10) + "px";
-
-
-		} else if (drag) {
-			if (e) {
-				dragObj.style.left = (dragLeft + e.clientX - dragX) + "px";
-				dragObj.style.top = (dragTop + e.clientY - dragY) + "px";
-
-			} else if (window.event) {
-				dragObj.style.left = (dragLeft + window.event.clientX - dragX) + "px";
-				dragObj.style.top = (dragTop + window.event.clientY - dragY) + "px";
-			}
-		}
-	});
-
-
-	DOMUI.listen("body", 'mouseup', function() {
-
-		drag = false;
-	});
-	document.getElementById("statsdrag").onmousedown = function(e) {
-		dragObj = document.getElementById("stats");
-		dragObj.style.position = "relative";
-
-		dragTop = parseInt(dragObj.style.top, 10) || 0;
-		dragLeft = parseInt(dragObj.style.left, 10) || 0;
-
-		if (window.event) {
-			dragX = window.event.clientX;
-			dragY = window.event.clientY;
-		} else if (e) {
-			dragX = e.clientX;
-			dragY = e.clientY;
-		}
-
-		drag = true;
-	};
-
-	document.getElementById("popupdrag").onmousedown = function(e) {
-		dragObj = document.getElementById("popup");
-		dragObj.style.position = "relative";
-
-		dragTop = parseInt(dragObj.style.top, 10) || 0;
-		dragLeft = parseInt(dragObj.style.left, 10) || 0;
-
-		if (window.event) {
-			dragX = window.event.clientX;
-			dragY = window.event.clientY;
-		} else if (e) {
-			dragX = e.clientX;
-			dragY = e.clientY;
-		}
-
-		drag = true;
-	};
-
-	DOMUI.listen("#mortgagebutton", 'click', function() {
-		var checkedProperty = getCheckedProperty();
-		var s = game.state.board.squaresById[checkedProperty];
-		var propertyState = GameStateContext.getSquareState(game.state, checkedProperty);
-		var ownerId = GameStateContext.getSquareState(game.state, checkedProperty).ownerId;
-		var propertyOwner = GameStateContext.getPlayerById(game.state, ownerId);
-
-		if (propertyState.mortgage) {
-			if (propertyOwner.money < Math.round(s.rules.purchasePrice * 0.55)) {
-				game.ui.showMessage("You need $" + (Math.round(s.rules.purchasePrice * 0.55) - propertyOwner.money) + " more to unmortgage " + s.presentation.label + ".");
-
-			} else {
-				game.ui.confirm(propertyOwner.name + ", are you sure you want to unmortgage " + s.presentation.label + " for $" + Math.round(s.rules.purchasePrice * 0.55) + "?", function() {
-					unmortgage(checkedProperty);
-				}, "Yes/No");
-			}
-		} else {
-			game.ui.confirm(propertyOwner.name + ", are you sure you want to mortgage " + s.presentation.label + " for $" + Math.round(s.rules.purchasePrice * 0.5) + "?", function() {
-				mortgage(checkedProperty);
-			}, "Yes/No");
-		}
-
-	});
-
-	DOMUI.listen("#buyhousebutton", 'click', function() {
-		var checkedProperty = getCheckedProperty();
-		var s = game.state.board.squaresById[checkedProperty];
-		var squareState = GameStateContext.getSquareState(game.state, checkedProperty);
-		var p = GameStateContext.getPlayerById(game.state, GameStateContext.getSquareState(game.state, checkedProperty).ownerId);
-
-		if (p.money < s.rules.houseCost) {
-			if (squareState.house === 4) {
-				game.ui.popup("<p>You need $" + (s.rules.houseCost - p.money) + " more to buy a hotel for " + s.presentation.label + ".</p>");
-				return;
-			} else {
-				game.ui.popup("<p>You need $" + (s.rules.houseCost - p.money) + " more to buy a house for " + s.presentation.label + ".</p>");
-				return;
-			}
-		}
-
-		var supply = getHouseHotelSupply();
-
-		if (squareState.house < 4 && supply.housesAvailable <= 0) {
-			game.ui.popup("<p>All 32 houses are owned. You must wait until one becomes available.</p>");
-			return;
-		} else if (squareState.house === 4 && supply.hotelsAvailable <= 0) {
-			game.ui.popup("<p>All 12 hotels are owned. You must wait until one becomes available.</p>");
-			return;
-		}
-
-		buyHouse(checkedProperty);
-
-	});
-
-
-	DOMUI.listen("#sellhousebutton", 'click', function() { sellHouse(getCheckedProperty()); });
-
-	DOMUI.listen("#viewstats", 'click', function() { showStats(game); });
-	DOMUI.listen("#statsclose, #statsbackground", 'click', function() {
-		DOMUI.setVisible("#statswrap", false);
-		DOMUI.fade('#statsbackground', false, 400);
-	});
-
-	DOMUI.listen("#buy-menu-item", 'click', function() {
-		DOMUI.setVisible("#buy", true);
-		DOMUI.setVisible("#manage", false);
-
-		// Scroll alerts to bottom.
-		DOMUI.scrollToBottom('#alert', false);
-	});
-
-
-	DOMUI.listen("#manage-menu-item", 'click', function() {
-		DOMUI.setVisible("#manage", true);
-		DOMUI.setVisible("#buy", false);
-	});
-
-
-	DOMUI.listen("#trade-menu-item", 'click', function() { game.ui.editTrade(); });
-
-
-};
-
-window.onload = onloadBehavior;
-
-function STOP() {
-    turn = -1;
-}
+// Browser composition root. Match state stays on the current Game.
+(function(global) {
+    'use strict';
+    function BrowserApp(dependencies) {
+        this.dependencies = dependencies || {};
+        this.game = null;
+        this.bindings = [];
+        global.GameSetupService.configure({
+            aiRegistry: this.dependencies.aiRegistry || global.AISetupRegistry,
+            gen6Trainer: global.Gen6Trainer,
+            createWorkerPool: global.Gen6Trainer && global.Gen6Trainer.createBrowserWorkerPool
+        });
+        global.SetupScreen.setSetupService(global.GameSetupService);
+        global.SetupScreen.setAISetupRegistry(this.dependencies.aiRegistry || global.AISetupRegistry);
+    }
+    BrowserApp.prototype.listen = function(target, type, callback) {
+        var app = this, game = this.game;
+        global.DOMUI.nodes(target).forEach(function(node) {
+            var handler = function(event) { if (app.game === game && !game.ui.disposed) callback(event); };
+            node.addEventListener(type, handler);
+            app.bindings.push([node, type, handler]);
+        });
+    };
+    BrowserApp.prototype.dispose = function() {
+        this.bindings.splice(0).forEach(function(binding) { binding[0].removeEventListener(binding[1], binding[2]); });
+        var game = this.game;
+        if (!game) return;
+        game.onGameError = null; game.onGameCompleted = null;
+        game.isOver = true;
+        game._requests.clear();
+        game.controllers.forEach(function(controller) { if (controller.cancel) controller.cancel(new Error('Game restarted.')); });
+        game.ui.dispose();
+        this.game = null;
+    };
+    BrowserApp.prototype.mount = function() {
+        this.dispose();
+        var app = this, editions = global.Monopoly.Editions;
+        var editionId = editions.getActiveName(), setup = editions.buildGameSetup(editionId);
+        var state = global.GameStateContext.createState({ pcount: 2, cardDecks: setup.cardDecks });
+        global.GameStateContext.initializeBoardState(state, setup.board, editionId);
+        state.seed = global.crypto && global.crypto.getRandomValues ? global.crypto.getRandomValues(new Uint32Array(1))[0] : Date.now() >>> 0;
+        state.random = (function(seed) { var value = seed >>> 0; return function() { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; })(state.seed);
+        var game = this.game = new global.Game(new global.BrowserUI(), state);
+        game.ui.app = this;
+        for (var seat = 0; seat <= 8; seat++) {
+            var player = new global.Player('', '', game);
+            player.index = seat; state.player[seat] = player;
+            if (seat) global.GameStateContext.assignPlayerId(player, seat);
+        }
+        state.player[0].name = 'the bank';
+        global.AITest3.count = 0;
+        Object.keys(state.cardDecks).forEach(function(deckId) {
+            var order = state.cardDecks[deckId].order;
+            for (var i = order.length - 1; i > 0; i--) {
+                var j = Math.floor(state.random() * (i + 1)), swap = order[i]; order[i] = order[j]; order[j] = swap;
+            }
+        });
+        game.ui.boardView = new global.BoardView(game).mount();
+        game.ui.bindDeeds(document);
+        document.getElementById('player-inputs').replaceChildren();
+        global.SetupScreen.createPlayerInputs(this);
+        global.SetupScreen.playernumber_onchange(this);
+        global.DOMUI.setVisible('#noscript', false);
+        global.DOMUI.setVisible('#setup, #noF5', true);
+        game.ui.updateFreeParking();
+        this.listen('#nextbutton', 'click', function() { if (game.isOver) app.restart(); else game.next(); });
+        this.listen('#addplayerbutton', 'click', function() { global.SetupScreen.addPlayer(app); });
+        this.listen('#startgamebutton', 'click', function() { global.SetupScreen.setup(app); });
+        this.listen('#resignbutton', 'click', function() { game.ui.resign(); });
+        this.listen('#proposetradebutton', 'click', function() { game.ui.submitTrade(); });
+        this.listen('#accepttradebutton', 'click', function() { game.ui.acceptTrade(); });
+        this.listen('#canceltradebutton, #rejecttradebutton', 'click', function() { game.ui.cancelTrade(); });
+        this.listen('#mortgagebutton', 'click', function() {
+            var id = global.RenderPanels.getCheckedProperty();
+            if (!id) return;
+            var square = global.getSquare(state.board, id), current = state.squareStateById[id];
+            var type = current.mortgage ? 'unmortgage' : 'mortgage';
+            var error = global.PropertyActions.actionError(state, state.player[state.turn].playerId, type, id);
+            if (error) { game.ui.showMessage(error); return; }
+            var amount = current.mortgage ? Math.round(square.rules.purchasePrice * 0.55) : square.rules.mortgageValue;
+            game.ui.confirm('Are you sure you want to ' + type + ' ' + square.presentation.label + ' for $' + amount + '?', function() {
+                if (app.game === game) game.submitPlayerAction({ type: type, squareId: id });
+            });
+        });
+        [['#buyhousebutton', 'buyHouse'], ['#sellhousebutton', 'sellHouse']].forEach(function(binding) {
+            app.listen(binding[0], 'click', function() { var id = global.RenderPanels.getCheckedProperty(); if (id) game.submitPlayerAction({ type: binding[1], squareId: id }); });
+        });
+        this.listen('#viewstats', 'click', function() { global.PopupView.showStats(game); });
+        this.listen('#statsclose, #statsbackground', 'click', function() { global.DOMUI.setVisible('#statswrap', false); global.DOMUI.fade('#statsbackground', false, 400); });
+        this.listen('#buy-menu-item, #manage-menu-item', 'click', function(event) {
+            event.preventDefault(); var manage = event.currentTarget.id === 'manage-menu-item';
+            global.DOMUI.setVisible('#manage', manage); global.DOMUI.setVisible('#buy', !manage);
+            if (!manage) global.DOMUI.scrollToBottom('#alert', false);
+        });
+        this.listen('#trade-menu-item', 'click', function(event) { event.preventDefault(); game.ui.editTrade(); });
+        this.listen('#open-training-button', 'click', global.TrainingScreen.showTrainingScreen);
+        this.listen('#train-gen6-button', 'click', global.TrainingScreen.trainGen6Population);
+        this.listen('#stop-training-button', 'click', global.TrainingScreen.stopTraining);
+        this.listen('#training-back-button', 'click', global.TrainingScreen.hideTrainingScreen);
+        this.listen('#import-data-button', 'click', global.HistoryView.importData);
+        this.listen('#export-data-button', 'click', global.HistoryView.exportData);
+        this.bindDragging();
+        return game;
+    };
+    BrowserApp.prototype.bindDragging = function() {
+        var drag = null, app = this;
+        [['#statsdrag', 'stats'], ['#popupdrag', 'popup']].forEach(function(binding) {
+            app.listen(binding[0], 'mousedown', function(event) {
+                var node = document.getElementById(binding[1]); node.style.position = 'relative';
+                drag = { node: node, x: event.clientX, y: event.clientY, left: parseInt(node.style.left, 10) || 0, top: parseInt(node.style.top, 10) || 0 };
+            });
+        });
+        this.listen(document.body, 'mousemove', function(event) {
+            if (!drag) return;
+            drag.node.style.left = drag.left + event.clientX - drag.x + 'px';
+            drag.node.style.top = drag.top + event.clientY - drag.y + 'px';
+        });
+        this.listen(document.body, 'mouseup', function() { drag = null; });
+    };
+    BrowserApp.prototype.restart = function() { global.SetupScreen.restartGame(this); };
+    global.BrowserApp = BrowserApp;
+    if (typeof module !== 'undefined' && module.exports) module.exports = BrowserApp;
+    else global.addEventListener('load', function() { global.monopolyApp = new BrowserApp(); global.monopolyApp.mount(); });
+})(typeof window !== 'undefined' ? window : globalThis);

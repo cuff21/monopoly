@@ -2,6 +2,10 @@
 	'use strict';
 	var DOMUI = global.DOMUI || (typeof module !== 'undefined' && module.exports ? require('./dom') : null);
 
+    if (typeof module !== 'undefined' && module.exports) {
+        require('./render-panels'); require('./render-board'); require('./popup'); require('./trade-view');
+    }
+
 	var GameUI = global.GameUI;
 	var UIHtml = global.UIHtml || (typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
 
@@ -12,6 +16,8 @@
 		GameUI.call(this);
 		this.isHeadless = false;
 		this.tradeState = { initiator: null, recipient: null };
+		this.popupView = new global.PopupView.PopupView(this);
+        this.disposed = false; this.deedBindings = [];
 	}
 	BrowserUI.prototype = Object.create(GameUI.prototype);
 	BrowserUI.prototype.constructor = BrowserUI;
@@ -23,65 +29,24 @@
 	};
 
 	BrowserUI.prototype.alert = function(text, playerIndex, secondPlayerIndex) {
-		if (typeof global.addAlert === 'function' && this.game) {
-			global.addAlert(text, playerIndex, secondPlayerIndex, this.game);
-		} else if (this.game && typeof document !== 'undefined' && document.getElementById('alert')) {
-			var alert = document.getElementById('alert');
-			var state = this.game.state;
-			var pIdx = playerIndex !== undefined && playerIndex !== null ? playerIndex : state.turn;
-			var badge = typeof global.playerBadge === 'function' ? global.playerBadge(pIdx, state) : '';
-			var badge2 = secondPlayerIndex && typeof global.playerBadge === 'function' ? global.playerBadge(secondPlayerIndex, state) : '';
-			var alertElement = document.createElement('div');
-			alertElement.innerHTML = badge + badge2;
-			alertElement.appendChild(document.createTextNode(text));
-			alert.appendChild(alertElement);
-			DOMUI.scrollToBottom(alert, true);
-
-			var currentPlayer = state && state.player[state.turn];
-			if (currentPlayer && !currentPlayer.human && currentPlayer.AI) {
-				currentPlayer.AI.alertList = (currentPlayer.AI.alertList || '') + '<div>' + badge + badge2 + text + '</div>';
-			}
-		}
-	};
-
-	BrowserUI.prototype.updateMoney = function() {
-		if (this.game && typeof global.updateMoney === 'function') global.updateMoney(this.game);
-	};
-
-	BrowserUI.prototype.updatePosition = function() {
-		if (this.game && typeof global.updatePosition === 'function') return global.updatePosition(this.game);
-		return Promise.resolve();
-	};
+        global.RenderPanels.addAlert(text, playerIndex, secondPlayerIndex, this.game);
+    };
+    BrowserUI.prototype.updateMoney = function() { global.RenderPanels.updateMoney(this.game); };
+    BrowserUI.prototype.updatePosition = function() { return global.RenderBoard.updatePosition(this.game); };
 	BrowserUI.prototype.animateMovement = function(movement) {
 		return this.boardView ? this.boardView.animateMovement(movement) : Promise.resolve();
 	};
 
-	BrowserUI.prototype.updateOwned = function() {
-		if (this.game && typeof global.updateOwned === 'function') global.updateOwned(this.game);
-	};
-
-	BrowserUI.prototype.updateDice = function(die1, die2) {
-		if (this.game && typeof global.updateDice === 'function') global.updateDice(this.game, die1, die2);
-	};
-
-	BrowserUI.prototype.updateFreeParking = function() {
-		if (this.game && typeof global.updateFreeParkingDisplay === 'function') global.updateFreeParkingDisplay(this.game);
-	};
-
-	BrowserUI.prototype.updateDrawnCard = function(deckType, cardIndex) {
-		if (this.game && typeof global.updateDrawnCard === 'function') return global.updateDrawnCard(deckType, cardIndex, this.game);
-		return Promise.resolve();
-	};
-
-	BrowserUI.prototype.popup = function(html, action, option, timer) {
-		if (this.game && typeof global.popup === 'function') return global.popup(html, action, option, timer, this.game);
-		if (typeof action === 'function') action();
-		return Promise.resolve();
-	};
-
-	BrowserUI.prototype.openAuction = function(propertyIndex, property, currentPlayer) {
+	BrowserUI.prototype.updateOwned = function() { global.RenderPanels.updateOwned(this.game); };
+    BrowserUI.prototype.updateDice = function(die1, die2) { global.RenderPanels.updateDice(this.game, die1, die2); };
+    BrowserUI.prototype.updateFreeParking = function() { global.RenderPanels.updateFreeParkingDisplay(this.game); };
+    BrowserUI.prototype.updateDrawnCard = function(deckId, index) { return global.PopupView.updateDrawnCard(deckId, index, this.game); };
+    BrowserUI.prototype.popup = function(html, action, option, timer) {
+        return this.popupView.show(html, { onConfirm: action, mode: option && option.toLowerCase(), timeoutSeconds: timer });
+    };
+	BrowserUI.prototype.openAuction = function(squareId, property, currentPlayer) {
 		var html = "<div class='auction-title'>Auction <span id='propertyname'></span></div><div class='auction-section'><div class='auction-section-title'>Players</div><div id='auctionparticipants'></div></div><div class='auction-section'><div class='auction-section-title'>Bid history</div><div id='auctionhistory'></div><div class='auction-high-bid'>Current high bid: $<span id='highestbid'></span> (<span id='highestbidder'></span>)</div></div><div id='currentbidder' class='auction-turn'></div><div><input id='bid' title='Enter an amount to bid on the property.' /></div><div class='auction-actions'><input id='auction-bid-button' type='button' value='Bid' title='Place your bid.' /><input id='auction-pass-button' type='button' value='Pass' title='Skip this round of bidding.' /><input id='auction-exit-button' type='button' value='Exit Auction' title='Stop bidding on the property altogether.' /></div>";
-		this.popup(html, 'blank');
+		this.popup(html, null, 'blank');
 		var thisUI = this;
 		[
 			['auction-bid-button', 'auctionBid'],
@@ -93,7 +58,7 @@
                 button.addEventListener('click', function() { thisUI.game.submitPlayerAction(binding[1] === 'auctionBid' ? { type: 'auctionBid', amount: thisUI.readAuctionBid() } : { type: binding[1] }); });
 			}
 		});
-		this.initializeAuction(propertyIndex, property, currentPlayer);
+		this.initializeAuction(squareId, property, currentPlayer);
 		this.onAuctionParticipants();
 		this.updateMoney();
 	};
@@ -104,7 +69,7 @@
         if (!controller || !controller.pending || !['turn','purchase','debt'].includes(controller.pending.request.kind)) return;
         var recipient = GameStateContext.getActivePlayers(state).find(function(p) { return p !== initiator; });
         if (!recipient) return;
-        this.resetTradeView(initiator, recipient, true); this.setTradePanelVisible(true); this.setTradeButtons(true, false);
+        this.resetTradeView(initiator.playerId, recipient.playerId, true); this.setTradePanelVisible(true); this.setTradeButtons(true, false);
     };
     BrowserUI.prototype.submitTrade = function() {
         var fields = this.readTradeMoneyFields();
@@ -143,11 +108,12 @@
 		var html = '<p>You landed on City Tax. Choose a payment.</p>' +
 			"<div><button type='button' id='tax-fixed-button'>Pay $" + fixedAmount + "</button> " +
 			"<button type='button' id='tax-percentage-button'>Pay $" + percentageAmount + '</button></div>';
-		this.popup(html, 'blank');
+		this.popup(html, null, 'blank');
 
+		var view = this.popupView;
 		function choose(amount) {
-			if (global.popup && global.popup.close) global.popup.close();
-			else DOMUI.setVisible('#popupwrap, #popupbackground', false);
+            if (view.disposed) return;
+			view.close();
 			if (typeof onChoose === 'function') onChoose(amount);
 		}
 
@@ -160,7 +126,7 @@
 	};
 
 	BrowserUI.prototype.showCard = function(deckId, text, action) {
-		var deck = this.game && this.game.state.cardDecks && this.game.state.cardDecks[deckId];
+		var deck = this.game.state.cardDecks && this.game.state.cardDecks[deckId];
 		var icon = deck ? deck.icon : '';
 		var title = deck ? deck.label : deckId;
 		var html = "<img src='" + UIHtml.escapeHTML(icon) + "' alt='' style='height: 50px; float: left; margin: 8px 8px 0px 0px;' /><div class='drawn-card-title'>" + UIHtml.escapeHTML(title) + "</div><div class='drawn-card-text'>" + UIHtml.escapeHTML(text) + '</div>';
@@ -183,7 +149,7 @@
 			return "<tr data-unmortgage-row='" + squareId + "'><td class='propertycellcolor' style='background: " + UIHtml.escapeHTML(property.color) + '; border: 1px solid ' + UIHtml.escapeHTML(border) + "'></td><td class='propertycellname'>" + UIHtml.escapeHTML(property.name) + "</td><td><button type='button' data-unmortgage-square-id='" + squareId + "' title='Unmortgage for $" + property.price + "'>Unmortgage ($" + property.price + ")</button></td></tr>";
 		}).join('');
 		var html = '<p>' + UIHtml.escapeHTML(creditorName) + ', you may unmortgage any of the following properties, interest free. Click OK when finished.</p><table>' + rows + '</table>';
-		this.popup(html, onComplete, 0);
+		this.popup(html, onComplete, undefined, 0);
 		if (typeof document === 'undefined') return;
 		document.querySelectorAll('[data-unmortgage-square-id]').forEach(function(button) {
 			button.addEventListener('click', function() {
@@ -196,15 +162,11 @@
 		});
 	};
 
-	BrowserUI.prototype.waitForPopupClose = async function() {
-		while (typeof document !== 'undefined' && document.getElementById('popupwrap') && getComputedStyle(document.getElementById('popupwrap')).display !== 'none') {
-			await this.delay(10);
-		}
-	};
+    BrowserUI.prototype.waitForPopupClose = function() { return this.popupView.whenClosed(); };
 
-	BrowserUI.prototype.onHouseChanged = function(propertyIndex, houseCount, hotelCount) {
+	BrowserUI.prototype.onHouseChanged = function(squareId, houseCount, hotelCount) {
 		if (typeof document === 'undefined') return;
-		var cell = document.querySelector('[data-square-id="' + propertyIndex + '"]');
+		var cell = document.getElementById('square-' + squareId);
 		var cellOwner = cell && cell.querySelector('[data-square-owner]');
 		if (!cellOwner) return;
 		var buildings = cell.querySelector('.cell-buildings') || cellOwner;
@@ -221,9 +183,9 @@
 		}
 	};
 
-	BrowserUI.prototype.onMortgageChanged = function(propertyIndex, isMortgaged) {
+	BrowserUI.prototype.onMortgageChanged = function(squareId, isMortgaged) {
 		if (typeof document === 'undefined') return;
-		var cell = document.querySelector('[data-square-id="' + propertyIndex + '"]');
+		var cell = document.getElementById('square-' + squareId);
 		if (cell) {
 			if (isMortgaged) cell.classList.add('mortgaged');
 			else cell.classList.remove('mortgaged');
@@ -258,7 +220,7 @@
 	BrowserUI.prototype.onAuctionParticipants = function() {
 		if (typeof document === 'undefined') return;
 		var participants = document.getElementById('auctionparticipants');
-		var state = this.game && this.game.state;
+		var state = this.game.state;
 		if (!participants || !state || !Array.isArray(state.player)) return;
 		participants.innerHTML = state.player.slice(1, state.pcount + 1).map(function(p) {
 			var status = p.auctionStatus || (p.bidding ? 'Bidding' : 'Out');
@@ -267,18 +229,18 @@
 		var thisUI = this;
 		participants.querySelectorAll('.auction-participant').forEach(function(item) {
 			item.addEventListener('mouseenter', function(event) {
-				if (typeof global.showAuctionPlayerStats === 'function') global.showAuctionPlayerStats(this.getAttribute('data-player-id'), event, thisUI.game);
+				global.PopupView.showAuctionPlayerStats(this.getAttribute('data-player-id'), event, thisUI.game);
 			});
 			item.addEventListener('mousemove', function(event) {
-				if (typeof global.positionAuctionPlayerStats === 'function') global.positionAuctionPlayerStats(event);
+				global.PopupView.positionAuctionPlayerStats(event);
 			});
 			item.addEventListener('mouseleave', function() {
-				if (typeof global.hideAuctionPlayerStats === 'function') global.hideAuctionPlayerStats();
+				global.PopupView.hideAuctionPlayerStats();
 			});
 		});
 	};
 
-	BrowserUI.prototype.initializeAuction = function(propertyIndex, property, currentPlayer) {
+	BrowserUI.prototype.initializeAuction = function(squareId, property, currentPlayer) {
 		if (typeof document === 'undefined') return;
 		var propertyName = document.getElementById('propertyname');
 		var highestBid = document.getElementById('highestbid');
@@ -287,7 +249,7 @@
 		if (!propertyName || !highestBid || !highestBidder || !bidInput) return;
 		if (!property || !property.presentation || !property.rules) throw new TypeError('Auction display requires a structured Board square.');
 		var propertyNameText = property.presentation.label;
-		propertyName.innerHTML = "<a href='javascript:void(0);' onmouseover=\"showdeed('" + UIHtml.escapeHTML(propertyIndex) + "')\" onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(propertyNameText) + "</a>";
+		propertyName.innerHTML = "<a href='#' data-square-id='" + UIHtml.escapeHTML(squareId) + "' class='statscellcolor'>" + UIHtml.escapeHTML(propertyNameText) + "</a>";
 		highestBid.textContent = '0';
 		highestBidder.textContent = 'N/A';
 		this.updateAuctionTurn(currentPlayer.name, false);
@@ -349,8 +311,7 @@
 
 	BrowserUI.prototype.closeAuction = function() {
 		DOMUI.setVisible('#buypropertybutton', false);
-		if (global.popup && global.popup.close) global.popup.close();
-		else DOMUI.setVisible('#popupbackground, #popupwrap', false);
+		this.popupView.close();
 	};
 
     BrowserUI.prototype.closeDecisionPopup = function() { this.closeAuction(); };
@@ -364,16 +325,15 @@
 		}
 	};
 
-	BrowserUI.prototype.displayPropertyPurchase = function(propertyIndex, property) {
+	BrowserUI.prototype.displayPropertyPurchase = function(squareId, property) {
 		if (typeof document === 'undefined') return;
 		var el = document.getElementById('landed');
 		if (!el) return;
-		var squareId = propertyIndex;
 		if (!property || !property.presentation || !property.rules) throw new TypeError('Purchase display requires a structured Board square.');
 		var name = property.presentation.label;
 		var price = property.rules.purchasePrice;
 		var priceText = property.presentation.priceText;
-		el.innerHTML = "<div>You landed on <a href='javascript:void(0);' onmouseover=\"showdeed('" + UIHtml.escapeHTML(squareId) + "')\" onmouseout='hidedeed();' class='statscellcolor'>" + UIHtml.escapeHTML(name) + "</a>.<input type='button' id='buypropertybutton' value='Buy ($" + price + ")' title='Buy " + UIHtml.escapeHTML(name) + " for " + UIHtml.escapeHTML(priceText || '') + ".'/></div>";
+		el.innerHTML = "<div>You landed on <a href='#' data-square-id='" + UIHtml.escapeHTML(squareId) + "' class='statscellcolor'>" + UIHtml.escapeHTML(name) + "</a>.<input type='button' id='buypropertybutton' value='Buy ($" + price + ")' title='Buy " + UIHtml.escapeHTML(name) + " for " + UIHtml.escapeHTML(priceText || '') + ".'/></div>";
 		var buyButton = document.getElementById('buypropertybutton');
 		if (buyButton && this.game && typeof this.game.submitPlayerAction === 'function') {
 			var game = this.game;
@@ -387,12 +347,21 @@
 		if (typeof document === 'undefined') return;
 		var pname = document.getElementById('pname');
 		if (pname) pname.textContent = p.name;
+		this.updateButtonState('Roll Dice', 'Roll the dice and move your token.');
 	};
 
 	BrowserUI.prototype.updateButtonState = function(label, title) {
 		if (typeof document === 'undefined') return;
 		var btn = document.getElementById('nextbutton');
 		if (btn) {
+			var state = this.game && this.game.state;
+			var player = state && state.player[state.turn];
+			btn.disabled = !!(player && !player.human && !this.game.isOver);
+			if (btn.disabled) {
+				btn.value = 'End turn';
+				btn.title = 'Wait for the bot to finish its turn.';
+				return;
+			}
 			if (label !== undefined) btn.value = label;
 			if (title !== undefined) btn.title = title;
 		}
@@ -420,7 +389,7 @@
 	BrowserUI.prototype.focusNextButton = function() {
 		if (typeof document === 'undefined') return;
 		var button = document.getElementById('nextbutton');
-		if (button) button.focus();
+		if (button && !button.disabled) button.focus();
 	};
 
 	BrowserUI.prototype.onTurnStart = function(playerIndex) {
@@ -430,7 +399,7 @@
 			DOMUI.setVisible(".money-bar-arrow", false);
 			DOMUI.setVisible("#p" + playerIndex + "arrow", true);
 		}
-		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
+		global.RenderBoard.setTokenOverlaysVisible(true, this.game);
 	};
 
 	BrowserUI.prototype.setDiceVisible = function(visible) {
@@ -443,7 +412,7 @@
 		if (typeof document === 'undefined') return;
 		var landed = document.getElementById('landed');
 		if (!landed) return;
-		var bailAmount = this.game && this.game.state.board ? this.game.state.board.rules.bailAmount : 50;
+		var bailAmount = this.game.state.board.rules.bailAmount;
 		var html = "You are in jail.<input type='button' id='pay-fine-button' title='Pay $" + bailAmount + " fine to get out of jail immediately.' value='Pay $" + bailAmount + " fine' />";
 		if (hasJailCard) html += "<input type='button' id='gojfbutton' title='Use &quot;Get Out of Jail Free&quot; card.' value='Use Card' />";
 		if (mustPayFine) html += "<div>NOTE: If you do not throw doubles after this roll, you <i>must</i> pay the $" + bailAmount + " fine.</div>";
@@ -473,38 +442,39 @@
 
 	BrowserUI.prototype.onGameOver = function(winnerName) {
 		DOMUI.setVisible('#board, #control, #moneybar', true);
-		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(true, this.game);
+		DOMUI.setVisible('#nextbutton', true);
+		DOMUI.setVisible('#resignbutton', false);
+		global.RenderBoard.setTokenOverlaysVisible(true, this.game);
 		DOMUI.setVisible('#refresh', false);
 		if (typeof document !== 'undefined') {
 			var button = document.getElementById('nextbutton');
 			if (button) {
+				button.disabled = false;
 				button.value = 'Restart Game';
 				button.title = 'Return to the settings screen and start another game.';
-				if (typeof global.restartGame === 'function') DOMUI.listen(button, 'click', global.restartGame);
 			}
 		}
-		if (typeof global.popup === 'function') this.popup("<div class='winner-popup-title'>" + UIHtml.escapeHTML(winnerName) + " Wins!!</div>", null, 5);
+		this.popup("<div class='winner-popup-title'>" + UIHtml.escapeHTML(winnerName) + " Wins!!</div>", null, undefined, 5);
 	};
 
 	BrowserUI.prototype.initializeTradeInputHandlers = function() {
-		if (global.TradeView) global.TradeView.initializeInputHandlers();
+		global.TradeView.initializeInputHandlers();
 	};
 
 	BrowserUI.prototype.resetTradeView = function(initiator, recipient, allowRecipientToBeChanged) {
-		if (global.TradeView) global.TradeView.reset(this.tradeState, initiator, recipient, allowRecipientToBeChanged, this.game && this.game.state);
+		global.TradeView.reset(this.tradeState, initiator, recipient, allowRecipientToBeChanged, this.game.state);
 	};
 
 	BrowserUI.prototype.readTradeView = function() {
-		this.tradeState.game = this.game;
-		return global.TradeView ? global.TradeView.read(this.tradeState) : null;
+		return global.TradeView.read(this.tradeState, this.game.state);
 	};
 
 	BrowserUI.prototype.writeTradeView = function(trade) {
-		if (global.TradeView) global.TradeView.write(this.tradeState, trade, this.game && this.game.state);
+		global.TradeView.write(this.tradeState, trade, this.game.state);
 	};
 
 	BrowserUI.prototype.formatTradeResult = function(label, trade) {
-		return global.TradeView ? global.TradeView.formatResult(label, trade, this.game && this.game.state) : '';
+		return global.TradeView.formatResult(label, trade, this.game.state);
 	};
 
 	BrowserUI.prototype.setTradePanelVisible = function(visible) {
@@ -513,21 +483,48 @@
 		if (visible) DOMUI.setVisible('#board, #control', false);
 		else DOMUI.setVisible('#board, #control', true);
 		DOMUI.setVisible('#trade', !!visible);
-		if (typeof global.setTokenOverlaysVisible === 'function') global.setTokenOverlaysVisible(!visible, this.game);
+		global.RenderBoard.setTokenOverlaysVisible(!visible, this.game);
 	};
 
 	BrowserUI.prototype.setTradeButtons = function(editing, responding) {
-		if (global.TradeView) global.TradeView.setButtons(editing, responding);
+		global.TradeView.setButtons(editing, responding);
 	};
 
 	BrowserUI.prototype.readTradeMoneyFields = function() {
-		return global.TradeView ? global.TradeView.readMoneyFields() : { left: '0', right: '0' };
+		return global.TradeView.readMoneyFields();
 	};
 
 	BrowserUI.prototype.setTradeMoneyError = function(side, message) {
-		if (global.TradeView) global.TradeView.setMoneyError(side, message);
+		global.TradeView.setMoneyError(side, message);
 	};
 
+    BrowserUI.prototype.bindDeeds = function(root) {
+        var ui = this;
+        function target(event) { return event.target.closest && event.target.closest('.propertycellcolor[data-square-id], .statscellcolor[data-square-id], .trade-property[data-square-id]'); }
+        function show(event) {
+            var node = target(event);
+            if (ui.disposed || !node) return;
+            global.PopupView.showdeed(node.dataset.squareId, ui.game);
+            var deed = document.getElementById('deed'), rect = node.getBoundingClientRect();
+            deed.style.left = Math.max(4, Math.min((event.clientX === undefined ? rect.right : event.clientX) + 10, window.innerWidth - 158)) + 'px';
+            deed.style.top = Math.max(4, Math.min((event.clientY === undefined ? rect.top : event.clientY) + 20, window.innerHeight - 279)) + 'px';
+        }
+        function hide(event) { if (!ui.disposed && target(event)) global.PopupView.hidedeed(); }
+        function click(event) {
+            var node = target(event);
+            if (!ui.disposed && node && node.tagName === 'A') event.preventDefault();
+        }
+        [['mouseover', show], ['mousemove', show], ['focusin', show], ['mouseout', hide], ['focusout', hide], ['click', click]].forEach(function(binding) {
+            root.addEventListener(binding[0], binding[1]); ui.deedBindings.push([root, binding[0], binding[1]]);
+        });
+    };
+    BrowserUI.prototype.dispose = function() {
+        this.disposed = true;
+        this.popupView.dispose();
+        this.deedBindings.splice(0).forEach(function(binding) { binding[0].removeEventListener(binding[1], binding[2]); });
+        global.PopupView.hidedeed(); global.PopupView.hideAuctionPlayerStats();
+        if (this.boardView) this.boardView.dispose();
+    };
 	if (typeof window !== 'undefined' && typeof window.document !== 'undefined' && global.UIBridge) {
 		global.UIBridge.BrowserUI = BrowserUI;
 	}

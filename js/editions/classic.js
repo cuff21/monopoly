@@ -27,7 +27,7 @@
 		} else {
 			context.ui.alert(player.name + " paid $" + amount + " for landing on " + name + ".");
 		}
-		player.pay(amount, 0);
+		player.pay(amount, GameStateContext.BANK_ID);
 		context.ui.displayLanded("You landed on " + name + ". Pay $" + amount + ".");
 	}
 

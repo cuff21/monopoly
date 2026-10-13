@@ -49,7 +49,8 @@
 		var parties = validate(this, offer);
 		if (!parties) return false;
 		var a = parties.initiator, b = parties.recipient, amount = offer.getMoney(), state = this.state;
-		// Validation is complete before the first mutation.
+		// Validation is complete before the first mutation. Transfer ownership only;
+		// mortgages remain in place until the new owner explicitly unmortgages them.
 		offer.getOfferedSquareIds().forEach(function(id) { GameStateContext.setSquareOwner(state, id, b.playerId); });
 		offer.getRequestedSquareIds().forEach(function(id) { GameStateContext.setSquareOwner(state, id, a.playerId); });
 		if (amount > 0) { a.pay(amount, b.playerId); b.money += amount; }

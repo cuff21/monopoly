@@ -20,6 +20,22 @@
 			return { id: id, square: global.getSquare(game.state.board, id), state: global.GameStateContext.getSquareState(game.state, id) };
 		}) : [];
 	}
+	// Shared eligibility for controller validation and browser controls. No mutation.
+	function actionError(state, playerId, type, squareId) {
+		var square = state.board.squaresById[squareId], property = state.squareStateById[squareId];
+		if (!square || !property || property.ownerId !== playerId) return 'Player does not own this property.';
+		var player = global.GameStateContext.getPlayerById(state, playerId);
+		var members = square.groupId ? global.getGroupSquareIds(state.board, square.groupId) : [];
+		var group = members.map(function(id) { return state.squareStateById[id]; });
+		if (type === 'mortgage' && (property.mortgage || property.house || property.hotel || group.some(function(ss) { return ss.house || ss.hotel; }))) return 'Property cannot be mortgaged.';
+		if (type === 'unmortgage' && (!property.mortgage || player.money < Math.round(square.rules.purchasePrice * 0.55))) return 'Property cannot be unmortgaged with available cash.';
+		if (type === 'sellHouse' && ((!property.house && !property.hotel) || group.some(function(ss) { return ss.house > property.house; }))) return 'Buildings must be sold evenly.';
+		if (type === 'buyHouse') {
+			var available = supply({ state: state });
+			if (square.kind !== 'street' || property.hotel || property.mortgage || !group.length || !group.every(function(ss) { return ss.ownerId === playerId && !ss.mortgage && ss.house >= property.house; }) || player.money < square.rules.houseCost || (property.house < 4 ? available.housesAvailable <= 0 : available.hotelsAvailable <= 0)) return 'Building is unavailable under the cash, ownership, supply, or even-building rules.';
+		}
+		return null;
+	}
 	function buy(game, squareId) {
 		var c = context(game, squareId), p = game.state.player[game.state.turn], rules = c.square.rules;
 		if (c.squareState.ownerId !== null || rules.purchasePrice <= 0) return false;
@@ -85,7 +101,7 @@
 		return true;
 	}
 
-	var api = { buy: buy, mortgage: mortgage, unmortgage: unmortgage, buyHouse: build, sellHouse: sell, canSellHouse: canSell, getHouseHotelSupply: supply };
+	var api = { actionError: actionError, buy: buy, mortgage: mortgage, unmortgage: unmortgage, buyHouse: build, sellHouse: sell, canSellHouse: canSell, getHouseHotelSupply: supply };
 	global.PropertyActions = api;
 	if (typeof Game !== 'undefined') {
 		Game.prototype.buy = function(squareId) { return buy(this, squareId); };

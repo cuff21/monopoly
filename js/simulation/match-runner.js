@@ -14,7 +14,7 @@
 		if (!global.Monopoly.Editions.get('Classic')) require('../editions/classic');
 		if (!global.Monopoly.Editions.get('NYC')) require('../editions/newyorkcity');
 		if (typeof global.Game === 'undefined') require('../game/game-core');
-		if (typeof global.buy === 'undefined') require('../game/property-actions');
+		if (!global.PropertyActions || typeof global.Game.prototype.buy !== 'function') require('../game/property-actions');
 		require('../game/auction');
 		require('../game/trade');
 		require('../game/bankruptcy');
@@ -95,7 +95,7 @@
 				pcount: playerCount,
 				turn: 0,
 				doublecount: 0,
-				pendingAuction: -1,
+				pendingAuction: null,
 				auctionEnabled: true,
 				freeParkingTaxes: true,
 				freeParkingPot: 0

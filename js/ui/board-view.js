@@ -10,14 +10,6 @@
         return node;
     }
 
-    function traversal(board) {
-        var ids = [], id = board.startSquareId;
-        for (var i = 0; i < Object.keys(board.squaresById).length; i++) {
-            ids.push(id); id = board.squaresById[id].nextId;
-        }
-        return ids;
-    }
-
     function gridPosition(index) {
         if (index <= 10) return { row: 11, column: 11 - index, side: index % 10 === 0 ? 'corner' : 'bottom' };
         if (index <= 20) return { row: 21 - index, column: 1, side: index === 20 ? 'corner' : 'left' };
@@ -35,7 +27,7 @@
         // Percentage tax squares have no icon in the original board.
         if (square.kind === 'tax' && !square.rules.taxPercentOfNetWorth) return 'images/tax_icon.png';
         if (square.kind === 'utility') {
-            var utilities = traversal(board).filter(function(id) { return board.squaresById[id].kind === 'utility'; });
+            var utilities = global.getSquareIds(board).filter(function(id) { return board.squaresById[id].kind === 'utility'; });
             return 'images/' + (utilities.indexOf(square.id) === 0 ? 'electric' : 'water') + '_icon.png';
         }
         return defaults[square.kind] ? 'images/' + defaults[square.kind] + '_icon.png' : null;
@@ -75,10 +67,10 @@
         var surface = element('div', 'board-surface', scroll);
         surface.id = 'board'; this.surface = surface;
         surface.style.display = 'none';
-        this.perimeter = (board.editionId === 'Classic' || board.editionId === 'NYC') && traversal(board).length === 40;
+        this.perimeter = (board.editionId === 'Classic' || board.editionId === 'NYC') && global.getSquareIds(board).length === 40;
         surface.classList.add(this.perimeter ? 'board-perimeter' : 'board-coordinate');
         oldBoard.remove();
-        traversal(board).forEach(function(id, index) {
+        global.getSquareIds(board).forEach(function(id, index) {
             var square = board.squaresById[id], position = gridPosition(index);
             var cell = element('div', 'cell board-square', surface);
             cell.id = 'square-' + id;
@@ -126,7 +118,8 @@
         this.center = element('div', 'board-center-layout', surface);
         this.center.setAttribute('aria-label', 'Game controls and cards');
         this.control = document.getElementById('control');
-        this.center.appendChild(this.control);
+        this.controlSlot = element('div', 'board-control-slot', this.center);
+        this.controlSlot.appendChild(this.control);
         this.cards = element('div', '', this.center); this.cards.id = 'drawn-cards';
         this.cards.setAttribute('aria-label', 'Card decks');
         Object.keys(decks).forEach(function(deckId) {
@@ -148,7 +141,8 @@
         this.onLayout = function() {
             view.cancelAnimations();
             var parent = view.media.matches ? view.mobile : view.center;
-            parent.appendChild(view.control); parent.appendChild(view.cards);
+            (view.media.matches ? view.mobile : view.controlSlot).appendChild(view.control);
+            parent.appendChild(view.cards);
             view.placeMoneyPanel();
             view.syncVisibility();
             view.renderPositions();
@@ -255,5 +249,5 @@
     };
 
     global.BoardView = BoardView;
-    if (typeof module !== 'undefined' && module.exports) module.exports = { BoardView: BoardView, traversal: traversal, gridPosition: gridPosition, resolveIcon: resolveIcon };
+    if (typeof module !== 'undefined' && module.exports) module.exports = { BoardView: BoardView, gridPosition: gridPosition, resolveIcon: resolveIcon };
 })(typeof window !== 'undefined' ? window : globalThis);

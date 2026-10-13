@@ -1,3 +1,5 @@
+(function(global) {
+'use strict';
 var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
 
@@ -22,13 +24,13 @@ function setAISetupRegistry(registry) {
 	setupRegistry = registry;
 }
 
-function collectSetupConfiguration() {
+function collectSetupConfiguration(app) {
 	var configuration = {
 		auctionEnabled: document.getElementById("auctionenabled").checked,
 		freeParkingTaxes: document.getElementById("freeparkingtaxes").checked,
 		players: []
 	};
-	for (var i = 1; i <= pcount; i++) {
+	for (var i = 1; i <= app.game.state.pcount; i++) {
 		configuration.players.push({
 			ai: document.getElementById("player" + i + "ai").value,
 			color: document.getElementById("player" + i + "color").value,
@@ -39,43 +41,44 @@ function collectSetupConfiguration() {
 	return configuration;
 }
 
-function setup() {
-	lastGamePlayerCount = pcount;
-	var configuration = collectSetupConfiguration();
-	auctionEnabled = configuration.auctionEnabled;
-	freeParkingTaxes = configuration.freeParkingTaxes;
-	freeParkingPot = 0;
-	updateFreeParkingDisplay(game);
-	pendingAuction = -1;
-	ensureUniqueHumanNames();
-    playersGame = [];
+function setup(app) {
+	app.game.state.lastGamePlayerCount = app.game.state.pcount;
+	ensureUniqueHumanNames(app);
+	var configuration = collectSetupConfiguration(app);
+	app.game.state.auctionEnabled = configuration.auctionEnabled;
+	app.game.state.freeParkingTaxes = configuration.freeParkingTaxes;
+	app.game.state.freeParkingPot = 0;
+	app.game.ui.updateFreeParking();
+	app.game.state.pendingAuction = null;
+    app.game.state.playersGame = [];
     
     const els = document.querySelectorAll('.mortgaged');
     for(const el of els) {
         el.classList.remove('mortgaged');
     }
 
-	playersGame = getSetupService().createPlayers(configuration, player.slice(1, pcount + 1));
+	app.game.state.playersGame = getSetupService().createPlayers(configuration, app.game.state.player.slice(1, app.game.state.pcount + 1));
 
 	DOMUI.setVisible("#board, #moneybar", true);
-	setTokenOverlaysVisible(true, game);
+	RenderBoard.setTokenOverlaysVisible(true, app.game);
 	DOMUI.setVisible("#setup", false);
 	DOMUI.setVisible("#refresh", false);
 
-	if (pcount === 2) {
+	if (app.game.state.pcount === 2) {
 		document.getElementById("stats").style.width = "454px";
-	} else if (pcount === 3) {
+	} else if (app.game.state.pcount === 3) {
 		document.getElementById("stats").style.width = "686px";
 	}
 
 	document.getElementById("stats").style.top = "0px";
 	document.getElementById("stats").style.left = "0px";
 	console.log("Starting the game!");
+    var game = app.game;
     game.onGameError = function(error) { game.ui.showMessage('Game stopped: ' + error.message, undefined, undefined, 0); };
     Promise.resolve(game.play()).catch(function() { /* onGameError presents the failure. */ });
 }
 
-function restartGame() {
+function restartGame(app) {
 	var settings = {
 		auctionEnabled: document.getElementById("auctionenabled").checked,
 		freeParkingTaxes: document.getElementById("freeparkingtaxes").checked,
@@ -91,12 +94,13 @@ function restartGame() {
 		});
 	}
 
-	pcount = lastGamePlayerCount;
-	if (typeof popup !== 'undefined' && popup.close) popup.close();
+	var playerCount = app.game.state.lastGamePlayerCount;
+	app.game.ui.popupView.close();
 	DOMUI.setVisible("#popupwrap, #popupbackground", false);
 	document.getElementById("player-inputs").innerHTML = "";
 	document.getElementById('alert').replaceChildren();
-	onloadBehavior();
+	app.mount();
+	app.game.state.pcount = playerCount;
 
 	document.getElementById("auctionenabled").checked = settings.auctionEnabled;
 	document.getElementById("freeparkingtaxes").checked = settings.freeParkingTaxes;
@@ -104,12 +108,12 @@ function restartGame() {
 		document.getElementById("player" + i + "ai").value = settings.players[i - 1].ai;
 		document.getElementById("player" + i + "color").value = settings.players[i - 1].color;
 		document.getElementById("player" + i + "name").value = settings.players[i - 1].name;
-		updateAIProfileVisibility();
+		updateAIProfileVisibility(app);
 		document.getElementById("player" + i + "aiProfile").value = settings.players[i - 1].profile;
 	}
-	playernumber_onchange();
+	playernumber_onchange(app);
 	DOMUI.setVisible("#board, #control, #moneybar, #refresh", false);
-	setTokenOverlaysVisible(false, game);
+	RenderBoard.setTokenOverlaysVisible(false, app.game);
 	DOMUI.setVisible("#setup", true);
 }
 
@@ -127,7 +131,7 @@ function populateProfileOptions(profileSelect) {
 	});
 }
 
-function updateAIProfileVisibility() {
+function updateAIProfileVisibility(app) {
 	var aiSelects = document.querySelectorAll("[id$='ai']");
 	for (var i = 0; i < aiSelects.length; i++) {
 		var aiSelect = aiSelects[i];
@@ -140,7 +144,7 @@ function updateAIProfileVisibility() {
 		var profileNames = registry ? registry.getProfiles(aiSelect.value) : [];
 
 		if (isHuman && !wasHuman) {
-			nameInput.value = getNextHumanName(parseInt(playerId.replace("player", ""), 10));
+			nameInput.value = getNextHumanName(parseInt(playerId.replace("player", ""), 10), app);
 		}
 		if (!isHuman) {
 			nameInput.value = "Bot";
@@ -156,18 +160,9 @@ function updateAIProfileVisibility() {
 	}
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-	module.exports = {
-		collectSetupConfiguration: collectSetupConfiguration,
-		setSetupService: setSetupService,
-			setAISetupRegistry: setAISetupRegistry,
-			createPlayerInputs: createPlayerInputs
-	};
-}
-
-function getNextHumanName(excludeIndex) {
+function getNextHumanName(excludeIndex, app) {
 	var usedNames = {};
-	for (var i = 1; i <= pcount; i++) {
+	for (var i = 1; i <= app.game.state.pcount; i++) {
 		if (i === excludeIndex) continue;
 		var type = document.getElementById("player" + i + "ai");
 		var name = document.getElementById("player" + i + "name");
@@ -179,9 +174,9 @@ function getNextHumanName(excludeIndex) {
 	return "Human " + suffix;
 }
 
-function ensureUniqueHumanNames() {
+function ensureUniqueHumanNames(app) {
 	var usedNames = {};
-	for (var i = 1; i <= pcount; i++) {
+	for (var i = 1; i <= app.game.state.pcount; i++) {
 		var type = document.getElementById("player" + i + "ai");
 		var name = document.getElementById("player" + i + "name");
 		if (!type || !name || type.value !== "0") continue;
@@ -194,7 +189,7 @@ function ensureUniqueHumanNames() {
 	}
 }
 
-function createPlayerInputs() {
+function createPlayerInputs(app) {
 	var colors = ["yellow", "blue", "red", "lime", "green", "aqua", "orange", "purple"];
 	var colorOptions = ["aqua", "black", "blue", "fuchsia", "gray", "green", "lime", "maroon", "navy", "olive", "orange", "purple", "red", "silver", "teal", "yellow"];
 	var container = document.getElementById("player-inputs");
@@ -222,7 +217,7 @@ function createPlayerInputs() {
 			}
 			ai.appendChild(option);
 		});
-		ai.addEventListener("change", updateAIProfileVisibility);
+		ai.addEventListener("change", function() { updateAIProfileVisibility(app); });
 		row.appendChild(ai);
 
 		var color = document.createElement("select");
@@ -255,57 +250,59 @@ function createPlayerInputs() {
 	}
 }
 
-function playernumber_onchange() {
+function playernumber_onchange(app) {
 	DOMUI.setVisible(".player-input", false);
 
-	for (var i = 1; i <= pcount; i++) {
+	for (var i = 1; i <= app.game.state.pcount; i++) {
 		DOMUI.setVisible("#player" + i + "input", true);
 	}
 
 	DOMUI.nodes('.remove-player-button').forEach(function(button) { button.remove(); });
-	if (pcount > 2) {
-		for (var i = 1; i <= pcount; i++) {
-			document.getElementById('player' + i + 'input').insertAdjacentHTML('beforeend', "<input type='button' class='remove-player-button' value='Remove' onclick='removePlayer(" + i + ");' title='Remove this player.' />");
+	if (app.game.state.pcount > 2) {
+		for (var i = 1; i <= app.game.state.pcount; i++) {
+			var button = document.createElement('input'); button.type = 'button'; button.className = 'remove-player-button'; button.value = 'Remove'; button.title = 'Remove this player.';
+			button.addEventListener('click', removePlayer.bind(null, i, app));
+			document.getElementById('player' + i + 'input').appendChild(button);
 		}
 	}
 
 	var addPlayerButton = document.getElementById("addplayerbutton");
 	if (addPlayerButton) {
-		addPlayerButton.style.display = pcount >= 8 ? "none" : "inline-block";
+		addPlayerButton.style.display = app.game.state.pcount >= 8 ? "none" : "inline-block";
 	}
 
-	updateAIProfileVisibility();
+	updateAIProfileVisibility(app);
 }
 
-function addPlayer() {
-	if (pcount >= 8) {
+function addPlayer(app) {
+	if (app.game.state.pcount >= 8) {
 		return;
 	}
 
-	pcount++;
-	var name = document.getElementById("player" + pcount + "name");
+	app.game.state.pcount++;
+	var name = document.getElementById("player" + app.game.state.pcount + "name");
 	name.value = "Bot";
 	name.disabled = true;
 	var registry = getAISetupRegistry();
-	document.getElementById("player" + pcount + "ai").value = registry ? registry.getDefaultId() : "0";
-	document.getElementById("player" + pcount + "aiProfile").value = "Random";
-	playernumber_onchange();
+	document.getElementById("player" + app.game.state.pcount + "ai").value = registry ? registry.getDefaultId() : "0";
+	document.getElementById("player" + app.game.state.pcount + "aiProfile").value = "Random";
+	playernumber_onchange(app);
 }
 
-function removePlayer(index) {
-	if (pcount <= 2 || index < 1 || index > pcount) {
+function removePlayer(index, app) {
+	if (app.game.state.pcount <= 2 || index < 1 || index > app.game.state.pcount) {
 		return;
 	}
 
-	if (index !== pcount) {
+	if (index !== app.game.state.pcount) {
 		var removedName = document.getElementById("player" + index + "name");
-		var lastName = document.getElementById("player" + pcount + "name");
+		var lastName = document.getElementById("player" + app.game.state.pcount + "name");
 		var removedColor = document.getElementById("player" + index + "color");
-		var lastColor = document.getElementById("player" + pcount + "color");
+		var lastColor = document.getElementById("player" + app.game.state.pcount + "color");
 		var removedAI = document.getElementById("player" + index + "ai");
-		var lastAI = document.getElementById("player" + pcount + "ai");
+		var lastAI = document.getElementById("player" + app.game.state.pcount + "ai");
 		var removedProfile = document.getElementById("player" + index + "aiProfile");
-		var lastProfile = document.getElementById("player" + pcount + "aiProfile");
+		var lastProfile = document.getElementById("player" + app.game.state.pcount + "aiProfile");
 
 		removedName.value = lastName.value;
 		removedName.disabled = lastName.disabled;
@@ -314,16 +311,11 @@ function removePlayer(index) {
 		removedProfile.value = lastProfile.value;
 	}
 
-	pcount--;
-	playernumber_onchange();
+	app.game.state.pcount--;
+	playernumber_onchange(app);
 }
 
-function menuitem_onmouseover(element) {
-	element.className = "menuitem menuitem_hover";
-	return;
-}
-
-function menuitem_onmouseout(element) {
-	element.className = "menuitem";
-	return;
-}
+var api = { collectSetupConfiguration: collectSetupConfiguration, setSetupService: setSetupService, getSetupService: getSetupService, setAISetupRegistry: setAISetupRegistry, createPlayerInputs: createPlayerInputs, setup: setup, restartGame: restartGame, playernumber_onchange: playernumber_onchange, addPlayer: addPlayer, removePlayer: removePlayer, updateAIProfileVisibility: updateAIProfileVisibility };
+global.SetupScreen = api;
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);

@@ -1,3 +1,5 @@
+(function(global) {
+'use strict';
 // AI training screen: starts/stops Gen6 training and displays live progress.
 
 var trainingControl = null;
@@ -13,8 +15,7 @@ function setTrainingText(id, text) {
 }
 
 function getTrainingService() {
-	if (typeof getSetupService === 'function') return getSetupService();
-	return typeof GameSetupService !== 'undefined' ? GameSetupService : null;
+	return global.SetupScreen.getSetupService();
 }
 
 function showTrainingScreen() {
@@ -138,11 +139,7 @@ function stopTraining() {
 	trainingControl.stop();
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-	module.exports = {
-		trainGen6Population: trainGen6Population,
-		stopTraining: stopTraining,
-		showTrainingScreen: showTrainingScreen,
-		hideTrainingScreen: hideTrainingScreen
-	};
-}
+var api = { trainGen6Population: trainGen6Population, stopTraining: stopTraining, showTrainingScreen: showTrainingScreen, hideTrainingScreen: hideTrainingScreen };
+global.TrainingScreen = api;
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);

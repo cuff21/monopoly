@@ -101,7 +101,7 @@ function assertCardEffect(editionId, deckName, cardIndex, expectedCall, stateChe
     const player = { name: 'Card player', money: 1000, heldCards: [] };
     GameStateApi.assignPlayerId(player, 1);
     const board = edition.buildBoard();
-    const state = GameStateApi.createState({ player: [null, player], pcount: 1, players: [player], board });
+    const state = GameStateApi.createState({ player: [null, player], pcount: 1, board });
     const calls = [];
     const game = { state };
     ['addAmount', 'subtractAmount', 'collectFromEachPlayer', 'payEachPlayer', 'streetRepairs', 'advanceToSquare', 'advanceToGroupNearest', 'moveRelative', 'goToJail'].forEach(method => {
@@ -480,7 +480,7 @@ apiSquareIds.forEach(squareId => {
         landcount: 0
     });
 });
-assert.deepStrictEqual(firstStateFixture.players.map(player => player.playerId), ['player-1', 'player-3']);
+assert.deepStrictEqual(firstStateFixture.player.slice(1).map(player => player.playerId), ['player-1', 'player-3']);
 console.log('Structured Board catalogs and contract fixtures are internally consistent.');
 
 }

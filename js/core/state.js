@@ -5,34 +5,8 @@ function Player(name, color, game) {
 	this.color = color;
 	this.game = game || null;
 	this.squareId = 'go';
-	this._position = 0;
-	Object.defineProperty(this, 'position', {
-		enumerable: false,
-		configurable: false,
-		get: function() {
-			var board = this.game && this.game.state && this.game.state.board;
-			if (!board) return this._position;
-			var currentId = board.startSquareId;
-			for (var index = 0; index < Object.keys(board.squaresById).length; index++) {
-				if (currentId === this.squareId) { this._position = index; return index; }
-				currentId = board.squaresById[currentId].nextId;
-			}
-			return this._position;
-		},
-		set: function(value) {
-			if (!Number.isInteger(value)) throw new RangeError('Position must be a board index.');
-			var board = this.game && this.game.state && this.game.state.board;
-			if (!board) { this._position = value; return; }
-			var count = Object.keys(board.squaresById).length;
-			var target = ((value % count) + count) % count;
-			var currentId = board.startSquareId;
-			for (var index = 0; index < target; index++) currentId = board.squaresById[currentId].nextId;
-			this.squareId = currentId;
-			this._position = target;
-		}
-	});
 	this.money = 1500;
-	this.creditor = -1;
+	this.creditor = null;
 	this.jail = false;
 	this.jailroll = 0;
 	this.heldCards = [];
@@ -41,6 +15,10 @@ function Player(name, color, game) {
 	// this.AI = null;
 
 	this.pay = function (amount, creditor) {
+		if (creditor !== GameStateContext.BANK_ID) {
+			if (!this.game) throw new TypeError('Player payments require their owning Game.');
+			GameStateContext.getPlayerById(this.game.state, creditor);
+		}
 		if (amount <= this.money) {
 			this.money -= amount;
 
@@ -51,9 +29,7 @@ function Player(name, color, game) {
 			return true;
 		} else {
 			this.money -= amount;
-			if (creditor === 0 || creditor === 'bank' || creditor === undefined || creditor === null) this.creditor = 'bank';
-			else if (typeof creditor === 'number' && this.game && this.game.state.player[creditor]) this.creditor = this.game.state.player[creditor].playerId;
-			else this.creditor = creditor;
+			this.creditor = creditor;
 
 			if (this.game && this.game.ui && typeof this.game.ui.updateMoney === 'function') {
 				this.game.ui.updateMoney();

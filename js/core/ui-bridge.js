@@ -46,16 +46,16 @@
 	GameUI.prototype.showBankruptcyUnmortgage = function(creditorName, properties, onUnmortgage, onComplete) {
 		if (typeof onComplete === 'function') onComplete();
 	};
-	GameUI.prototype.openAuction = function(propertyIndex, property, currentPlayer) {};
+	GameUI.prototype.openAuction = function(squareId, property, currentPlayer) {};
 	GameUI.prototype.waitForPopupClose = function() { return Promise.resolve(); };
 	GameUI.prototype.delay = function(ms) { return Promise.resolve(); };
-	GameUI.prototype.onHouseChanged = function(propertyIndex, houseCount, hotelCount) {};
-	GameUI.prototype.onMortgageChanged = function(propertyIndex, isMortgaged) {};
+	GameUI.prototype.onHouseChanged = function(squareId, houseCount, hotelCount) {};
+	GameUI.prototype.onMortgageChanged = function(squareId, isMortgaged) {};
 	GameUI.prototype.updateMortgageButton = function(label, title) {};
 	GameUI.prototype.hideLanded = function() {};
 	GameUI.prototype.onAuctionHistory = function(entry) {};
 	GameUI.prototype.onAuctionParticipants = function() {};
-	GameUI.prototype.initializeAuction = function(propertyIndex, property, currentPlayer) {};
+	GameUI.prototype.initializeAuction = function(squareId, property, currentPlayer) {};
 	GameUI.prototype.updateAuctionTurn = function(playerName, clearBid) {};
 	GameUI.prototype.readAuctionBid = function() { return 0; };
 	GameUI.prototype.setAuctionBidError = function(message) {};
@@ -63,13 +63,11 @@
 	GameUI.prototype.focusAuctionBid = function() {};
 	GameUI.prototype.closeAuction = function() {};
 	GameUI.prototype.closeDecisionPopup = function() {};
-	GameUI.prototype.onAuctionBid = function(playerIndex, amount) {};
-	GameUI.prototype.onAuctionEnd = function(highestBidder, highestBid) {};
 	GameUI.prototype.removePlayerToken = function(playerIndex) {};
 	GameUI.prototype.onPlayerCountChanged = function(playerCount) {};
 	GameUI.prototype.onGameOver = function(winner) {};
 	GameUI.prototype.displayLanded = function(text) {};
-	GameUI.prototype.displayPropertyPurchase = function(propertyIndex, property) {};
+	GameUI.prototype.displayPropertyPurchase = function(squareId, property) {};
 	GameUI.prototype.updateTurnDisplay = function(p) {};
 	GameUI.prototype.updateButtonState = function(label, title) {};
 	GameUI.prototype.onRollStart = function() {};

@@ -84,6 +84,8 @@
                     var winner = player(this, a.highestBidder);
                     winner.pay(a.highestBid, GameStateContext.BANK_ID);
                     GameStateContext.setSquareOwner(state, id, winner.playerId);
+                    if (this.ui && this.ui.updateOwned) this.ui.updateOwned();
+                    if (this.ui && this.ui.updateMoney) this.ui.updateMoney();
                     history(this, winner.name + ' won for $' + a.highestBid + '.');
                     if (this.ui && this.ui.alert) this.ui.alert(winner.name + ' bought ' + square.presentation.label + ' for $' + a.highestBid + '.', a.highestBidder);
                 } else {
@@ -96,6 +98,6 @@
                 }
             }
             return processed;
-        } finally { a.active = false; a.running = false; }
+        } finally { a.active = false; a.running = false; a.property = null; }
     };
 })();

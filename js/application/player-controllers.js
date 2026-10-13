@@ -29,18 +29,6 @@
         var game = player.game, context = { state: null }, cache = new Map();
         var supplySnapshot, supplyValue;
         function state() { return context.state || game.state; }
-        function squares() {
-            var current = state();
-            if (current.square || !current.board) return current.square;
-            var ids = global.getSquareIds(current.board);
-            return ids.map(function(id) {
-                var definition = current.board.squaresById[id], ss = current.squareStateById[id];
-                var owner = current.player.find(function(p) { return p && p.playerId === ss.ownerId; });
-                return { id: id, price: definition.rules.purchasePrice, houseprice: definition.rules.houseCost,
-                    group: definition.groupId ? global.getGroupSquareIds(current.board, definition.groupId).map(function(id) { return ids.indexOf(id); }) : null,
-                    owner: owner ? owner.index : 0, house: ss.house, hotel: ss.hotel, mortgage: ss.mortgage };
-            });
-        }
         function readonly(read, path) {
             var initial = read();
             if (!initial || typeof initial !== 'object') return initial;
@@ -65,13 +53,11 @@
                     // Definitions are immutable and sanitized once, so querying
                     // them needs no dynamic proxy for mutable player state.
                     if (key === 'board' && path === 'state') return context.state ? context.state.board : policyBoard(game.state.board);
-                    if (key === 'position' && value.squareId && state().board) return global.getSquareIds(state().board).indexOf(value.squareId);
                     if (key === 'policyMetadata' && !context.state) {
                         var controller = game.controllers && game.controllers.get(value.playerId);
                         return controller && controller.metadata ? controller.metadata(global.GameStateContext.getActivePlayers(game.state)) : value.policyMetadata;
                     }
-                    var legacySquares = key === 'square' && path === 'state';
-                    var item = legacySquares ? squares() : value[key];
+                    var item = value[key];
                     if (typeof item === 'function') {
                         if (Array.isArray(value) && arrayQueries.has(key)) {
                             var bound = boundMethods.get(key);
@@ -86,7 +72,7 @@
                     if (item === null || typeof item !== 'object') return item;
                     var childPath = path + '/' + String(key);
                     if (cache.has(childPath)) return cache.get(childPath);
-                    return readonly(legacySquares ? squares : function() {
+                    return readonly(function() {
                         var parent = resolve(); return parent && parent[key];
                     }, childPath);
                 },
@@ -106,12 +92,11 @@
         var readonlyState = readonly(state, 'state');
         var facade = Object.freeze({ state: readonlyState, decisionView: game.state.board ? global.GameStateContext.getDecisionView(readonlyState, function() { return context.state; }) : null,
             getDie: function(index) { return game.getDie(index); },
-            canSellHouse: function(id) { return global.PropertyActions && state().board && state().squareStateById ? global.PropertyActions.canSellHouse({ state: state() }, id) : game.canSellHouse(id); },
+            canSellHouse: function(id) { return global.PropertyActions.canSellHouse({ state: state() }, id); },
             getHouseHotelSupply: function() {
                 if (context.state && supplySnapshot === context.state) return supplyValue;
                 var current = state();
-                var result = copy(global.PropertyActions && current.board && current.squareStateById
-                    ? global.PropertyActions.getHouseHotelSupply({ state: current }) : game.getHouseHotelSupply());
+                var result = copy(global.PropertyActions.getHouseHotelSupply({ state: current }));
                 if (context.state) { supplySnapshot = context.state; supplyValue = result; }
                 return result;
             }
@@ -124,7 +109,59 @@
     }
     function bindPolicy(policy, player) { policyContexts.set(policy, policyContexts.get(player)); }
     function decision(action, complete) { return { actions: action ? [action] : [], complete: complete !== false }; }
-    function AIController(policy, ui) { this.policy = policy; this.ui = ui; this.planners = new Map(); }
+    function AIController(policy, ui) { this.policy = policy; this.ui = ui; this.planners = new Map(); this.purchasePlans = new Map(); }
+
+    function nextPurchaseFundingAction(request, plan) {
+        var state = request.state, player = state.player.find(function(item) { return item && item.playerId === request.playerId; });
+        var squareId = request.options.squareId, price = state.board.squaresById[squareId].rules.purchasePrice;
+        var needed = price - player.money, ids = global.getSquareIds(state.board), candidates = [];
+        // Try asset-for-cash trades before selling or mortgaging. Keep offers within
+        // the value of the property being acquired and skip properties with buildings.
+        if (global.Trade) {
+            for (var i = 0; i < ids.length; i++) {
+                var offeredId = ids[i], offeredSquare = state.board.squaresById[offeredId], offeredState = state.squareStateById[offeredId];
+                if (offeredState.ownerId !== player.playerId || offeredState.mortgage) continue;
+                var groupIds = offeredSquare.groupId ? global.getGroupSquareIds(state.board, offeredSquare.groupId) : [offeredId];
+                if (groupIds.some(function(id) { var item = state.squareStateById[id]; return item.house || item.hotel; })) continue;
+                if (offeredSquare.rules.purchasePrice < needed) continue;
+                for (var seat = 1; seat < state.player.length; seat++) {
+                    var recipient = state.player[seat];
+                    if (!recipient || recipient.playerId === player.playerId || recipient.active === false || recipient.money < needed) continue;
+                    var key = 'trade:' + recipient.playerId + ':' + offeredId;
+                    if (plan.attempted.has(key)) continue;
+                    plan.attempted.add(key);
+                    return { type: 'proposeTrade', offer: new global.Trade(player.playerId, recipient.playerId, -needed, [offeredId], [], []) };
+                }
+            }
+        }
+        // Mortgage the least valuable eligible asset first. The action validator
+        // still enforces even-building rules and ownership at the time of use.
+        for (var m = 0; m < ids.length; m++) {
+            var mortgageId = ids[m], mortgageState = state.squareStateById[mortgageId];
+            if (mortgageState.ownerId !== player.playerId || mortgageState.mortgage) continue;
+            var mortgageKey = 'mortgage:' + mortgageId;
+            if (plan.attempted.has(mortgageKey)) continue;
+            if (global.PropertyActions.actionError(state, player.playerId, 'mortgage', mortgageId)) continue;
+            candidates.push({ squareId: mortgageId, value: state.board.squaresById[mortgageId].rules.purchasePrice });
+        }
+        candidates.sort(function(a, b) { return a.value - b.value; });
+        if (candidates.length) {
+            plan.attempted.add('mortgage:' + candidates[0].squareId);
+            return { type: 'mortgage', squareId: candidates[0].squareId };
+        }
+        // Selling buildings can both raise cash and unlock mortgages in their group.
+        for (var h = 0; h < ids.length; h++) {
+            var houseId = ids[h], houseState = state.squareStateById[houseId], houseKey = 'sellHouse:' + houseId;
+            if (houseState.ownerId !== player.playerId || (!houseState.house && !houseState.hotel) || plan.attempted.has(houseKey)) continue;
+            if (global.PropertyActions.canSellHouse({ state: state }, houseId)) candidates.push({ squareId: houseId, value: state.board.squaresById[houseId].rules.houseCost });
+        }
+        candidates.sort(function(a, b) { return a.value - b.value; });
+        if (candidates.length) {
+            plan.attempted.add('sellHouse:' + candidates[0].squareId);
+            return { type: 'sellHouse', squareId: candidates[0].squareId };
+        }
+        return null;
+    }
     AIController.prototype.metadata = function(players) {
         var p = this.policy, biases = {};
         if (p.getTradeBias) players.forEach(function(player) { biases[player.playerId] = p.getTradeBias(copy(player)); });
@@ -138,7 +175,23 @@
             var amount = p.bid ? p.bid(o.squareId, o.currentBid) : -1;
             return decision(Number.isInteger(amount) && amount > o.currentBid && amount > 0 && amount <= player.money
                 ? { type: 'auctionBid', amount: amount } : { type: amount === 0 ? 'auctionPass' : 'auctionExit' });
-        case 'purchase': return decision({ type: p.buyProperty && p.buyProperty(o.squareId) ? 'buy' : 'decline', squareId: o.squareId });
+        case 'purchase':
+            var purchaseId = request.phaseId, purchasePlan = this.purchasePlans.get(purchaseId);
+            if (!purchasePlan) {
+                if (!p.buyProperty || !p.buyProperty(o.squareId)) return decision({ type: 'decline', squareId: o.squareId });
+                purchasePlan = { attempted: new Set() };
+                this.purchasePlans.set(purchaseId, purchasePlan);
+            }
+            var buyer = state.player.find(function(item) { return item && item.playerId === request.playerId; });
+            var purchasePrice = state.board.squaresById[o.squareId].rules.purchasePrice;
+            if (buyer.money >= purchasePrice) {
+                this.purchasePlans.delete(purchaseId);
+                return decision({ type: 'buy', squareId: o.squareId });
+            }
+            var fundingAction = nextPurchaseFundingAction(request, purchasePlan);
+            if (fundingAction) return { actions: [fundingAction], complete: false };
+            this.purchasePlans.delete(purchaseId);
+            return decision({ type: 'decline', squareId: o.squareId });
         case 'turn': return decision({ type: o.nextAction });
         case 'jail': return decision(p.postBail && p.postBail() ? { type: player.heldCards.length ? 'useJailCard' : 'payBail', cardId: player.heldCards[0] } : null);
         case 'tax': return decision({ type: 'tax', amount: o.fixedAmount });
@@ -167,7 +220,7 @@
         default: throw new Error('Unsupported AI decision: ' + request.kind);
         }
     };
-    AIController.prototype.cancel = function() { this.planners.clear(); };
+    AIController.prototype.cancel = function() { this.planners.clear(); this.purchasePlans.clear(); };
     var decideAI = AIController.prototype.decide;
     AIController.prototype.decide = function(request) {
         var context = policyContexts.get(this.policy), previous = context && context.state;
@@ -242,12 +295,10 @@
     function decisionSnapshot(game) {
         var state = Object.assign({}, game.state);
         var activePlayers = global.GameStateContext.getActivePlayers(game.state);
-        var squareIds = game.state.board ? global.getSquareIds(game.state.board) : [];
         state.player = (game.state.player || []).map(function(player) {
             if (!player) return player;
             var controller = game.controllers.get(player.playerId);
-            return Object.assign({}, player, { position: game.state.board && player.squareId ? squareIds.indexOf(player.squareId) : player.position,
-                policyMetadata: controller && controller.metadata ? controller.metadata(activePlayers) : null });
+            return Object.assign({}, player, { policyMetadata: controller && controller.metadata ? controller.metadata(activePlayers) : null });
         });
         var board = policyBoard(state.board);
         delete state.board;
@@ -299,23 +350,20 @@
             if (request.kind === 'auction' && this.state.player[this.auctionState.currentBidder] !== player) return "It is another bidder's turn.";
             if (['roll','endTurn'].includes(action.type) && action.type !== request.options.nextAction) return 'That turn action is not available.';
             if (action.type === 'tax' && ![request.options.fixedAmount,request.options.percentageAmount].includes(action.amount)) return 'Choose one of the offered tax amounts.';
-            if (action.type === 'buy' && (action.squareId !== request.options.squareId || player.money < this.state.board.squaresById[action.squareId].rules.purchasePrice)) return 'Property is unavailable or exceeds available cash.';
+            if (action.type === 'buy' && (action.squareId !== request.options.squareId
+                || (player.human && player.money < this.state.board.squaresById[action.squareId].rules.purchasePrice))) return 'Property is unavailable or exceeds available cash.';
             if (['buyHouse','sellHouse','mortgage','unmortgage','inheritUnmortgage'].includes(action.type)) {
                 var property = this.state.squareStateById[action.squareId];
                 if (!property || property.ownerId !== player.playerId) return 'Player does not own this property.';
                 if (action.type === 'inheritUnmortgage' && (!request.options.squareIds.includes(action.squareId) || !property.mortgage)) return 'Property was not inherited in this transfer.';
-                var square = this.state.board.squaresById[action.squareId], members = square.groupId ? global.getGroupSquareIds(this.state.board, square.groupId) : [];
-                var group = members.map(function(id) { return this.state.squareStateById[id]; }, this);
-                if (action.type === 'mortgage' && (property.mortgage || property.house || property.hotel || group.some(function(ss) { return ss.house || ss.hotel; }))) return 'Property cannot be mortgaged.';
-                if (action.type === 'unmortgage' && (!property.mortgage || player.money < Math.round(square.rules.purchasePrice * 0.55))) return 'Property cannot be unmortgaged with available cash.';
-                if (action.type === 'inheritUnmortgage' && player.money < Math.round(square.rules.purchasePrice * 0.5)) return 'Inherited property exceeds available cash.';
-                if (action.type === 'sellHouse' && !this.canSellHouse(action.squareId)) return 'Buildings must be sold evenly.';
-                if (action.type === 'buyHouse') {
-                    var supply = this.getHouseHotelSupply();
-                    if (square.kind !== 'street' || property.hotel || property.mortgage || !group.length || !group.every(function(ss) { return ss.ownerId === player.playerId && !ss.mortgage && ss.house >= property.house; }) || player.money < square.rules.houseCost || (property.house < 4 ? supply.housesAvailable <= 0 : supply.hotelsAvailable <= 0)) return 'Building is unavailable under the cash, ownership, supply, or even-building rules.';
+                if (action.type === 'inheritUnmortgage') {
+                    if (player.money < Math.round(this.state.board.squaresById[action.squareId].rules.purchasePrice * 0.5)) return 'Inherited property exceeds available cash.';
+                } else {
+                    var propertyError = global.PropertyActions.actionError(this.state, player.playerId, action.type, action.squareId);
+                    if (propertyError) return propertyError;
                 }
             }
-            if (action.type === 'payBail' && (!player.jail || player.money < this.state.board.rules.bailAmount)) return 'Bail is unavailable or exceeds available cash.';
+            if (action.type === 'payBail' && !player.jail) return 'Bail is unavailable.';
             if (action.type === 'useJailCard' && (!player.jail || !player.heldCards.includes(action.cardId))) return 'Jail card is unavailable.';
             if (action.type === 'resign' && player.money >= 0) return 'Bankruptcy requires unpaid debt.';
             if (['proposeTrade','counterTrade'].includes(action.type)) {
@@ -334,7 +382,13 @@
             if (!action) return { ok: true };
             var result = true;
             switch (action.type) {
-            case 'buy': result = this.buy(action.squareId); break;
+            case 'buy':
+                var player = global.GameStateContext.getPlayerById(this.state, request.playerId);
+                var purchasePrice = this.state.board.squaresById[request.options.squareId].rules.purchasePrice;
+                if (player.money < purchasePrice) {
+                    if (this.state.auctionEnabled) this.state.pendingAuction = request.options.squareId;
+                } else result = this.buy(action.squareId);
+                break;
             case 'decline': if (this.state.auctionEnabled) this.state.pendingAuction = request.options.squareId; break;
             case 'buyHouse': case 'sellHouse': case 'mortgage': case 'unmortgage': result = this[action.type](action.squareId); break;
             case 'proposeTrade': result = await this.trade(action.offer); break;

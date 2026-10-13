@@ -264,7 +264,7 @@ if (typeof module !== 'undefined' && module.exports) require('../application/pla
         var players = view.getPlayers();
         var active = 0;
         for (var i = 0; i < players.length; i++) {
-            if (players[i] && (players[i].money >= 0 || players[i].creditor === -1)) {
+            if (players[i] && (players[i].money >= 0 || players[i].creditor === null)) {
                 active++;
             }
         }
@@ -277,7 +277,6 @@ if (typeof module !== 'undefined' && module.exports) require('../application/pla
         var view = game.decisionView;
         var random = typeof game.state.random === 'function' ? game.state.random : Math.random;
         this.turnNumber = 0;
-        this.alertList = "";
         this.profile = pickProfile(profile || {}, random);
         this.tradeMemory = Object.create(null);
         this.portfolioPlan = { targetGroup: null, confidence: 0.0 };
@@ -358,12 +357,9 @@ if (typeof module !== 'undefined' && module.exports) require('../application/pla
             }
 
             var liquidityFloor = this.getLiquidityFloor();
-            if (p.money < s.rules.purchasePrice + liquidityFloor) {
-                return false;
-            }
-
             var endgamePressure = Math.max(0, (estimateRemainingPlayers(view) - 2) * 0.25);
-            var score = evaluateProperty(squareId, p.playerId, p.money, this.profile, endgamePressure, view);
+            var availableFunds = Math.max(p.money, s.rules.purchasePrice + liquidityFloor);
+            var score = evaluateProperty(squareId, p.playerId, availableFunds, this.profile, endgamePressure, view);
             var groupBonus = 0;
             if (typeof s.groupSquareIds !== 'undefined' && s.groupSquareIds && s.groupSquareIds.length > 0) {
                 var groupOwned = 0;

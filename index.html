@@ -16,7 +16,7 @@
 	<div id="popupwrap">
 		<div id="popup">
 			<div style="position: relative;">
-				<!-- <img id="popupclose" src="Images/close.png" title="Close" alt="x" onclick="hide('popupbackground'); hide('popupwrap');" /> -->
+				<!-- <img id="popupclose" src="Images/close.png" title="Close" alt="x" /> -->
 				<div id="popuptext"></div>
 				<div id="popupdrag"></div>
 			</div>
@@ -183,21 +183,21 @@
 
 		<div id="player-inputs"></div>
 		<div id="player-controls" style="margin: 20px 0px;">
-			<input type="button" id="addplayerbutton" value="Add Player" onclick="addPlayer();" title="Add another player." />
+			<input type="button" id="addplayerbutton" value="Add Player" title="Add another player." />
 		</div>
 
 		<div style="margin: 20px 0px;">
-			<input type="button" id="startgamebutton" value="Start Game" onclick="setup();" title="Begin playing." />
+			<input type="button" id="startgamebutton" value="Start Game" title="Begin playing." />
 		</div>
 		<div style="margin: 20px 0px;">
-			<input type="button" id="open-training-button" value="AI Training" onclick="showTrainingScreen();" title="Open the AI training screen." />
+			<input type="button" id="open-training-button" value="AI Training" title="Open the AI training screen." />
 		</div>
 
 		<div id="noF5">Note: Refreshing this page or navigating away from it may end your game without warning.</div>
         
         <textarea id="textarea"></textarea> <br>
-        <input type="button" value="Import" onclick="importData();" title="Import data" />
-        <input type="button" value="Export" onclick="exportData();" title="Export data" />
+        <input type="button" id="import-data-button" value="Import" title="Import data" />
+        <input type="button" id="export-data-button" value="Export" title="Export data" />
         
 	</div>
 
@@ -206,9 +206,9 @@
 		<div class="training-controls">
 			<label for="gen6-generations">Generations</label>
 			<input type="number" id="gen6-generations" min="1" max="20" value="2" />
-			<input type="button" id="train-gen6-button" value="Start Training" onclick="trainGen6Population();" title="Train and save a Gen6 NEAT population." />
-			<input type="button" id="stop-training-button" value="Stop Training" onclick="stopTraining();" disabled="disabled" title="Stop all training and discard the generation in progress." />
-			<input type="button" id="training-back-button" value="Back" onclick="hideTrainingScreen();" title="Return to game setup." />
+			<input type="button" id="train-gen6-button" value="Start Training" title="Train and save a Gen6 NEAT population." />
+			<input type="button" id="stop-training-button" value="Stop Training" disabled="disabled" title="Stop all training and discard the generation in progress." />
+			<input type="button" id="training-back-button" value="Back" title="Return to game setup." />
 		</div>
 		<div id="gen6-training-status" aria-live="polite">Idle.</div>
 		<table id="training-stats">
@@ -251,8 +251,10 @@
 					</div>
 
 					<div id="buy">
-						<div id="alert"></div>
-						<div id="landed"></div>
+						<div class="turn-messages">
+							<div id="alert"></div>
+							<div id="landed"></div>
+						</div>
 					</div>
 
 					<div id="manage">
@@ -280,7 +282,7 @@
 				<td colspan="2" style="border: none">
 					<div style="padding-top: 8px;">
 						<input type="button" id="nextbutton" title="Roll the dice and move your token accordingly." value="Roll Dice"/>
-						<input type="button" id="resignbutton" title="If you cannot pay your debt then you must resign from the game." value="Resign" onclick="game.ui.resign();" />
+						<input type="button" id="resignbutton" title="If you cannot pay your debt then you must resign from the game." value="Resign" />
 					</div>
 				</td>
 			</tr>
@@ -311,10 +313,10 @@
 			</tr>
 			<tr>
 				<td colspan="2" class="trade-cell">
-					<input type="button" id="proposetradebutton" value="Propose Trade" onclick="game.ui.submitTrade();" title="Exchange the money and properties that are checked above." />
-					<input type="button" id="canceltradebutton" value="Cancel Trade" onclick='game.ui.cancelTrade();' title="Cancel the trade." />
-					<input type="button" id="accepttradebutton" value="Accept Trade" onclick="game.ui.acceptTrade();" title="Accept the proposed trade." />
-					<input type="button" id="rejecttradebutton" value="Reject Trade" onclick='game.ui.cancelTrade();' title="Reject the proposed trade." />
+					<input type="button" id="proposetradebutton" value="Propose Trade" title="Exchange the money and properties that are checked above." />
+					<input type="button" id="canceltradebutton" value="Cancel Trade" title="Cancel the trade." />
+					<input type="button" id="accepttradebutton" value="Accept Trade" title="Accept the proposed trade." />
+					<input type="button" id="rejecttradebutton" value="Reject Trade" title="Reject the proposed trade." />
 				</td>
 			</tr>
 		</table>

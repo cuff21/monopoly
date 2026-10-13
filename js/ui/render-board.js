@@ -140,16 +140,7 @@
         var view = game && game.ui && game.ui.boardView;
         if (view) view.resetTokens();
     }
-    function buildWaypointSquareIds(fromId, toId, direction, board) {
-        if (!board || !board.squaresById[fromId] || !board.squaresById[toId]) return [];
-        var ids = [], cursor = fromId;
-        for (var n = 0; n < Object.keys(board.squaresById).length && cursor !== toId; n++) {
-            cursor = board.squaresById[cursor][direction === 1 ? 'nextId' : 'previousId'];
-            if (!board.squaresById[cursor]) throw new RangeError('Unknown square ID: ' + cursor);
-            ids.push(cursor);
-        }
-        return ids;
-    }
-    global.updatePosition = updatePosition; global.setTokenOverlaysVisible = setTokenOverlaysVisible; global.resetTokenOverlays = resetTokenOverlays;
-    if (typeof module !== 'undefined' && module.exports) module.exports = { updatePosition: updatePosition, setTokenOverlaysVisible: setTokenOverlaysVisible, resetTokenOverlays: resetTokenOverlays, buildWaypointSquareIds: buildWaypointSquareIds, pathBends: pathBends };
+    var api = { updatePosition: updatePosition, setTokenOverlaysVisible: setTokenOverlaysVisible, resetTokenOverlays: resetTokenOverlays, pathBends: pathBends };
+    global.RenderBoard = api;
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

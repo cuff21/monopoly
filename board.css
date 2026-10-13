@@ -45,14 +45,26 @@
 .board-token-layer[hidden] { display: none; }
 .board-token-layer .token-overlay { z-index: auto; }
 .board-center-layout {
+    --control-rise: 115px;
     grid-area: 2 / 2 / 11 / 11; min-width: 0; min-height: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: flex-start; padding-top: 115px; gap: 50px;
+    align-items: center; justify-content: flex-start; padding-top: var(--control-rise); gap: 50px;
 }
+.board-control-slot { position: relative; flex: 0 0 308px; width: 444px; }
 .board-center-layout #control {
-    position: relative; top: auto; left: auto; flex: 0 0 auto;
+    position: absolute; top: auto; bottom: 0; left: 0;
     width: 444px; box-sizing: border-box; padding: 12px;
 }
+#control > table { width: 100%; border-collapse: collapse; }
+#control > table > tbody > tr > td { padding: 0; }
+#control > table > tbody > tr:last-child > td > div { display: flex; align-items: center; gap: 4px; }
+#control #manage { box-sizing: border-box; min-height: 202px; max-height: 202px; overflow-y: auto; }
+#control #owned { max-height: none; overflow-y: visible; }
+/* Reserve the button/deck position; only the property area grows into the space above. */
+.board-center-layout #control #manage { max-height: calc(202px + var(--control-rise)); }
 #control { border: 1px solid #64748b; border-radius: 8px; box-shadow: 0 2px 5px #0002; }
+#buy .turn-messages { display: flex; flex-direction: column; height: 202px; }
+#buy #alert { flex: 1 1 0; min-height: 0; height: auto; }
+#buy #landed { flex: 0 0 auto; box-sizing: border-box; width: 310px; max-height: 100%; overflow-y: auto; }
 #drawn-cards { flex: 0 0 auto; flex-wrap: wrap; gap: 18px; padding: 0 12px; width: 100%; }
 .board-center-layout #drawn-cards { flex: 1 1 auto; min-height: 0; align-content: flex-start; overflow-y: auto; padding-bottom: 8px; }
 #drawn-cards[hidden] { display: none; }
@@ -75,7 +87,7 @@
 .board-left .cell-buildings, .board-right .cell-buildings { flex-direction: column; }
 .cell-buildings .cell-house, .cell-buildings .cell-hotel { position: static !important; flex-shrink: 0; border: none !important; width: 12px !important; height: 12px !important; }
 .board-coordinate .board-square { position: absolute; width: 7%; height: 7%; }
-.board-coordinate .board-center-layout { position: absolute; left: 15%; top: 15%; width: 70%; height: 70%; box-sizing: border-box; padding-top: 100px; }
+.board-coordinate .board-center-layout { --control-rise: 100px; position: absolute; left: 15%; top: 15%; width: 70%; height: 70%; box-sizing: border-box; padding-top: var(--control-rise); }
 .board-coordinate .board-icon { max-height: 32px; }
 .board-coordinate .jail-region { transform: scale(.7); transform-origin: top right; }
 .board-coordinate .visiting-square > .cell-anchor > .cell-position-holder { top: 48px; height: 12px; }
@@ -87,7 +99,7 @@
 .enlarge .enlarge-token img { position: static; max-width: 100%; max-height: 55px; object-fit: contain; }
 #menutable, #nextbutton, #setup #startgamebutton { background-image: none; background-color: #2563eb; border-color: #1d4ed8; }
 .menu-item, .menu-item:hover { background-image: none; }
-.menu-item:hover, #nextbutton:hover, #setup #startgamebutton:hover { background: #1d4ed8; }
+.menu-item:hover, #nextbutton:not(:disabled):hover, #setup #startgamebutton:hover { background: #1d4ed8; }
 #menutable { height: 36px; }
 #menu { height: 36px; }
 #menu a { padding-top: 10px; box-sizing: border-box; }
@@ -97,6 +109,7 @@
 .auction-actions input { margin: 0; }
 #nextbutton { height: 36px; }
 button:disabled, input:disabled { cursor: default; opacity: .6; }
+#control #nextbutton:disabled { cursor: default; }
 button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, .board-square:focus-visible, .board-scroll:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
 @media (max-width: 1099px) {
     .game-display { display: block; width: 100%; }

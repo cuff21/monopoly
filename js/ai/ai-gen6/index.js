@@ -97,10 +97,10 @@ if (typeof module !== 'undefined' && module.exports) require('../../application/
         var state = this.player && this.player.game && this.player.game.state;
         if (typeof index === 'string' && state && state.board) index = global.getSquareIds(state.board).indexOf(index);
         var s = state ? state.square[index] : null;
-        if (!s || this.player.money < s.price) {
+        if (!s) {
             return false;
         }
-        var decisions = this.getDecision(index);
+        var decisions = this.getDecision(index, s.price);
         return Boolean(decisions.buyProperty);
     };
 

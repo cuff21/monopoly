@@ -33,7 +33,7 @@
 
 		function payTax(amount) {
 			if (state.freeParkingTaxes) game.addTaxToFreeParking(amount);
-			player.pay(amount, 0);
+			player.pay(amount, GameStateContext.BANK_ID);
 			context.ui.alert(player.name + " paid $" + amount + " for landing on City Tax.");
 		}
 
@@ -47,7 +47,7 @@
 		var player = GameStateContext.getPlayerById(state, context.playerId);
 		var amount = global.getSquare(state.board, context.squareId).rules.taxAmount;
 		context.ui.alert(player.name + " paid $" + amount + " for landing on Luxury Tax.");
-		player.pay(amount, 0);
+		player.pay(amount, GameStateContext.BANK_ID);
 		context.ui.displayLanded("You landed on Luxury Tax. Pay $" + amount + ".");
 	}
 

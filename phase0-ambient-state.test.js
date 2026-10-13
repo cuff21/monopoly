@@ -23,9 +23,6 @@ const uiUpdates = [0, 0];
 function createGame(index) {
 	const state = GameStateContext.createState({
 		player: [],
-		square: [],
-		communityChestCards: [],
-		chanceCards: [],
 		turn: 1
 	});
 	const game = new Game({ updateMoney() { uiUpdates[index]++; } }, state);
@@ -35,8 +32,8 @@ function createGame(index) {
 
 const firstGame = createGame(0);
 const secondGame = createGame(1);
-firstGame.state.player[1].pay(100, 0);
-secondGame.state.player[1].pay(200, 0);
+firstGame.state.player[1].pay(100, GameStateContext.BANK_ID);
+secondGame.state.player[1].pay(200, GameStateContext.BANK_ID);
 
 assert.notStrictEqual(firstGame.state, secondGame.state);
 assert.notStrictEqual(firstGame.state.player, secondGame.state.player);

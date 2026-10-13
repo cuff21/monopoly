@@ -1,3 +1,5 @@
+(function(global) {
+'use strict';
 var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 	(typeof module !== 'undefined' && module.exports ? require('./dom') : null);
 
@@ -6,117 +8,64 @@ var DOMUI = (typeof globalThis !== 'undefined' && globalThis.DOMUI) ||
 var UIHtml = (typeof globalThis !== 'undefined' && globalThis.UIHtml) ||
 	(typeof module !== 'undefined' && module.exports ? require('./html-escape') : null);
 
-function popup(HTML, action, option, timer, gameInstance) {
-	var popupGame = gameInstance;
-	if (!popupGame || !popupGame.state) throw new TypeError('Popup rendering requires the owning Game.');
-	if (popupGame && popupGame.ui && popupGame.ui.isHeadless) {
-		for (var a = 1; a < arguments.length; a++) {
-			if (typeof arguments[a] === "function") {
-				arguments[a]();
-				break;
-			}
-		}
-		return;
-	}
-
-	function clearTimer() {
-		if (popup.autoCloseTimer) {
-			clearInterval(popup.autoCloseTimer);
-			popup.autoCloseTimer = null;
-		}
-	}
-
-	function closePopup() {
-		clearTimer();
-		DOMUI.listen(document, 'keydown', null);
-		DOMUI.setVisible("#popupwrap", false);
-		DOMUI.fade('#popupbackground', false, 400);
-	}
-
-	popup.close = closePopup;
-	clearTimer();
-	DOMUI.listen(document, 'keydown', null);
-	document.getElementById("popuptext").innerHTML = HTML;
-
-	var callback = null;
-	var mode = "";
-	var timeout;
-
-	for (var i = 1; i < arguments.length; i++) {
-		var arg = arguments[i];
-		if (typeof arg === "function") {
-			callback = arg;
-		} else if (typeof arg === "string") {
-			mode = arg.toLowerCase();
-		} else if (typeof arg === "number") {
-			timeout = arg;
-		} else if (typeof arg === "boolean") {
-			timeout = arg ? 3 : 0;
-		}
-	}
-
-	if (timeout === undefined || isNaN(timeout)) {
-		var state = popupGame && popupGame.state;
-		var currentPlayer = state && state.player && state.player[state.turn];
-		if (currentPlayer) {
-			timeout = currentPlayer.human ? 0 : 3;
-		} else {
-			timeout = 0;
-		}
-	}
-
-	// Yes/No
-	if (mode === "yes/no") {
-		document.getElementById('popuptext').insertAdjacentHTML('beforeend', "<div><input type=\"button\" value=\"Yes\" id=\"popupyes\" /><input type=\"button\" value=\"No\" id=\"popupno\" /></div>");
-
-		DOMUI.listen('#popupno', 'click', closePopup);
-		DOMUI.listen('#popupyes', 'click', function() { closePopup(); if (callback) callback(); });
-
-	// Ok
-	} else if (mode !== "blank") {
-		document.getElementById('popuptext').insertAdjacentHTML('beforeend', "<div><input type='button' value='OK' id='popupclose' autofocus='autofocus' /></div>");
-
-		DOMUI.listen(document, 'keydown', function(event) {
-			if ((event.key === "Enter" || event.keyCode === 13) && document.getElementById("popupclose")) {
-				event.preventDefault();
-				document.getElementById('popupclose').click();
-			}
-		});
-
-		DOMUI.listen('#popupclose', 'click', function() {
-			closePopup();
-			if (callback) {
-				callback();
-			}
-		});
-
-		if (timeout > 0) {
-			var secondsRemaining = timeout;
-			document.getElementById('popupclose').value = "OK (" + secondsRemaining + ")";
-			popup.autoCloseTimer = setInterval(function() {
-				secondsRemaining--;
-				if (!document.getElementById("popupclose")) {
-					clearTimer();
-				} else if (secondsRemaining <= 0) {
-					clearTimer();
-					document.getElementById('popupclose').click();
-				} else {
-					document.getElementById('popupclose').value = "OK (" + secondsRemaining + ")";
-				}
-			}, 1000);
-		}
-
-	}
-
-	DOMUI.fade('#popupbackground', true, 400);
-	DOMUI.setVisible("#popupwrap", true);
-
-	if (document.getElementById("popupclose")) {
-		document.getElementById('popupclose').focus();
-	} else if (document.getElementById("popupyes")) {
-		document.getElementById('popupyes').focus();
-	}
+// Each BrowserUI owns its modal lifecycle; closing never invokes a stale callback.
+function PopupView(ui) {
+    this.ui = ui; this.autoCloseTimer = null; this.generation = 0; this.open = false;
+    this.waiters = []; this.disposed = false;
 }
+PopupView.prototype.close = function() {
+    this.generation++;
+    clearInterval(this.autoCloseTimer); this.autoCloseTimer = null;
+    this.open = false;
+    DOMUI.listen(document, 'keydown', null);
+    DOMUI.setVisible('#popupwrap, #popupbackground', false);
+    this.waiters.splice(0).forEach(function(resolve) { resolve(); });
+};
+PopupView.prototype.dispose = function() { this.close(); this.disposed = true; };
+PopupView.prototype.whenClosed = function() {
+    var view = this;
+    return this.open ? new Promise(function(resolve) { view.waiters.push(resolve); }) : Promise.resolve();
+};
+PopupView.prototype.show = function(html, options) {
+    if (this.disposed) return Promise.resolve();
+    options = options || {};
+    var view = this, game = this.ui.game;
+    if (!game || !game.state) throw new TypeError('Popup rendering requires the owning Game.');
+    if (this.ui.isHeadless) { if (options.onConfirm) options.onConfirm(); return Promise.resolve(); }
+    this.close(); this.open = true;
+    var generation = this.generation;
+    var current = game.state.player[game.state.turn];
+    var seconds = options.timeoutSeconds === undefined ? (current && !current.human ? 3 : 0) : options.timeoutSeconds;
+    var text = document.getElementById('popuptext'); text.innerHTML = html;
+    function confirm() {
+        if (view.disposed || !view.open || generation !== view.generation) return;
+        view.close(); if (options.onConfirm) options.onConfirm();
+    }
+    function cancel() { if (generation === view.generation) view.close(); }
+    if (options.mode === 'yes/no') {
+        text.insertAdjacentHTML('beforeend', "<div><input type='button' value='Yes' id='popupyes' /><input type='button' value='No' id='popupno' /></div>");
+        DOMUI.listen('#popupyes', 'click', confirm); DOMUI.listen('#popupno', 'click', cancel);
+    } else if (options.mode !== 'blank') {
+        text.insertAdjacentHTML('beforeend', "<div><input type='button' value='OK' id='popupclose' autofocus='autofocus' /></div>");
+        DOMUI.listen('#popupclose', 'click', confirm);
+        DOMUI.listen(document, 'keydown', function(event) {
+            if (event.key === 'Enter') { event.preventDefault(); confirm(); }
+        });
+        if (seconds > 0) {
+            var remaining = seconds;
+            document.getElementById('popupclose').value = 'OK (' + remaining + ')';
+            this.autoCloseTimer = setInterval(function() {
+                if (view.disposed || generation !== view.generation) return;
+                if (--remaining <= 0) confirm();
+                else document.getElementById('popupclose').value = 'OK (' + remaining + ')';
+            }, 1000);
+        }
+    }
+    DOMUI.fade('#popupbackground', true, 400); DOMUI.setVisible('#popupwrap', true);
+    var focus = document.getElementById(options.mode === 'yes/no' ? 'popupyes' : 'popupclose');
+    if (focus) focus.focus();
+    return Promise.resolve();
+};
 
 function updateDrawnCard(deckId, cardIndex, gameInstance) {
 	var gameState = gameInstance && gameInstance.state;
@@ -204,7 +153,7 @@ function getPlayerStatsHTML(playerIndex, showPersonality, gameState) {
 			if (sq.kind === 'railroad' || sq.kind === 'utility') {
 				HTML += " border: 1px solid grey;";
 			}
-			HTML += "' onmouseover=\"showdeed('" + UIHtml.escapeHTML(sq.id) + "')\" onmouseout='hidedeed();'></td><td class='statscellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.presentation.label) + housetext + "</td></tr>";
+			HTML += "' data-square-id='" + UIHtml.escapeHTML(sq.id) + "' tabindex='0'></td><td class='statscellname' " + mortgagetext + ">" + UIHtml.escapeHTML(sq.presentation.label) + housetext + "</td></tr>";
 		}
 	}
 
@@ -305,10 +254,7 @@ function showdeed(property, gameInstance) {
 			DOMUI.setVisible("#deed-special", true);
 			document.getElementById("deed-special-name").textContent = sq.presentation.label;
 			var group = gameState.board.groupsById[sq.groupId];
-			var special = sq.kind === 'utility'
-				? { kind: 'utility', deed: { multipliers: group.rules.rentTiers } }
-				: { kind: sq.kind, deed: { rents: group.rules.rentTiers, groupName: group.label } };
-			document.getElementById("deed-special-text").innerHTML = EditionRenderer.renderSpecialDeedText(special);
+			document.getElementById('deed-special-text').innerHTML = EditionRenderer.renderSpecialDeedText(sq, group);
 			document.getElementById("deed-special-mortgage").textContent = rules.mortgageValue;
 		}
 	}
@@ -318,6 +264,7 @@ function hidedeed() {
 	DOMUI.setVisible("#deed", false);
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { popup: popup, getPlayerStatsHTML: getPlayerStatsHTML };
-}
+var api = { PopupView: PopupView, getPlayerStatsHTML: getPlayerStatsHTML, showStats: showStats, showdeed: showdeed, hidedeed: hidedeed, updateDrawnCard: updateDrawnCard, showAuctionPlayerStats: showAuctionPlayerStats, positionAuctionPlayerStats: positionAuctionPlayerStats, hideAuctionPlayerStats: hideAuctionPlayerStats };
+global.PopupView = api;
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);

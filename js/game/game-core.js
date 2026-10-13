@@ -17,7 +17,7 @@ function Game(ui, state) {
 		currentBidder: 1,
 		passed: new Set(),
 		initiator: 0,
-		property: -1,
+		property: null,
 		history: []
 	};
 	this.tradeState = { initiator: null, recipient: null };

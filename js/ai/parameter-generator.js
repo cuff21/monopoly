@@ -1,3 +1,4 @@
+(function() {
 function importData() {
     const value = document.querySelector('#textarea').value;
     if (!GameStorage.importHistory(value)) {
@@ -103,4 +104,7 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof globalThis !== 'undefined') {
     globalThis.generateParameters = generateParameters;
     globalThis.normal = normal;
+    globalThis.HistoryView = { importData: importData, exportData: exportData };
 }
+
+})();
